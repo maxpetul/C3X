@@ -714,10 +714,10 @@ struct district_config {
 	char const * img_paths[10];
 	unsigned int buildable_square_types_mask;
 	unsigned int buildable_adjacent_to_square_types_mask;
+	unsigned int buildable_without_removal_mask;
 	unsigned int buildable_on_overlays_mask;
-	unsigned int buildable_only_on_overlays_mask;
 	unsigned int buildable_adjacent_to_overlays_mask;
-	bool buildable_only_on_rivers;
+	bool buildable_on_rivers;
 	bool buildable_adjacent_to_allows_city;
 	bool allow_multiple;
 	bool vary_img_by_era;
@@ -770,10 +770,10 @@ struct district_config {
 	int buildable_adjacent_to_district_id_count;
 	bool has_buildable_adjacent_to;
 	bool has_buildable_adjacent_to_districts;
+	bool has_buildable_without_removal;
 	bool has_buildable_on_overlays;
-	bool has_buildable_only_on_overlays;
 	bool has_buildable_adjacent_to_overlays;
-	bool has_buildable_only_on_rivers;
+	bool has_buildable_on_rivers;
 	char const * buildable_by_civs[32];
 	int buildable_by_civ_count;
 	bool has_buildable_by_civs;
@@ -807,7 +807,7 @@ struct wonder_district_config {
 	unsigned int buildable_square_types_mask;
 	unsigned int buildable_adjacent_to_square_types_mask;
 	unsigned int buildable_adjacent_to_overlays_mask;
-	bool buildable_only_on_rivers;
+	bool buildable_on_rivers;
 	bool buildable_adjacent_to_allows_city;
 	char const * buildable_by_civs[32];
 	int buildable_by_civ_count;
@@ -1044,10 +1044,10 @@ struct parsed_district_definition {
 	struct district_bonus_list defense_bonus_extras;
 	unsigned int buildable_square_types_mask;
 	unsigned int buildable_adjacent_to_square_types_mask;
+	unsigned int buildable_without_removal_mask;
 	unsigned int buildable_on_overlays_mask;
-	unsigned int buildable_only_on_overlays_mask;
 	unsigned int buildable_adjacent_to_overlays_mask;
-	bool buildable_only_on_rivers;
+	bool buildable_on_rivers;
 	bool buildable_adjacent_to_allows_city;
 	char * buildable_by_civs[32];
 	int buildable_by_civ_count;
@@ -1087,10 +1087,10 @@ struct parsed_district_definition {
 	bool has_happiness_bonus;
 	bool has_buildable_on;
 	bool has_buildable_adjacent_to;
+	bool has_buildable_without_removal;
 	bool has_buildable_on_overlays;
-	bool has_buildable_only_on_overlays;
 	bool has_buildable_adjacent_to_overlays;
-	bool has_buildable_only_on_rivers;
+	bool has_buildable_on_rivers;
 	bool has_resource_prereq_on_tile;
 	bool has_buildable_by_civs;
 	bool has_buildable_by_war_allies;
@@ -1137,7 +1137,7 @@ struct parsed_wonder_definition {
 	unsigned int buildable_square_types_mask;
 	unsigned int buildable_adjacent_to_square_types_mask;
 	unsigned int buildable_adjacent_to_overlays_mask;
-	bool buildable_only_on_rivers;
+	bool buildable_on_rivers;
 	bool buildable_adjacent_to_allows_city;
 	char * buildable_by_civs[32];
 	int buildable_by_civ_count;
@@ -1169,7 +1169,7 @@ struct parsed_wonder_definition {
 	bool has_buildable_on;
 	bool has_buildable_adjacent_to;
 	bool has_buildable_adjacent_to_overlays;
-	bool has_buildable_only_on_rivers;
+	bool has_buildable_on_rivers;
 	bool has_buildable_by_civs;
 	bool has_buildable_by_civ_traits;
 	bool has_buildable_by_civ_govs;

@@ -3839,15 +3839,15 @@ district_is_buildable_on_square_type (struct district_config const * cfg, Tile *
 	bool overlay_allowed = false;
 	bool overlay_required = false;
 
-	if (cfg->has_buildable_on_overlays)
-		overlay_allowed = tile_matches_overlay_mask (tile, cfg->buildable_on_overlays_mask);
+	if (cfg->has_buildable_without_removal)
+		overlay_allowed = tile_matches_overlay_mask (tile, cfg->buildable_without_removal_mask);
 
-	if (cfg->has_buildable_only_on_overlays) {
-		overlay_required = tile_matches_overlay_mask (tile, cfg->buildable_only_on_overlays_mask);
+	if (cfg->has_buildable_on_overlays) {
+		overlay_required = tile_matches_overlay_mask (tile, cfg->buildable_on_overlays_mask);
 		if (! overlay_required)
 			return false;
 	}
-	if (cfg->buildable_only_on_rivers && (tile->vtable->m37_Get_River_Code (tile) == 0))
+	if (cfg->buildable_on_rivers && (tile->vtable->m37_Get_River_Code (tile) == 0))
 		return false;
 
 	if (! square_matches && ! overlay_allowed && ! overlay_required)
@@ -5879,7 +5879,7 @@ wonder_is_buildable_on_square_type (struct wonder_district_config const * cfg, T
 	if (! tile_matches_square_type_mask (tile, wonder_buildable_square_type_mask (cfg)))
 		return false;
 
-	if (cfg->buildable_only_on_rivers && (tile->vtable->m37_Get_River_Code (tile) == 0))
+	if (cfg->buildable_on_rivers && (tile->vtable->m37_Get_River_Code (tile) == 0))
 		return false;
 
 	if (cfg->has_buildable_adjacent_to) {
@@ -7515,10 +7515,10 @@ init_parsed_district_definition (struct parsed_district_definition * def)
 	def->ai_build_strategy = DABS_DISTRICT;
 	def->buildable_square_types_mask = district_default_buildable_mask ();
 	def->buildable_adjacent_to_square_types_mask = 0;
+	def->buildable_without_removal_mask = 0;
 	def->buildable_on_overlays_mask = 0;
-	def->buildable_only_on_overlays_mask = 0;
 	def->buildable_adjacent_to_overlays_mask = 0;
-	def->buildable_only_on_rivers = false;
+	def->buildable_on_rivers = false;
 	def->buildable_adjacent_to_allows_city = false;
 }
 
@@ -7909,10 +7909,10 @@ parse_buildable_overlay_mask (struct string_slice const * value,
 	int entry_count = 0;
 
 	if (key_name == NULL)
-		key_name = "buildable_on_overlays";
-	if (strcmp (key_name, "buildable_on_overlays") == 0)
+		key_name = "buildable_without_removal";
+	if (strcmp (key_name, "buildable_without_removal") == 0)
 		allowed_mask = (DOM_JUNGLE | DOM_FOREST | DOM_SWAMP);
-	else if (strcmp (key_name, "buildable_only_on_overlays") == 0)
+	else if (strcmp (key_name, "buildable_on_overlays") == 0)
 		allowed_mask &= ~DOM_RIVER;
 
 	if (value_text != NULL) {
@@ -8448,16 +8448,16 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->has_buildable_adjacent_to = true;
 		cfg->buildable_adjacent_to_allows_city = def->buildable_adjacent_to_allows_city;
 	}
+	if (def->has_buildable_without_removal) {
+		cfg->buildable_without_removal_mask = def->buildable_without_removal_mask;
+		cfg->has_buildable_without_removal = true;
+	}
 	if (def->has_buildable_on_overlays) {
 		cfg->buildable_on_overlays_mask = def->buildable_on_overlays_mask;
 		cfg->has_buildable_on_overlays = true;
 	}
-	if (def->has_buildable_only_on_overlays) {
-		cfg->buildable_only_on_overlays_mask = def->buildable_only_on_overlays_mask;
-		cfg->has_buildable_only_on_overlays = true;
-	}
-	if (def->has_buildable_only_on_rivers)
-		cfg->buildable_only_on_rivers = def->buildable_only_on_rivers;
+	if (def->has_buildable_on_rivers)
+		cfg->buildable_on_rivers = def->buildable_on_rivers;
 	if (def->has_buildable_adjacent_to_overlays) {
 		cfg->buildable_adjacent_to_overlays_mask = def->buildable_adjacent_to_overlays_mask;
 		cfg->has_buildable_adjacent_to_overlays = true;
@@ -8717,13 +8717,13 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.buildable_adjacent_to_square_types_mask = def->has_buildable_adjacent_to ? def->buildable_adjacent_to_square_types_mask : 0;
 	new_cfg.has_buildable_adjacent_to = def->has_buildable_adjacent_to;
 	new_cfg.buildable_adjacent_to_allows_city = def->has_buildable_adjacent_to ? def->buildable_adjacent_to_allows_city : false;
+	new_cfg.buildable_without_removal_mask = def->has_buildable_without_removal ? def->buildable_without_removal_mask : 0;
+	new_cfg.has_buildable_without_removal = def->has_buildable_without_removal;
 	new_cfg.buildable_on_overlays_mask = def->has_buildable_on_overlays ? def->buildable_on_overlays_mask : 0;
 	new_cfg.has_buildable_on_overlays = def->has_buildable_on_overlays;
-	new_cfg.buildable_only_on_overlays_mask = def->has_buildable_only_on_overlays ? def->buildable_only_on_overlays_mask : 0;
-	new_cfg.has_buildable_only_on_overlays = def->has_buildable_only_on_overlays;
 	new_cfg.buildable_adjacent_to_overlays_mask = def->has_buildable_adjacent_to_overlays ? def->buildable_adjacent_to_overlays_mask : 0;
 	new_cfg.has_buildable_adjacent_to_overlays = def->has_buildable_adjacent_to_overlays;
-	new_cfg.buildable_only_on_rivers = def->has_buildable_only_on_rivers ? def->buildable_only_on_rivers : false;
+	new_cfg.buildable_on_rivers = def->has_buildable_on_rivers ? def->buildable_on_rivers : false;
 
 	if (def->has_culture_bonus)
 		move_bonus_entry_list (&new_cfg.culture_bonus_extras, &def->culture_bonus_extras);
@@ -9218,6 +9218,15 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->has_buildable_on = true;
 		}
 
+	} else if (slice_matches_str (key, "buildable_without_removal")) {
+		unsigned int mask;
+		if (parse_buildable_overlay_mask (value, &mask, parse_errors, line_number, "buildable_without_removal")) {
+			def->buildable_without_removal_mask = mask;
+			def->has_buildable_without_removal = true;
+		} else {
+			def->has_buildable_without_removal = false;
+		}
+
 	} else if (slice_matches_str (key, "buildable_on_overlays")) {
 		unsigned int mask;
 		if (parse_buildable_overlay_mask (value, &mask, parse_errors, line_number, "buildable_on_overlays")) {
@@ -9227,21 +9236,12 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->has_buildable_on_overlays = false;
 		}
 
-	} else if (slice_matches_str (key, "buildable_only_on_overlays")) {
-		unsigned int mask;
-		if (parse_buildable_overlay_mask (value, &mask, parse_errors, line_number, "buildable_only_on_overlays")) {
-			def->buildable_only_on_overlays_mask = mask;
-			def->has_buildable_only_on_overlays = true;
-		} else {
-			def->has_buildable_only_on_overlays = false;
-		}
-
-	} else if (slice_matches_str (key, "buildable_only_on_rivers")) {
+	} else if (slice_matches_str (key, "buildable_on_rivers")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->buildable_only_on_rivers = (ival != 0);
-			def->has_buildable_only_on_rivers = true;
+			def->buildable_on_rivers = (ival != 0);
+			def->has_buildable_on_rivers = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
@@ -9698,7 +9698,7 @@ init_parsed_wonder_definition (struct parsed_wonder_definition * def)
 	def->buildable_square_types_mask = district_default_buildable_mask ();
 	def->buildable_adjacent_to_square_types_mask = 0;
 	def->buildable_adjacent_to_overlays_mask = 0;
-	def->buildable_only_on_rivers = false;
+	def->buildable_on_rivers = false;
 	def->buildable_adjacent_to_allows_city = false;
 	for (int i = 0; i < ARRAY_LEN (def->buildable_by_civ_traits_ids); i++)
 		def->buildable_by_civ_traits_ids[i] = -1;
@@ -9790,7 +9790,7 @@ add_dynamic_wonder_from_definition (struct parsed_wonder_definition * def, int s
 	new_cfg.custom_height = def->has_custom_height ? def->custom_height : 0;
 	new_cfg.enable_img_alt_dir = def->enable_img_alt_dir;
 	new_cfg.buildable_square_types_mask = def->has_buildable_on ? def->buildable_square_types_mask : district_default_buildable_mask ();
-	new_cfg.buildable_only_on_rivers = def->has_buildable_only_on_rivers ? def->buildable_only_on_rivers : false;
+	new_cfg.buildable_on_rivers = def->has_buildable_on_rivers ? def->buildable_on_rivers : false;
 	new_cfg.buildable_adjacent_to_overlays_mask = def->has_buildable_adjacent_to_overlays ? def->buildable_adjacent_to_overlays_mask : 0;
 	new_cfg.buildable_adjacent_to_square_types_mask = def->has_buildable_adjacent_to ? def->buildable_adjacent_to_square_types_mask : 0;
 	new_cfg.buildable_adjacent_to_allows_city = def->has_buildable_adjacent_to ? def->buildable_adjacent_to_allows_city : false;
@@ -10108,14 +10108,14 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_buildable_on = false;
 		}
 
-	} else if (slice_matches_str (key, "buildable_only_on_rivers")) {
+	} else if (slice_matches_str (key, "buildable_on_rivers")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->buildable_only_on_rivers = (ival != 0);
-			def->has_buildable_only_on_rivers = true;
+			def->buildable_on_rivers = (ival != 0);
+			def->has_buildable_on_rivers = true;
 		} else {
-			def->has_buildable_only_on_rivers = false;
+			def->has_buildable_on_rivers = false;
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
@@ -32172,7 +32172,7 @@ wonder_allows_river (struct wonder_district_config const * cfg)
 		build_mask = district_default_buildable_mask ();
 	if ((build_mask & square_type_mask_bit (SQ_RIVER)) != 0)
 		return true;
-	if (cfg->buildable_only_on_rivers)
+	if (cfg->buildable_on_rivers)
 		return true;
 	return false;
 }
@@ -32596,7 +32596,7 @@ district_allows_river (struct district_config const * cfg)
 		build_mask = district_default_buildable_mask ();
 	if ((build_mask & square_type_mask_bit (SQ_RIVER)) != 0)
 		return true;
-	if (cfg->buildable_only_on_rivers)
+	if (cfg->buildable_on_rivers)
 		return true;
 	return false;
 }

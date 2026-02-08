@@ -27,14 +27,14 @@
   ;  - resource_prereq_on_tile         : Resource name required on the district tile. District cannot be built unless resource is on same tile.
   ;  - wonder_prereqs                  : Comma-separated wonder names. District cannot be built unless all Wonders are built by same civ.
   ;  - natural_wonder_prereqs          : Comma-separated natural wonder names. District cannot be built unless all Natural Wonders are within civ's territory.
-  ;  - buildable_on                    : Comma-separated square types: desert, plains, grassland, tundra, floodplain, hills, mountains, volcano,
-  ;                                                                    coast, sea, ocean, snow-forest, snow-mountains, snow-volcano, lake. (tile must be one of these)                                                                        
-  ;  - buildable_on_overlays           : Comma-separated overlays: jungle, forest, swamp. (optional; tile *may* be one of these, workers don't need to remove them first).
-  ;  - buildable_only_on_overlays      : Comma-separated overlays: irrigation, mine, fortress, barricade, jungle, forest, swamp, airfield. (optional; tile must be one of these)
-  ;  - buildable_only_on_rivers        : 0 or 1. If 1, district tile must be on a river.
-  ;  - buildable_adjacent_to           : Same as buildable_on, plus "city".
-  ;  - buildable_adjacent_to_overlays  : Same as buildable_only_on_overlays.
+  ;  - buildable_on                    : Comma-separated square types: desert, plains, grassland, tundra, floodplain, hill, mountain, volcano,
+  ;                                                                    coast, sea, ocean, snow-forest, snow-mountain, snow-volcano, lake. (tile must be one of these)         
+  ;  - buildable_on_overlays           : Comma-separated overlays: irrigation, mine, fortress, barricade, jungle, forest, swamp, airfield. (optional; tile must be one of these).
   ;  - buildable_on_districts          : Comma-separated district names (tile must already have a completed district of any of these types, which it would replace).
+  ;  - buildable_on_rivers             : 0 or 1. If 1, district tile must be on a river.                                                               
+  ;  - buildable_without_removal       : Comma-separated overlays: jungle, forest, swamp. (optional; tile *may* have these, workers don't need to remove them first).
+  ;  - buildable_adjacent_to           : Same as buildable_on, plus "city".
+  ;  - buildable_adjacent_to_overlays  : Same as buildable_on_overlays.
   ;  - buildable_adjacent_to_districts : Comma-separated district names (adjacent tile must have a completed district of any of these types).
   ;  - buildable_by_civs               : Comma-separated civ names (e.g., Romans, Egyptians).
   ;  - buildable_by_civ_traits         : Comma-separated trait names (e.g., Commercial, Militaristic).
@@ -76,9 +76,9 @@ vary_img_by_era        = 1
 vary_img_by_culture    = 0
 advance_prereqs        = Warrior Code
 dependent_improvs      = Barracks,"SAM Missile Battery"
-buildable_on           = desert,plains,grassland,tundra,floodplain,hills
+buildable_on           = desert,plains,grassland,tundra,floodplain,hill
 heal_units_in_one_turn = 1
-defense_bonus_percent  = 50, Barracks: 25, hills: 25
+defense_bonus_percent  = 50, Barracks: 25, hill: 25
 allow_multiple         = 1
 culture_bonus          = 0
 science_bonus          = 0
@@ -97,7 +97,7 @@ vary_img_by_era        = 0
 vary_img_by_culture    = 1
 advance_prereqs        = "Ceremonial Burial"
 dependent_improvs      = Temple,Cathedral
-buildable_on           = desert,plains,grassland,tundra,floodplain,hills
+buildable_on           = desert,plains,grassland,tundra,floodplain,hill
 defense_bonus_percent  = 0
 allow_multiple         = 1
 culture_bonus          = 2, Temple: 2, Cathedral: 2
@@ -117,7 +117,7 @@ vary_img_by_era        = 1
 vary_img_by_culture    = 0
 advance_prereqs        = Literature
 dependent_improvs      = Library, University
-buildable_on           = desert,plains,grassland,tundra,floodplain,hills
+buildable_on           = desert,plains,grassland,tundra,floodplain,hill
 defense_bonus_percent  = 0
 allow_multiple         = 1
 culture_bonus          = 1, Library: 2, University: 2
@@ -137,7 +137,7 @@ vary_img_by_era        = 1
 vary_img_by_culture    = 1
 advance_prereqs        = Construction
 dependent_improvs      = Colosseum
-buildable_on           = desert,plains,grassland,tundra,floodplain,hills
+buildable_on           = desert,plains,grassland,tundra,floodplain,hill
 defense_bonus_percent  = 0
 allow_multiple         = 1
 culture_bonus          = 1, Colosseum: 1
@@ -157,7 +157,7 @@ vary_img_by_era        = 1
 vary_img_by_culture    = 1
 advance_prereqs        = Currency
 dependent_improvs      = Marketplace, Bank, "Stock Exchange"
-buildable_on           = desert,plains,grassland,tundra,floodplain,hills
+buildable_on           = desert,plains,grassland,tundra,floodplain,hill
 defense_bonus_percent  = 0
 allow_multiple         = 1
 culture_bonus          = 0, Marketplace: 1
@@ -177,7 +177,7 @@ vary_img_by_era        = 1
 vary_img_by_culture    = 0
 advance_prereqs        = Industrialization
 dependent_improvs      = Factory, "Manufacturing Plant"
-buildable_on           = desert,plains,grassland,tundra,floodplain,hills
+buildable_on           = desert,plains,grassland,tundra,floodplain,hill
 defense_bonus_percent  = 0
 allow_multiple         = 1
 culture_bonus          = 0
@@ -197,7 +197,7 @@ vary_img_by_era        = 1
 vary_img_by_culture    = 0
 advance_prereqs        = Computers
 dependent_improvs      = "Research Lab"
-buildable_on           = desert,plains,grassland,tundra,floodplain,hills
+buildable_on           = desert,plains,grassland,tundra,floodplain,hill
 defense_bonus_percent  = 0
 allow_multiple         = 1
 culture_bonus          = 0
@@ -237,7 +237,7 @@ vary_img_by_era            = 1
 vary_img_by_culture        = 0
 advance_prereqs            = Engineering
 dependent_improvs          = 
-buildable_only_on_overlays = forest
+buildable_on_overlays      = forest
 defense_bonus_percent      = 0
 allow_multiple             = 1
 culture_bonus              = 2
@@ -257,7 +257,7 @@ vary_img_by_era        = 0
 vary_img_by_culture    = 0
 advance_prereqs        = Electricity
 dependent_improvs      = 
-buildable_on           = snow-mountains
+buildable_on           = snow-mountain
 custom_height          = 88
 defense_bonus_percent  = 0
 allow_multiple         = 1
@@ -300,7 +300,7 @@ vary_img_by_era        = 0
 vary_img_by_culture    = 0
 advance_prereqs        = Code of Laws
 dependent_improvs      = Courthouse, Police Station, Hospital
-buildable_on           = desert,plains,grassland,tundra,floodplain,hills
+buildable_on           = desert,plains,grassland,tundra,floodplain,hill
 defense_bonus_percent  = 0
 allow_multiple         = 1
 culture_bonus          = 2
@@ -317,7 +317,7 @@ happiness_bonus        = 0
 #District
 name                   = Neighborhood
 tooltip                = Build Neighborhood
-buildable_on           = desert,plains,grassland,tundra,floodplain,hills
+buildable_on           = desert,plains,grassland,tundra,floodplain,hill
 advance_prereqs        = 
 auto_add_road          = 1
 defense_bonus_percent  = 25
@@ -332,7 +332,7 @@ happiness_bonus        = 0
 #District
 name                   = Wonder District
 tooltip                = Build Wonder District
-buildable_on           = desert,plains,grassland,tundra,floodplain,hills,coast,mountains
+buildable_on           = desert,plains,grassland,tundra,floodplain,hill,coast,mountain
 advance_prereqs        = 
 defense_bonus_percent  = 0
 allow_multiple         = 1
@@ -346,7 +346,7 @@ happiness_bonus        = 0
 #District
 name                   = Distribution Hub
 tooltip                = Build Distribution Hub
-buildable_on           = desert,plains,grassland,tundra,floodplain,hills
+buildable_on           = desert,plains,grassland,tundra,floodplain,hill
 advance_prereqs        = Construction
 defense_bonus_percent  = 0
 allow_multiple         = 1
@@ -360,7 +360,7 @@ happiness_bonus        = 0
 #District
 name                   = Aerodrome
 tooltip                = Build Aerodrome
-buildable_on           = desert,plains,grassland,tundra,floodplain,hills
+buildable_on           = desert,plains,grassland,tundra,floodplain,hill
 advance_prereqs        = Flight
 dependent_improvs      = Airport
 defense_bonus_percent  = 0
@@ -398,7 +398,7 @@ vary_img_by_culture    = 1
 advance_prereqs        = Steam Power
 resource_prereqs       = Iron, Coal
 dependent_improvs      = "Mass Transit System"
-buildable_on           = desert,plains,grassland,tundra,floodplain,hills
+buildable_on           = desert,plains,grassland,tundra,floodplain,hill
 auto_add_railroad      = 1
 defense_bonus_percent  = 0
 allow_multiple         = 1
@@ -419,7 +419,7 @@ vary_img_by_culture    = 1
 custom_height          = 84
 advance_prereqs        = Industrialization
 dependent_improvs      = "Coal Plant", "Hydro Plant", "Nuclear Plant", "Solar Plant"
-buildable_on           = desert,plains,grassland,tundra,floodplain,hills
+buildable_on           = desert,plains,grassland,tundra,floodplain,hill
 defense_bonus_percent  = 0
 allow_multiple         = 1
 culture_bonus          = 0
@@ -477,8 +477,8 @@ btn_tile_sheet_column  = 9
 tooltip                = Build Great Wall
 obsoleted_by           = Metallurgy
 wonder_prereqs         = "The Great Wall"
-buildable_on           = desert,plains,grassland,tundra,floodplain,mountains,hills,volcano
-buildable_on_overlays  = forest,swamp,jungle
+buildable_on           = desert,plains,grassland,tundra,floodplain,mountain,hill,volcano
+buildable_without_removal = forest,swamp,jungle
 draw_over_resources    = 1
 defense_bonus_percent  = 50
 allow_multiple         = 1

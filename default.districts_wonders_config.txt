@@ -11,7 +11,7 @@
   ;  - name                           : Text (required). Must match the in-game Wonder improvement name.
   ;  - buildable_on                   : Comma-separated square types: desert, plains, grassland, tundra, floodplain, hills, mountains, volcano,
                                                                       coast, sea, ocean, snow-forest, snow-mountains, snow-volcano, lake.
-  ;  - buildable_only_on_rivers       : 0 or 1. If 1, Wonder can only be built if tile has river.
+  ;  - buildable_on_rivers       : 0 or 1. If 1, Wonder can only be built if tile has river.
   ;  - buildable_adjacent_to          : Same as buildable_on, plus "city".
   ;  - buildable_adjacent_to_overlays : Same overlay list as districts.
   ;  - buildable_by_civs              : Comma-separated civ names (e.g., Romans, Egyptians).
@@ -164,7 +164,7 @@ img_alt_dir_column           = 3
 #Wonder
 name                         = Hoover Dam
 buildable_on                 = mountains
-buildable_only_on_rivers     = 1
+buildable_on_rivers          = 1
 enable_img_alt_dir           = 1
 img_path                     = Wonders_3.pcx
 img_construct_row            = 0
