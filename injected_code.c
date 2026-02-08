@@ -13130,15 +13130,16 @@ find_tile_for_neighborhood_district (City * city, int * out_x, int * out_y)
 		}
 
 		Tile * tile = tri.tile;
+		bool has_resource = false;
 		if (is->current_config.enable_distribution_hub_districts) {
 			int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
 			if (covered > 0)
 				continue;
 		}
 
-		if (! tile_suitable_for_district (tile, NEIGHBORHOOD_DISTRICT_ID, city, NULL))
+		if (! tile_suitable_for_district (tile, NEIGHBORHOOD_DISTRICT_ID, city, &has_resource))
 			continue;
-		if (tile_has_resource (tile))
+		if (has_resource)
 			continue;
 		if (get_district_instance (tile) != NULL &&
 		    ! tile_has_obsolete_district_for_civ (tile, city->Body.CivID))
@@ -13197,15 +13198,16 @@ find_tile_for_port_district (City * city, int * out_x, int * out_y)
 		}
 
 		Tile * tile = tri.tile;
+		bool has_resource = false;
 		if (is->current_config.enable_distribution_hub_districts) {
 			int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
 			if (covered > 0)
 				continue;
 		}
 
-		if (! tile_suitable_for_district (tile, PORT_DISTRICT_ID, city, NULL))
+		if (! tile_suitable_for_district (tile, PORT_DISTRICT_ID, city, &has_resource))
 			continue;
-		if (tile_has_resource (tile))
+		if (has_resource)
 			continue;
 		if (get_district_instance (tile) != NULL &&
 		    ! tile_has_obsolete_district_for_civ (tile, city->Body.CivID))
@@ -13292,6 +13294,7 @@ find_tile_for_wonder_district (City * city, int * out_x, int * out_y)
 	ring_order[ring_count++] = 1;
 
 	Tile * best_tile = NULL;
+	bool has_resource = false;
 	int best_yield = INT_MAX;
 	int best_x = -1, best_y = -1;
 	int current_ring = -1;
@@ -13309,9 +13312,9 @@ find_tile_for_wonder_district (City * city, int * out_x, int * out_y)
 		}
 
 		Tile * tile = tri.tile;
-		if (! tile_suitable_for_district (tile, WONDER_DISTRICT_ID, city, NULL))
+		if (! tile_suitable_for_district (tile, WONDER_DISTRICT_ID, city, &has_resource))
 			continue;
-		if (tile_has_resource (tile))
+		if (has_resource)
 			continue;
 		if (! wonder_is_buildable_on_tile (tile, target_improv_id))
 			continue;
@@ -13756,6 +13759,7 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 	ring_order[ring_count++] = 1;
 
 	Tile * best_tile = NULL;
+	struct district_config * cfg = &is->district_configs[district_id];
 	int best_yield = INT_MAX;
 	int best_x = -1, best_y = -1;
 	int current_ring = -1;
@@ -13773,16 +13777,18 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 		}
 
 		Tile * tile = tri.tile;
+		bool has_resource = false;
 		if (is->current_config.enable_distribution_hub_districts) {
 			int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
 			if (covered > 0)
 				continue;
 		}
 
-		if (! tile_suitable_for_district (tile, district_id, city, NULL))
+		if (! tile_suitable_for_district (tile, district_id, city, &has_resource))
 			continue;
-		if (get_district_instance (tile) != NULL &&
-		    ! tile_has_obsolete_district_for_civ (tile, city->Body.CivID))
+		if (cfg->resource_prereq_on_tile < 0 && has_resource)
+			continue;
+		if (get_district_instance (tile) != NULL && ! tile_has_obsolete_district_for_civ (tile, city->Body.CivID))
 			continue;
 
 		int yield = compute_city_tile_yield_sum (city, tri.tile_x, tri.tile_y);
