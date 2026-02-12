@@ -82,11 +82,7 @@ char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resum
 void *
 memmove (void * dest, void const * src, size_t size)
 {
-	char const * _src = src;
-	char * _dest = dest, * tr = dest;
-	for (char const * src_end = _src + size; _src != src_end; _src++, _dest++)
-		*_dest = *_src;
-	return tr;
+	return is->memmove (dest, src, size);
 }
 
 // Also need to define memset for some reason
@@ -11019,6 +11015,7 @@ patch_init_floating_point ()
 		{"patch_ai_can_sacrifice_without_special_ability"        , true , offsetof (struct c3x_config, patch_ai_can_sacrifice_without_special_ability)},
 		{"patch_crash_in_leader_unit_ai"                         , true , offsetof (struct c3x_config, patch_crash_in_leader_unit_ai)},
 		{"patch_failure_to_find_new_city_build"                  , true , offsetof (struct c3x_config, patch_failure_to_find_new_city_build)},
+		{"patch_passengers_out_of_order_on_menu"                 , true , offsetof (struct c3x_config, patch_passengers_out_of_order_on_menu)},
 		{"delete_off_map_ai_units"                               , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
 		{"fix_overlapping_specialist_yield_icons"                , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
 		{"prevent_autorazing"                                    , false, offsetof (struct c3x_config, prevent_autorazing)},
@@ -11175,6 +11172,7 @@ patch_init_floating_point ()
 	memcpy   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcpy");
 	tolower  = (void *)(*p_GetProcAddress) (is->msvcrt, "tolower");
 	toupper  = (void *)(*p_GetProcAddress) (is->msvcrt, "toupper");
+	is->memmove = (void *)(*p_GetProcAddress) (is->msvcrt, "memmove"); // No #define for this one, instead it has a wrapper func
 
 	// Intercept the game's calls to MessageBoxA. We can't do this through the patcher since that would interfere with the runtime loader.
 	WITH_MEM_PROTECTION (p_MessageBoxA, 4, PAGE_READWRITE)
@@ -25568,6 +25566,51 @@ patch_PCX_Image_process_dom_adv_turn_count_text (PCX_Image * this, int edx, char
 	}
 
 	return PCX_Image_process_text (this, __, str);
+}
+
+int
+compare_menu_unit_items (void const * a, void const * b)
+{
+	return MenuUnitItem_should_appear_after ((MenuUnitItem *)a, __, (MenuUnitItem *)b) ? 1 : -1;
+}
+
+int __fastcall
+patch_MenuUnitList_get_length_before_sorting (MenuUnitList * this)
+{
+	int length = MenuUnitList_get_length (this);
+
+	if (is->current_config.patch_passengers_out_of_order_on_menu && length > 0) {
+		qsort (this->items, length, sizeof this->items[0], compare_menu_unit_items);
+
+		// Fix any units not being listed immediately after the unit they're contained in
+		// First, loop over all units in the list, stopping at each that might contain others
+		for (int n = 0; n < length - 1; n++) {
+			Unit * container = this->items[n].unit;
+			if ((int)container > 1 && // original code checks if unit ptrs are NULL or equal to 1
+			    p_bic_data->UnitTypes[container->Body.UnitTypeID].Transport_Capacity > 0) {
+
+				// Advance iterator "j" past the container and past any empty slots or correctly positioned units right after it
+				int j = n + 1;
+				while (j < length && ((int)this->items[j].unit <= 1 || this->items[j].unit->Body.Container_Unit == container->Body.ID))
+					j++;
+
+				// Check the rest of the list for out-of-place passengers
+				for (int k = j + 1; k < length; k++)
+					if ((int)this->items[k].unit > 1 && this->items[k].unit->Body.Container_Unit == container->Body.ID) {
+
+						// Move item from index "k" to index "j" and advance "j" past it
+						MenuUnitItem moved = this->items[k];
+						memmove (&this->items[j + 1], &this->items[j], (k - j) * sizeof this->items[0]);
+						this->items[j] = moved;
+						j++;
+					}
+			}
+		}
+
+		// The caller is checking if the length is > 0 before sorting the list. Since we've already sorted it, return 0.
+		return 0;
+	} else
+		return length;
 }
 
 

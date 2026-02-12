@@ -352,6 +352,7 @@ struct c3x_config {
 	bool patch_ai_can_sacrifice_without_special_ability;
 	bool patch_crash_in_leader_unit_ai;
 	bool patch_failure_to_find_new_city_build;
+	bool patch_passengers_out_of_order_on_menu;
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
@@ -932,6 +933,7 @@ struct injected_state {
 	void (* qsort) (void *, size_t, size_t, int (*) (void const *, void const *));
 	int (* memcmp) (void const *, void const *, size_t);
 	void * (* memcpy) (void *, void const *, size_t);
+	void * (* memmove) (void *, void const *, size_t);
 	int (* tolower) (int);
 	int (* toupper) (int);
 

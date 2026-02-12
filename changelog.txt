@@ -23,6 +23,7 @@
 - Fix crash caused by failure to find default option for popup asking player to select new build in city that completed its previous one
 - Except nuclear weapons from disallow_useless_bombard_vs_airfields
 - Prevent immobile units from retreating when any non-standard retreat rule is set
+- Fix doubly contained units not always appearing right after their container on the right-click menu
 
 * RELEASE 26
 - Add some options to make land transports viable, controlled by land_transport_rules setting
