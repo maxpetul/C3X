@@ -6278,6 +6278,7 @@ typedef struct DiploForm DiploForm;
 typedef struct TextBuffer TextBuffer;
 typedef struct OpenGLRenderer OpenGLRenderer;
 typedef struct MenuUnitItem MenuUnitItem;
+typedef struct MenuUnitList MenuUnitList;
 typedef struct MappedFile MappedFile;
 
 // Contains font info for a particular size & style
@@ -6450,6 +6451,14 @@ struct MenuUnitItem
 	bool is_flag_unit;
 	bool is_state_blank;
 	byte field_B;
+};
+
+struct MenuUnitList
+{
+	int field_0;
+	MenuUnitItem * items;
+	MenuUnitItem * items_end;
+	int field_C;
 };
 
 struct MappedFile
