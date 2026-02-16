@@ -1353,6 +1353,9 @@ parse_work_area_improvement (char ** p_cursor, struct error_line ** p_unrecogniz
 {
 	char * cur = *p_cursor;
 	struct work_area_improvement * out = out_parsed_work_area_improvement;
+	out->improv_id = -1;
+	out->work_area_radius_limit = 0;
+	out->work_area_radius_bonus = 0;
 
 	struct string_slice improv_name;
 	if (skip_white_space (&cur) &&
@@ -1366,11 +1369,11 @@ parse_work_area_improvement (char ** p_cursor, struct error_line ** p_unrecogniz
 		struct string_slice ss;
 		if (parse_string (&cur, &ss)) {
 			if (slice_matches_str (&ss, "extra"))
-				out->work_area_radius_bonus += num;
+				out->work_area_radius_bonus = num;
 			else
 				return RPR_PARSE_ERROR;
 		} else
-			out->work_area_radius_limit += num;
+			out->work_area_radius_limit = num;
 
 		int improv_id;
 		if (slice_matches_str (&improv_name, "default")) {
