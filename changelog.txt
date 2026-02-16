@@ -21,6 +21,7 @@
 - For config file loading, use the text encoding that the game retrieves and records internally instead of assuming Windows-1252
 - aggressively_penalize_bankruptcy now alternates between selling buildings or disbanding units first for bankrupt AI players and every third turn cuts their research spending
 - Fix crash caused by failure to find default option for popup asking player to select new build in city that completed its previous one
+- Fix erratic behavior caused by improvement-based work area rules being initialized incorrectly when read from the config
 - Except nuclear weapons from disallow_useless_bombard_vs_airfields
 - Prevent immobile units from retreating when any non-standard retreat rule is set
 - Fix doubly contained units not always appearing right after their container on the right-click menu
