@@ -173,6 +173,14 @@ enum day_night_cycle_mode {
 	DNCM_SPECIFIED
 };
 
+enum seasonal_cycle_mode {
+	SCM_OFF = 0,
+	SCM_TIMER,
+	SCM_USER_SEASON,
+	SCM_EVERY_TURN,
+	SCM_SPECIFIED
+};
+
 enum distribution_hub_yield_division_mode {
 	DHYDM_FLAT = 0,
 	DHYDM_SCALE_BY_CITY_COUNT
@@ -417,6 +425,11 @@ struct c3x_config {
 	int elapsed_minutes_per_day_night_hour_transition;
 	int fixed_hours_per_turn_for_day_night_cycle;
 	int pinned_hour_for_day_night_cycle;
+	int seasonal_cycle_mode;
+	int enabled_seasons_mask;
+	int pinned_season_for_seasonal_cycle;
+	int elapsed_minutes_per_season_transition;
+	int fixed_turns_per_season;
 
 	bool enable_natural_wonders;
 	bool add_natural_wonders_to_scenarios_if_none;
@@ -1983,10 +1996,14 @@ struct injected_state {
 	// Day-Night cycle data
 	int current_day_night_cycle;
 	bool day_night_cycle_unstarted; // If current_day_night_cycle has not been set, f.e. because it's the first turn of a new game.
+	int current_seasonal_cycle;
+	bool seasonal_cycle_unstarted;
+	int turns_in_current_season;
 	bool day_night_cycle_img_proxies_indexed;
 	LARGE_INTEGER last_day_night_cycle_update_time;
+	LARGE_INTEGER last_seasonal_cycle_update_time;
 
-	struct table day_night_sprite_proxy_by_hour[24];
+	struct table day_night_sprite_proxy_by_season_and_hour[4][24];
 
 	struct wonder_district_image_set {
 		Sprite img;
@@ -2079,7 +2096,7 @@ struct injected_state {
 		Sprite Abandoned_Maritime_District_Image;
 		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
 		struct natural_wonder_district_image_set Natural_Wonder_Images[MAX_NATURAL_WONDER_DISTRICT_TYPES];
-	} day_night_cycle_imgs[24];
+	} cycle_imgs[4][24];
 
 	// Districts
 	enum init_state dc_img_state;
