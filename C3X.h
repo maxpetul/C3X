@@ -178,6 +178,7 @@ enum seasonal_cycle_mode {
 	SCM_TIMER,
 	SCM_USER_SEASON,
 	SCM_EVERY_TURN,
+	SCM_ON_DAY_NIGHT_HOUR,
 	SCM_SPECIFIED
 };
 
@@ -430,6 +431,7 @@ struct c3x_config {
 	int pinned_season_for_seasonal_cycle;
 	int elapsed_minutes_per_season_transition;
 	int fixed_turns_per_season;
+	int transition_season_on_day_night_hour;
 
 	bool enable_natural_wonders;
 	bool add_natural_wonders_to_scenarios_if_none;
@@ -2003,7 +2005,7 @@ struct injected_state {
 	LARGE_INTEGER last_day_night_cycle_update_time;
 	LARGE_INTEGER last_seasonal_cycle_update_time;
 
-	struct table day_night_sprite_proxy_by_season_and_hour[4][24];
+	struct table * day_night_sprite_proxy_by_season_and_hour;
 
 	struct wonder_district_image_set {
 		Sprite img;
@@ -2096,7 +2098,7 @@ struct injected_state {
 		Sprite Abandoned_Maritime_District_Image;
 		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
 		struct natural_wonder_district_image_set Natural_Wonder_Images[MAX_NATURAL_WONDER_DISTRICT_TYPES];
-	} cycle_imgs[4][24];
+	} * cycle_imgs;
 
 	// Districts
 	enum init_state dc_img_state;
