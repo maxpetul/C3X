@@ -210,6 +210,24 @@ ensure_hour_folders() {
   done
 }
 
+ensure_season_noon_folder() {
+  local season_dir="$1"
+  local summer_noon_dir="$2"
+  local season_noon_dir="$season_dir/$NOON_SUBFOLDER"
+
+  if [[ -d "$season_noon_dir" ]]; then
+    return
+  fi
+
+  if [[ ! -d "$summer_noon_dir" ]]; then
+    echo "Missing $NOON_SUBFOLDER and no summer source found for $season_dir" >&2
+    return
+  fi
+
+  cp -R "$summer_noon_dir" "$season_noon_dir"
+  echo "Copied missing $NOON_SUBFOLDER for $season_dir from $summer_noon_dir"
+}
+
 ensure_season_annotations() {
   local season_dir="$1"
   local summer_annotation_dir="$2"
@@ -245,6 +263,7 @@ ensure_season_annotations() {
 process_art_root() {
   local art_root="$1"
   local summer_annotation_dir="$art_root/$BASE_SEASON/Annotations"
+  local summer_noon_dir="$art_root/$BASE_SEASON/$NOON_SUBFOLDER"
   local season_dir
   local season_name
 
@@ -260,6 +279,7 @@ process_art_root() {
       continue
     fi
 
+    ensure_season_noon_folder "$season_dir" "$summer_noon_dir"
     ensure_hour_folders "$season_dir"
     ensure_season_annotations "$season_dir" "$summer_annotation_dir"
     process_art_set "$season_dir" "$season_dir/Annotations"
