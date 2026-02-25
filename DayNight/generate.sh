@@ -9,7 +9,7 @@ DAYNIGHT_DATA_DIR="../Art/DayNight"
 DISTRICT_DATA_DIR="../Art/Districts"
 
 NOON_SUBFOLDER="1200"
-ONLY_HOUR=""       # set empty "" to process all hours
+ONLY_HOUR="2400"       # set empty "" to process all hours
 BASE_SEASON="Summer"
 
 # ---- Day/Night settings ----
@@ -246,6 +246,7 @@ ensure_season_annotations() {
   fi
 
   shopt -s nullglob
+  shopt -s nocaseglob
   for src in "$summer_annotation_dir"/*_lights.pcx; do
     target="$season_annotation_dir/$(basename "$src")"
     if [[ ! -e "$target" ]]; then
@@ -253,6 +254,7 @@ ensure_season_annotations() {
       copied_count=$((copied_count + 1))
     fi
   done
+  shopt -u nocaseglob
   shopt -u nullglob
 
   if (( copied_count > 0 )); then
