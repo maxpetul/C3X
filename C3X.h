@@ -182,6 +182,16 @@ enum seasonal_cycle_mode {
 	SCM_SPECIFIED
 };
 
+enum cycle_season {
+	CS_SUMMER = 0,
+	CS_FALL,
+	CS_WINTER,
+	CS_SPRING,
+	COUNT_CYCLE_SEASONS
+};
+
+char const * const cycle_season_names[COUNT_CYCLE_SEASONS] = {"Summer", "Fall", "Winter", "Spring"};
+
 enum distribution_hub_yield_division_mode {
 	DHYDM_FLAT = 0,
 	DHYDM_SCALE_BY_CITY_COUNT

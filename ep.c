@@ -26,7 +26,7 @@
 // know that for sure.
 // [*] Another option would be to change the PE's image base, but that would ruin all of the offsets. They could be adjusted
 //     to compensate, but I think this solution with the low address buffer is easier & simpler.
-char low_addr_buf[60000000];
+char low_addr_buf[30000000];
 
 TCCState * (LIBTCCAPI * tcc__new)              ();
 void       (LIBTCCAPI * tcc__delete)           (TCCState *);

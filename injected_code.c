@@ -88,14 +88,6 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define MAX_DISTRICT_ERA_COUNT     4
 #define MAX_DISTRICT_COLUMN_COUNT  10
 
-enum cycle_season {
-	SEASON_SUMMER = 0,
-	SEASON_FALL,
-	SEASON_WINTER,
-	SEASON_SPRING,
-	COUNT_CYCLE_SEASONS
-};
-
 // Max grid of tiles that an AI will evaluate a candidate bridge or canal for, 
 // used to limit computational complexity
 #define AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES 10
@@ -1848,12 +1840,12 @@ bool
 read_seasonal_cycle_mode (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
-	if      (slice_matches_str (&trimmed, "off"         )) { *out_val = SCM_OFF;         return true; }
-	else if (slice_matches_str (&trimmed, "timer"       )) { *out_val = SCM_TIMER;       return true; }
-	else if (slice_matches_str (&trimmed, "user-season" )) { *out_val = SCM_USER_SEASON; return true; }
-	else if (slice_matches_str (&trimmed, "every-turn"  )) { *out_val = SCM_EVERY_TURN;  return true; }
+	if      (slice_matches_str (&trimmed, "off"              )) { *out_val = SCM_OFF;               return true; }
+	else if (slice_matches_str (&trimmed, "timer"            )) { *out_val = SCM_TIMER;             return true; }
+	else if (slice_matches_str (&trimmed, "user-season"      )) { *out_val = SCM_USER_SEASON;       return true; }
+	else if (slice_matches_str (&trimmed, "every-turn"       )) { *out_val = SCM_EVERY_TURN;        return true; }
 	else if (slice_matches_str (&trimmed, "on-day-night-hour")) { *out_val = SCM_ON_DAY_NIGHT_HOUR; return true; }
-	else if (slice_matches_str (&trimmed, "specified"   )) { *out_val = SCM_SPECIFIED;   return true; }
+	else if (slice_matches_str (&trimmed, "specified"        )) { *out_val = SCM_SPECIFIED;         return true; }
 	else
 		return false;
 }
@@ -1862,10 +1854,10 @@ bool
 read_enabled_seasons_mask (struct string_slice const * s, int * out_val)
 {
 	struct parsable_field_bit bits[] = {
-		{"summer", 1 << SEASON_SUMMER},
-		{"fall"  , 1 << SEASON_FALL},
-		{"winter", 1 << SEASON_WINTER},
-		{"spring", 1 << SEASON_SPRING},
+		{"summer", 1 << CS_SUMMER},
+		{"fall"  , 1 << CS_FALL},
+		{"winter", 1 << CS_WINTER},
+		{"spring", 1 << CS_SPRING},
 	};
 	return read_bit_field (s, bits, ARRAY_LEN (bits), out_val);
 }
@@ -1873,21 +1865,17 @@ read_enabled_seasons_mask (struct string_slice const * s, int * out_val)
 bool
 read_pinned_season_for_seasonal_cycle (struct string_slice const * s, int * out_val)
 {
-	int ival;
-	if (read_int (s, &ival)) {
-		*out_val = clamp (SEASON_SUMMER, SEASON_SPRING, ival);
-		return true;
-	}
-
 	struct string_slice trimmed = trim_string_slice (s, 1);
-	if      (slice_matches_str (&trimmed, "summer")) { *out_val = SEASON_SUMMER; return true; }
-	else if (slice_matches_str (&trimmed, "Summer")) { *out_val = SEASON_SUMMER; return true; }
-	else if (slice_matches_str (&trimmed, "fall"  )) { *out_val = SEASON_FALL;   return true; }
-	else if (slice_matches_str (&trimmed, "Fall"  )) { *out_val = SEASON_FALL;   return true; }
-	else if (slice_matches_str (&trimmed, "winter")) { *out_val = SEASON_WINTER; return true; }
-	else if (slice_matches_str (&trimmed, "Winter")) { *out_val = SEASON_WINTER; return true; }
-	else if (slice_matches_str (&trimmed, "spring")) { *out_val = SEASON_SPRING; return true; }
-	else if (slice_matches_str (&trimmed, "Spring")) { *out_val = SEASON_SPRING; return true; }
+	if      (slice_matches_str (&trimmed, "summer")) { *out_val = CS_SUMMER; return true; }
+	else if (slice_matches_str (&trimmed, "Summer")) { *out_val = CS_SUMMER; return true; }
+	else if (slice_matches_str (&trimmed, "fall"  )) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "Fall"  )) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "autumn")) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "autumn")) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "winter")) { *out_val = CS_WINTER; return true; }
+	else if (slice_matches_str (&trimmed, "Winter")) { *out_val = CS_WINTER; return true; }
+	else if (slice_matches_str (&trimmed, "spring")) { *out_val = CS_SPRING; return true; }
+	else if (slice_matches_str (&trimmed, "Spring")) { *out_val = CS_SPRING; return true; }
 	return false;
 }
 
@@ -16927,7 +16915,7 @@ read_in_dir(PCX_Image *img,
     PCX_Image_read_file(img, __, temp_path, NULL, 0, 0x100, 2);
 }
 
-bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char *art_dir, const char *season, const char *hour)
+bool load_day_night_hour_and_season_images(struct day_night_cycle_img_set *this, const char *art_dir, const char *season, const char *hour)
 {
 	char ss[200];
     PCX_Image img; 
@@ -17386,7 +17374,7 @@ get_cycle_sprite_proxy(Sprite *s) {
 	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
 		return NULL;
 
-	int season = (is->current_config.seasonal_cycle_mode != SCM_OFF)   ? clamp (0, 3, is->current_seasonal_cycle) : SEASON_SUMMER;
+	int season = (is->current_config.seasonal_cycle_mode != SCM_OFF)   ? clamp (0, 3, is->current_seasonal_cycle) : CS_SUMMER;
 	int hour   = (is->current_config.day_night_cycle_mode != DNCM_OFF) ? clamp (0, 23, is->current_day_night_cycle) : 12;
 	int cycle_idx = 24 * season + hour;
 	int v;
@@ -17457,14 +17445,12 @@ allocate_day_night_cycle_runtime_storage ()
 	return true;
 }
 
-char const * const cycle_season_names[COUNT_CYCLE_SEASONS] = {"Summer", "Fall", "Winter", "Spring"};
-
 int
 normalize_enabled_season_mask (int mask)
 {
 	mask &= 0xF;
 	if (mask == 0)
-		mask = 1 << SEASON_SUMMER;
+		mask = 1 << CS_SUMMER;
 	return mask;
 }
 
@@ -17475,7 +17461,7 @@ get_first_enabled_season (int mask)
 	for (int season = 0; season < COUNT_CYCLE_SEASONS; season++)
 		if (mask & (1 << season))
 			return season;
-	return SEASON_SUMMER;
+	return CS_SUMMER;
 }
 
 int
@@ -17487,7 +17473,7 @@ get_next_enabled_season (int current_season, int mask)
 		if (mask & (1 << season))
 			return season;
 	}
-	return SEASON_SUMMER;
+	return CS_SUMMER;
 }
 
 int
@@ -17508,11 +17494,11 @@ int
 get_required_season_mask_for_cycle_loading ()
 {
 	if (is->current_config.seasonal_cycle_mode == SCM_OFF)
-		return 1 << SEASON_SUMMER;
+		return 1 << CS_SUMMER;
 
 	int enabled_mask = normalize_enabled_season_mask (is->current_config.enabled_seasons_mask);
 	if (is->current_config.seasonal_cycle_mode == SCM_SPECIFIED) {
-		int pinned = clamp (SEASON_SUMMER, SEASON_SPRING, is->current_config.pinned_season_for_seasonal_cycle);
+		int pinned = clamp (CS_SUMMER, CS_SPRING, is->current_config.pinned_season_for_seasonal_cycle);
 		if ((enabled_mask & (1 << pinned)) != 0)
 			return 1 << pinned;
 		return 1 << get_first_enabled_season (enabled_mask);
@@ -17527,17 +17513,17 @@ get_current_local_season ()
 	GetLocalTime (&st);
 	int month = st.wMonth;
 	if ((month == 12) || (month == 1) || (month == 2))
-		return SEASON_WINTER;
+		return CS_WINTER;
 	else if ((month >= 3) && (month <= 5))
-		return SEASON_SPRING;
+		return CS_SPRING;
 	else if ((month >= 6) && (month <= 8))
-		return SEASON_SUMMER;
+		return CS_SUMMER;
 	else
-		return SEASON_FALL;
+		return CS_FALL;
 }
 
 void 
-build_sprite_proxies_24(Map_Renderer *mr) {
+build_sprite_proxies(Map_Renderer *mr) {
 	if (is->cycle_imgs == NULL || is->day_night_sprite_proxy_by_season_and_hour == NULL)
 		return;
 
@@ -17662,7 +17648,7 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 }
 
 void
-init_day_night_images()
+init_day_night_and_seasonal_images()
 {
 	if (is->day_night_cycle_img_state != IS_UNINITED)
 		return;
@@ -17688,7 +17674,7 @@ init_day_night_images()
 			char temp_path[2*MAX_PATH];
 			snprintf (art_dir, sizeof art_dir, "DayNight/%s/%s", cycle_season_names[season], hour_strs[i]);
 			get_mod_art_path (art_dir, temp_path, sizeof temp_path);
-			bool success = load_day_night_hour_images (&is->cycle_imgs[24 * season + i], temp_path, cycle_season_names[season], hour_strs[i]);
+			bool success = load_day_night_hour_and_season_images (&is->cycle_imgs[24 * season + i], temp_path, cycle_season_names[season], hour_strs[i]);
 
 			if (!success) {
 				char ss[300];
@@ -17702,7 +17688,7 @@ init_day_night_images()
 	}
 
 	Map_Renderer * mr = &p_bic_data->Map.Renderer;
-	build_sprite_proxies_24(mr);
+	build_sprite_proxies(mr);
 
 	is->day_night_cycle_img_state = IS_OK;
 }
@@ -17722,11 +17708,11 @@ deindex_day_night_image_proxies()
 int
 calculate_current_seasonal_cycle (bool transition_on_day_night_hour_hit)
 {
-	int output = SEASON_SUMMER;
+	int output = CS_SUMMER;
 	int enabled_mask = normalize_enabled_season_mask (is->current_config.enabled_seasons_mask);
 	switch (is->current_config.seasonal_cycle_mode) {
 		case SCM_OFF:
-			return SEASON_SUMMER;
+			return CS_SUMMER;
 
 		case SCM_TIMER: {
 			output = get_first_enabled_season (enabled_mask);
@@ -17797,13 +17783,13 @@ calculate_current_seasonal_cycle (bool transition_on_day_night_hour_hit)
 		}
 
 		case SCM_SPECIFIED: {
-			int pinned = clamp (SEASON_SUMMER, SEASON_SPRING, is->current_config.pinned_season_for_seasonal_cycle);
+			int pinned = clamp (CS_SUMMER, CS_SPRING, is->current_config.pinned_season_for_seasonal_cycle);
 			output = ((enabled_mask & (1 << pinned)) != 0) ? pinned : get_first_enabled_season (enabled_mask);
 			break;
 		}
 	}
 
-	output = clamp (SEASON_SUMMER, SEASON_SPRING, output);
+	output = clamp (CS_SUMMER, CS_SPRING, output);
 	is->seasonal_cycle_unstarted = false;
 	return output;
 }
@@ -17887,8 +17873,7 @@ patch_Map_Renderer_load_images (Map_Renderer *this, int edx)
 {
 	Map_Renderer_load_images(this, __);
 
-	if ((is->current_config.day_night_cycle_mode != DNCM_OFF) ||
-	    (is->current_config.seasonal_cycle_mode != SCM_OFF)) {
+	if (is->current_config.day_night_cycle_mode != DNCM_OFF || is->current_config.seasonal_cycle_mode != SCM_OFF) {
 		if (! allocate_day_night_cycle_runtime_storage ()) {
 			is->day_night_cycle_img_state = IS_INIT_FAILED;
 			return;
@@ -17903,14 +17888,14 @@ patch_Map_Renderer_load_images (Map_Renderer *this, int edx)
 			is->current_seasonal_cycle = calculate_current_seasonal_cycle (false);
 
 		if (is->day_night_cycle_img_state == IS_UNINITED) {
-			init_day_night_images ();
+			init_day_night_and_seasonal_images ();
 		}
 
 		if (is->day_night_cycle_img_state == IS_OK) {
 			
 			// Sprite proxies are deindexed during each load event as sprite instances (really only Resources, which are reloaded) may change.
 			if (!is->day_night_cycle_img_proxies_indexed) {
-				build_sprite_proxies_24(this);
+				build_sprite_proxies(this);
 			}
 		}
 	}
@@ -18227,7 +18212,7 @@ patch_init_floating_point ()
 	base_config.day_night_cycle_mode = DNCM_OFF;
 	base_config.seasonal_cycle_mode = SCM_OFF;
 	base_config.enabled_seasons_mask = 0xF;
-	base_config.pinned_season_for_seasonal_cycle = SEASON_SUMMER;
+	base_config.pinned_season_for_seasonal_cycle = CS_SUMMER;
 	base_config.distribution_hub_yield_division_mode = DHYDM_FLAT;
 	base_config.ai_distribution_hub_build_strategy = ADHBS_BY_CITY_COUNT;
 	base_config.ai_auto_build_great_wall_strategy = AAGWS_ALL_BORDERS;
@@ -18433,7 +18418,7 @@ patch_init_floating_point ()
 	is->drawn_strat_resource_count = 0;
 	is->current_day_night_cycle = 12;
 	is->day_night_cycle_unstarted = true;
-	is->current_seasonal_cycle = SEASON_SUMMER;
+	is->current_seasonal_cycle = CS_SUMMER;
 	is->seasonal_cycle_unstarted = true;
 	is->turns_in_current_season = 0;
 	is->day_night_cycle_img_proxies_indexed = false;
@@ -21827,7 +21812,7 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 	is->day_night_cycle_unstarted = true;
 	is->current_day_night_cycle = 12;
 	is->seasonal_cycle_unstarted = true;
-	is->current_seasonal_cycle = SEASON_SUMMER;
+	is->current_seasonal_cycle = CS_SUMMER;
 	is->turns_in_current_season = 0;
 	if (is->day_night_cycle_img_proxies_indexed)
 		deindex_day_night_image_proxies ();
@@ -30496,17 +30481,17 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				// only the standard graphics; I didn't test). If day/night cycle mode is active, restore the proxies now if they
 				// haven't already been.
 				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
-					build_sprite_proxies_24 (&p_bic_data->Map.Renderer);
+					build_sprite_proxies (&p_bic_data->Map.Renderer);
 
 				// Because we've restored current_day_night_cycle from the save, set that is is not the first turn so the cycle
 				// doesn't get restarted.
 				is->day_night_cycle_unstarted = false;
 			
 			} else if (match_save_chunk_name (&cursor, "current_seasonal_cycle")) {
-				is->current_seasonal_cycle = clamp (SEASON_SUMMER, SEASON_SPRING, *((int *)cursor)++);
+				is->current_seasonal_cycle = clamp (CS_SUMMER, CS_SPRING, *((int *)cursor)++);
 				is->seasonal_cycle_unstarted = false;
 				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
-					build_sprite_proxies_24 (&p_bic_data->Map.Renderer);
+					build_sprite_proxies (&p_bic_data->Map.Renderer);
 			
 			} else if (match_save_chunk_name (&cursor, "turns_in_current_season")) {
 				is->turns_in_current_season = not_below (0, *((int *)cursor)++);
@@ -33150,7 +33135,7 @@ init_district_images ()
 
 	char art_dir[200];
 	char temp_path[2*MAX_PATH];
-	int base_season = SEASON_SUMMER;
+	int base_season = CS_SUMMER;
 	if (is->current_config.seasonal_cycle_mode != SCM_OFF) {
 		int enabled_mask = normalize_enabled_season_mask (is->current_config.enabled_seasons_mask);
 		base_season = get_first_enabled_season (enabled_mask);
@@ -33159,7 +33144,7 @@ init_district_images ()
 			if (enabled_mask & (1 << user_season))
 				base_season = user_season;
 		} else if (! is->seasonal_cycle_unstarted) {
-			int current_season = clamp (SEASON_SUMMER, SEASON_SPRING, is->current_seasonal_cycle);
+			int current_season = clamp (CS_SUMMER, CS_SPRING, is->current_seasonal_cycle);
 			if (enabled_mask & (1 << current_season))
 				base_season = current_season;
 		}
@@ -33379,7 +33364,7 @@ init_district_images ()
 	    (is->day_night_cycle_img_state == IS_OK)) {
 		if (is->day_night_cycle_img_proxies_indexed)
 			deindex_day_night_image_proxies ();
-		build_sprite_proxies_24 (&p_bic_data->Map.Renderer);
+		build_sprite_proxies (&p_bic_data->Map.Renderer);
 	}
 
 	pcx.vtable->destruct (&pcx, __, 0);
