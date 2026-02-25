@@ -9,7 +9,7 @@ DAYNIGHT_DATA_DIR="../Art/DayNight"
 DISTRICT_DATA_DIR="../Art/Districts"
 
 NOON_SUBFOLDER="1200"
-ONLY_HOUR="2400"       # set empty "" to process all hours
+ONLY_HOUR=""       # set empty "" to process all hours
 BASE_SEASON="Summer"
 
 # ---- Day/Night settings ----
