@@ -430,6 +430,7 @@ struct c3x_config {
 
 	bool enable_named_tiles;
 
+	bool enable_custom_animations;
 	char * aircraft_victory_animation; // NULL if set to "none" in config
 
 	int day_night_cycle_mode;
@@ -951,6 +952,48 @@ struct natural_wonder_candidate_list {
 	int capacity;
 };
 
+enum tile_animation_type {
+	TAT_TERRAIN = 0,
+	TAT_RESOURCE
+};
+
+#define MAX_TILE_ANIMATION_CONFIGS 128
+#define MAX_TILE_ANIMATION_ADJACENCY 8
+
+struct tile_animation_adjacent_requirement {
+	enum SquareTypes square_type;
+	enum direction direction;
+	bool has_direction;
+	bool is_land;
+};
+
+struct tile_animation_config {
+	char const * name;
+	char const * flc_path;
+	enum tile_animation_type type;
+	enum SquareTypes terrain_type;
+	bool terrain_is_land;
+	int resource_id;
+	struct tile_animation_adjacent_requirement adjacent_to[MAX_TILE_ANIMATION_ADJACENCY];
+	int adjacent_to_count;
+	int min_delay_ms;
+	int max_delay_ms;
+	int spawn_chance_percent;
+	unsigned int day_night_hour_mask; // bits 0..23
+	unsigned int season_mask; // bits 0..3
+	int effect_id;
+	bool in_use;
+};
+
+struct tile_animation_state {
+	int tile_index;
+	int animation_index;
+	bool initialized;
+	bool active;
+	long long next_earliest_ms;
+	long long next_forced_ms;
+};
+
 struct wonder_location {
 	short x;
 	short y;
@@ -1286,6 +1329,33 @@ struct parsed_natural_wonder_definition {
 	bool has_impassible_to_wheeled;
 };
 
+struct parsed_tile_animation_definition {
+	char * name;
+	char * flc_path;
+	char * resource_type;
+	enum tile_animation_type type;
+	enum SquareTypes terrain_type;
+	bool terrain_is_land;
+	struct tile_animation_adjacent_requirement adjacent_to[MAX_TILE_ANIMATION_ADJACENCY];
+	int adjacent_to_count;
+	int min_delay_ms;
+	int max_delay_ms;
+	int spawn_chance_percent;
+	unsigned int day_night_hour_mask;
+	unsigned int season_mask;
+	bool has_name;
+	bool has_flc_path;
+	bool has_type;
+	bool has_resource_type;
+	bool has_terrain_type;
+	bool has_adjacent_to;
+	bool has_min_delay_ms;
+	bool has_max_delay_ms;
+	bool has_spawn_chance_percent;
+	bool has_day_night_hour_mask;
+	bool has_season_mask;
+};
+
 struct scenario_district_entry {
 	int tile_x;
 	int tile_y;
@@ -1554,6 +1624,7 @@ struct injected_state {
 	} * loaded_config_names;
 
 	char current_districts_config_path[MAX_PATH];
+	char current_tile_animations_config_path[MAX_PATH];
 
 	char mod_script_path[MAX_PATH];
 
@@ -2237,6 +2308,11 @@ struct district_button_image_set {
 
 	// Natural Wonder labels: table mapping natural wonder name strings to their IDs, count of defined natural wonders,
 	struct table natural_wonder_name_to_id;
+	struct table tile_animation_state_by_key;
+	struct tile_animation_config tile_animation_configs[MAX_TILE_ANIMATION_CONFIGS];
+	int tile_animation_count;
+	int tile_animation_effect_base;
+	int tile_animation_scan_cursor;
 
 	struct ai_candidate_bridge_or_canal_entry * ai_candidate_bridge_or_canals;
 	int ai_candidate_bridge_or_canals_count;

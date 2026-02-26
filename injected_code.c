@@ -246,6 +246,8 @@ int count_neighborhoods_in_city_radius (City * city);
 int count_utilized_neighborhoods_in_city_radius (City * city);
 char * copy_trimmed_string_or_null (struct string_slice const * slice, int remove_quotes);
 bool city_has_resource_r (City * city, int resource_id, int max_generated_resource_id);
+void load_tile_animation_configs ();
+bool tile_has_matching_resource_animation_for_draw (Tile * tile, int tile_x, int tile_y);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -18007,6 +18009,7 @@ patch_init_floating_point ()
 		{"enable_wonder_districts"                               , false, offsetof (struct c3x_config, enable_wonder_districts)},
 		{"enable_natural_wonders"                                , false, offsetof (struct c3x_config, enable_natural_wonders)},
 		{"add_natural_wonders_to_scenarios_if_none"              , false, offsetof (struct c3x_config, add_natural_wonders_to_scenarios_if_none)},
+		{"enable_custom_animations"                              , false, offsetof (struct c3x_config, enable_custom_animations)},
 		{"enable_named_tiles"                                    , false, offsetof (struct c3x_config, enable_named_tiles)},
 		{"enable_distribution_hub_districts"                     , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"enable_aerodrome_districts"                            , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
@@ -21531,6 +21534,7 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 		reset_district_state (true);
 		load_districts_config ();
 	}
+	load_tile_animation_configs ();
 
 	// Initialize Trade Net X
 	if (is->current_config.enable_trade_net_x && (is->tnx_init_state == IS_UNINITED)) {
@@ -34448,16 +34452,23 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 void __fastcall
 patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	if (! is->current_config.enable_districts) {
-		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
-		return;
-	}
-
 	Tile * tile = is->current_render_tile;
 	if (is->tile_info_open)
 		tile = tile_at (is->viewing_tile_info_x, is->viewing_tile_info_y);
+
+	bool suppress_static_resource = false;
+	if ((tile != NULL) && (tile != p_null_tile))
+		suppress_static_resource = tile_has_matching_resource_animation_for_draw (tile, tile_x, tile_y);
+
+	if (! is->current_config.enable_districts) {
+		if (! suppress_static_resource)
+			Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+	}
+
 	if ((tile == NULL) || (tile == p_null_tile)) {
-		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		if (! suppress_static_resource)
+			Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
 	}
 
@@ -34465,7 +34476,8 @@ patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int vi
 	if (is->tile_info_open)
 		inst = get_district_instance (tile);
 	if (inst == NULL) {
-		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		if (! suppress_static_resource)
+			Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
 	}
 
@@ -36969,6 +36981,874 @@ patch_Tile_check_water_for_canal_move_to_adjacent_tile_dest (Tile * this)
 	return this->vtable->m35_Check_Is_Water (this);
 }
 
+bool
+read_tile_animation_terrain_type (struct string_slice const * s, enum SquareTypes * out_type, bool * out_is_land)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if (slice_matches_str (&trimmed, "land")) {
+		if (out_type != NULL)
+			*out_type = SQ_Grassland;
+		if (out_is_land != NULL)
+			*out_is_land = true;
+		return true;
+	}
+
+	enum SquareTypes parsed;
+	if (! read_natural_wonder_terrain_type (&trimmed, &parsed))
+		return false;
+	if (out_type != NULL)
+		*out_type = parsed;
+	if (out_is_land != NULL)
+		*out_is_land = false;
+	return true;
+}
+
+bool
+tile_matches_terrain_or_land (Tile * tile, enum SquareTypes terrain_type, bool is_land)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	if (is_land)
+		return ! tile->vtable->m35_Check_Is_Water (tile);
+	return tile_matches_square_type (tile, terrain_type);
+}
+
+bool
+tile_animation_adjacent_requirement_matches (struct tile_animation_adjacent_requirement const * req,
+						     int tile_x,
+						     int tile_y)
+{
+	if (req == NULL)
+		return false;
+
+	int diffs[8][2] = {
+		{ 1, -1}, { 2,  0}, { 1,  1}, { 0,  2},
+		{-1,  1}, {-2,  0}, {-1, -1}, { 0, -2}
+	};
+
+	int begin = 0, end = 8;
+	if (req->has_direction) {
+		begin = req->direction - DIR_NE;
+		end = begin + 1;
+	}
+
+	for (int i = begin; i < end; i++) {
+		int nx = tile_x + diffs[i][0];
+		int ny = tile_y + diffs[i][1];
+		wrap_tile_coords (&p_bic_data->Map, &nx, &ny);
+		Tile * n = tile_at (nx, ny);
+		if ((n == NULL) || (n == p_null_tile))
+			continue;
+
+		bool matches = req->is_land ? ! n->vtable->m35_Check_Is_Water (n) : tile_matches_square_type (n, req->square_type);
+		if (matches)
+			return true;
+	}
+
+	return false;
+}
+
+int
+get_tile_animation_hour_for_match ()
+{
+	if (is->current_config.day_night_cycle_mode != DNCM_OFF)
+		return clamp (0, 23, is->current_day_night_cycle);
+	return 12;
+}
+
+int
+get_tile_animation_season_for_match ()
+{
+	if (is->current_config.seasonal_cycle_mode != SCM_OFF)
+		return clamp (CS_SUMMER, CS_SPRING, is->current_seasonal_cycle);
+	return CS_SUMMER;
+}
+
+bool
+tile_animation_matches_time_filters (struct tile_animation_config const * cfg)
+{
+	if (cfg == NULL)
+		return false;
+
+	int hour = get_tile_animation_hour_for_match ();
+	int season = get_tile_animation_season_for_match ();
+	if ((cfg->day_night_hour_mask != 0) && ((cfg->day_night_hour_mask & (1u << hour)) == 0))
+		return false;
+	if ((cfg->season_mask != 0) && ((cfg->season_mask & (1u << season)) == 0))
+		return false;
+	return true;
+}
+
+bool
+tile_animation_rule_matches_tile (struct tile_animation_config const * cfg, Tile * tile, int tile_x, int tile_y, bool for_draw)
+{
+	if ((cfg == NULL) || (! cfg->in_use) || (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (Tile_has_city (tile))
+		return false;
+
+	if (! tile_animation_matches_time_filters (cfg))
+		return false;
+
+	if (cfg->type == TAT_RESOURCE) {
+		int resource_id = tile->vtable->m39_Get_Resource_Type (tile);
+		if (resource_id != cfg->resource_id)
+			return false;
+	} else {
+		if (! tile_matches_terrain_or_land (tile, cfg->terrain_type, cfg->terrain_is_land))
+			return false;
+	}
+
+	if (cfg->adjacent_to_count > 0) {
+		bool matched = false;
+		for (int i = 0; i < cfg->adjacent_to_count; i++)
+			if (tile_animation_adjacent_requirement_matches (&cfg->adjacent_to[i], tile_x, tile_y)) {
+				matched = true;
+				break;
+			}
+		if (! matched)
+			return false;
+	}
+
+	(void)for_draw;
+	return true;
+}
+
+bool
+tile_has_matching_resource_animation_for_draw (Tile * tile, int tile_x, int tile_y)
+{
+	if (! is->current_config.enable_custom_animations)
+		return false;
+
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+		if ((cfg->type == TAT_RESOURCE) && tile_animation_rule_matches_tile (cfg, tile, tile_x, tile_y, true))
+			return true;
+	}
+	return false;
+}
+
+long long
+tile_animation_now_ms ()
+{
+	LARGE_INTEGER f, t;
+	QueryPerformanceFrequency (&f);
+	QueryPerformanceCounter (&t);
+	if (f.QuadPart <= 0)
+		return 0;
+	return (1000LL * t.QuadPart) / f.QuadPart;
+}
+
+void
+reset_tile_animation_runtime_state ()
+{
+	FOR_TABLE_ENTRIES (tei, &is->tile_animation_state_by_key)
+		if (tei.value != 0)
+			free ((void *)tei.value);
+	table_deinit (&is->tile_animation_state_by_key);
+	is->tile_animation_scan_cursor = 0;
+}
+
+void
+clear_tile_animation_configs ()
+{
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		struct tile_animation_config * cfg = &is->tile_animation_configs[i];
+		if (cfg->name != NULL)
+			free ((void *)cfg->name);
+		if (cfg->flc_path != NULL)
+			free ((void *)cfg->flc_path);
+		memset (cfg, 0, sizeof *cfg);
+	}
+	is->tile_animation_count = 0;
+	reset_tile_animation_runtime_state ();
+}
+
+void
+init_parsed_tile_animation_definition (struct parsed_tile_animation_definition * def)
+{
+	memset (def, 0, sizeof *def);
+	def->type = TAT_TERRAIN;
+	def->terrain_type = SQ_Grassland;
+	def->min_delay_ms = 0;
+	def->max_delay_ms = -1;
+	def->spawn_chance_percent = 100;
+}
+
+void
+free_parsed_tile_animation_definition (struct parsed_tile_animation_definition * def)
+{
+	if (def->name != NULL)
+		free (def->name);
+	if (def->flc_path != NULL)
+		free (def->flc_path);
+	if (def->resource_type != NULL)
+		free (def->resource_type);
+	init_parsed_tile_animation_definition (def);
+}
+
+bool
+parse_tile_animation_hour_list (struct string_slice const * value, unsigned int * out_mask)
+{
+	char * text = extract_slice (value);
+	if (text == NULL)
+		return false;
+
+	unsigned int mask = 0;
+	char * cursor = text;
+	while (*cursor != '\0') {
+		while ((*cursor == ' ') || (*cursor == '\t') || (*cursor == ','))
+			cursor++;
+		if (*cursor == '\0')
+			break;
+
+		int hour = 0;
+		if (! parse_int (&cursor, &hour) || (hour < 0) || (hour > 23)) {
+			free (text);
+			return false;
+		}
+		mask |= (1u << hour);
+
+		while ((*cursor == ' ') || (*cursor == '\t'))
+			cursor++;
+		if (*cursor == ',')
+			cursor++;
+	}
+
+	free (text);
+	*out_mask = mask;
+	return true;
+}
+
+bool
+parse_tile_animation_season_list (struct string_slice const * value, unsigned int * out_mask)
+{
+	char * text = extract_slice (value);
+	if (text == NULL)
+		return false;
+
+	unsigned int mask = 0;
+	char * cursor = text;
+	while (*cursor != '\0') {
+		while ((*cursor == ' ') || (*cursor == '\t') || (*cursor == ','))
+			cursor++;
+		if (*cursor == '\0')
+			break;
+
+		char * start = cursor;
+		while ((*cursor != '\0') && (*cursor != ','))
+			cursor++;
+		struct string_slice token = { .str = start, .len = cursor - start };
+		token = trim_string_slice (&token, 1);
+
+		if (slice_matches_str (&token, "spring"))
+			mask |= 1u << CS_SPRING;
+		else if (slice_matches_str (&token, "summer"))
+			mask |= 1u << CS_SUMMER;
+		else if (slice_matches_str (&token, "fall"))
+			mask |= 1u << CS_FALL;
+		else if (slice_matches_str (&token, "winter"))
+			mask |= 1u << CS_WINTER;
+		else {
+			free (text);
+			return false;
+		}
+
+		if (*cursor == ',')
+			cursor++;
+	}
+
+	free (text);
+	*out_mask = mask;
+	return true;
+}
+
+bool
+parse_tile_animation_adjacent_to (struct string_slice const * value,
+				  struct tile_animation_adjacent_requirement * out_reqs,
+				  int * out_count)
+{
+	char * text = extract_slice (value);
+	if (text == NULL)
+		return false;
+
+	int count = 0;
+	char * cursor = text;
+	while (*cursor != '\0') {
+		while ((*cursor == ' ') || (*cursor == '\t') || (*cursor == ','))
+			cursor++;
+		if (*cursor == '\0')
+			break;
+
+		char * token_start = cursor;
+		while ((*cursor != '\0') && (*cursor != ','))
+			cursor++;
+		struct string_slice token = { .str = token_start, .len = cursor - token_start };
+		token = trim_string_slice (&token, 1);
+		if (token.len <= 0) {
+			if (*cursor == ',')
+				cursor++;
+			continue;
+		}
+
+		char * colon = NULL;
+		for (int i = 0; i < token.len; i++)
+			if (token.str[i] == ':') {
+				colon = token.str + i;
+				break;
+			}
+
+		struct string_slice terrain_token = token;
+		struct string_slice dir_token = {0};
+		if (colon != NULL) {
+			terrain_token.len = colon - terrain_token.str;
+			dir_token.str = colon + 1;
+			dir_token.len = token.len - (terrain_token.len + 1);
+			dir_token = trim_string_slice (&dir_token, 1);
+		}
+		terrain_token = trim_string_slice (&terrain_token, 1);
+
+		if ((count < MAX_TILE_ANIMATION_ADJACENCY) && (terrain_token.len > 0)) {
+			struct tile_animation_adjacent_requirement * req = &out_reqs[count];
+			memset (req, 0, sizeof *req);
+
+			if (slice_matches_str (&terrain_token, "land")) {
+				req->is_land = true;
+				req->square_type = SQ_Grassland;
+			} else if (! read_square_type_value (&terrain_token, &req->square_type)) {
+				free (text);
+				return false;
+			}
+
+			if (dir_token.len > 0) {
+				if (! read_direction_value (&dir_token, &req->direction)) {
+					free (text);
+					return false;
+				}
+				req->has_direction = true;
+			}
+			count++;
+		}
+
+		if (*cursor == ',')
+			cursor++;
+	}
+
+	free (text);
+	*out_count = count;
+	return true;
+}
+
+int
+find_tile_animation_index_by_name (char const * name)
+{
+	if ((name == NULL) || (name[0] == '\0'))
+		return -1;
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		char const * existing = is->tile_animation_configs[i].name;
+		if ((existing != NULL) && (strcmp (existing, name) == 0))
+			return i;
+	}
+	return -1;
+}
+
+bool
+add_tile_animation_from_definition (struct parsed_tile_animation_definition * def)
+{
+	if ((def == NULL) || (! def->has_name) || (def->name == NULL))
+		return false;
+
+	int existing = find_tile_animation_index_by_name (def->name);
+	int dest = (existing >= 0) ? existing : is->tile_animation_count;
+	if ((dest < 0) || (dest >= MAX_TILE_ANIMATION_CONFIGS))
+		return false;
+
+	struct tile_animation_config cfg;
+	memset (&cfg, 0, sizeof cfg);
+	cfg.name = strdup (def->name);
+	cfg.flc_path = strdup (def->flc_path);
+	cfg.type = def->type;
+	cfg.terrain_type = def->terrain_type;
+	cfg.terrain_is_land = def->terrain_is_land;
+	cfg.min_delay_ms = not_below (0, def->min_delay_ms);
+	cfg.max_delay_ms = def->max_delay_ms;
+	if ((cfg.max_delay_ms >= 0) && (cfg.max_delay_ms < cfg.min_delay_ms))
+		cfg.max_delay_ms = cfg.min_delay_ms;
+	cfg.spawn_chance_percent = clamp (0, 100, def->spawn_chance_percent);
+	cfg.day_night_hour_mask = def->day_night_hour_mask;
+	cfg.season_mask = def->season_mask;
+	cfg.adjacent_to_count = def->adjacent_to_count;
+	for (int i = 0; i < def->adjacent_to_count; i++)
+		cfg.adjacent_to[i] = def->adjacent_to[i];
+	cfg.resource_id = -1;
+	if (cfg.type == TAT_RESOURCE) {
+		struct string_slice resource_name = {.str = def->resource_type, .len = strlen (def->resource_type)};
+		if (! find_resource_id_by_name (&resource_name, &cfg.resource_id)) {
+			free ((void *)cfg.name);
+			free ((void *)cfg.flc_path);
+			return false;
+		}
+	}
+
+	cfg.effect_id = is->tile_animation_effect_base + dest;
+	cfg.in_use = true;
+
+	if (existing >= 0) {
+		struct tile_animation_config * old = &is->tile_animation_configs[existing];
+		if (old->name != NULL)
+			free ((void *)old->name);
+		if (old->flc_path != NULL)
+			free ((void *)old->flc_path);
+		*old = cfg;
+	} else {
+		is->tile_animation_configs[dest] = cfg;
+		is->tile_animation_count = dest + 1;
+	}
+	return true;
+}
+
+void
+finalize_parsed_tile_animation_definition (struct parsed_tile_animation_definition * def,
+					   int section_start_line,
+					   struct error_line ** parse_errors)
+{
+	bool ok = true;
+	if (! def->has_name) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: name (value is required)", section_start_line);
+	}
+	if (! def->has_flc_path) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: flc_path (value is required)", section_start_line);
+	}
+	if (! def->has_type) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: type (value is required)", section_start_line);
+	}
+	if (def->type == TAT_RESOURCE && ! def->has_resource_type) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: resource_type (value is required for type=resource)", section_start_line);
+	}
+	if (def->type == TAT_TERRAIN && ! def->has_terrain_type) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: terrain_type (value is required for type=terrain)", section_start_line);
+	}
+	if (ok && ! add_tile_animation_from_definition (def)) {
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: failed to add animation entry", section_start_line);
+	}
+	free_parsed_tile_animation_definition (def);
+}
+
+void
+handle_tile_animation_definition_key (struct parsed_tile_animation_definition * def,
+				      struct string_slice const * key,
+				      struct string_slice const * value,
+				      int line_number,
+				      struct error_line ** parse_errors,
+				      struct error_line ** unrecognized_keys)
+{
+	if (slice_matches_str (key, "name")) {
+		if (def->name != NULL) free (def->name);
+		struct string_slice v = trim_string_slice (value, 1);
+		if (v.len <= 0) {
+			def->has_name = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
+		} else {
+			def->name = extract_slice (&v);
+			def->has_name = def->name != NULL;
+		}
+	} else if (slice_matches_str (key, "flc_path")) {
+		if (def->flc_path != NULL) free (def->flc_path);
+		struct string_slice v = trim_string_slice (value, 1);
+		if (v.len <= 0) {
+			def->has_flc_path = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
+		} else {
+			def->flc_path = extract_slice (&v);
+			def->has_flc_path = def->flc_path != NULL;
+		}
+	} else if (slice_matches_str (key, "type")) {
+		struct string_slice v = trim_string_slice (value, 1);
+		if (slice_matches_str (&v, "terrain")) {
+			def->type = TAT_TERRAIN;
+			def->has_type = true;
+		} else if (slice_matches_str (&v, "resource")) {
+			def->type = TAT_RESOURCE;
+			def->has_type = true;
+		} else {
+			def->has_type = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected \"terrain\" or \"resource\")");
+		}
+	} else if (slice_matches_str (key, "resource_type")) {
+		if (def->resource_type != NULL) free (def->resource_type);
+		struct string_slice v = trim_string_slice (value, 1);
+		def->resource_type = extract_slice (&v);
+		def->has_resource_type = (def->resource_type != NULL) && (def->resource_type[0] != '\0');
+	} else if (slice_matches_str (key, "terrain_type")) {
+		enum SquareTypes t;
+		bool is_land = false;
+		if (read_tile_animation_terrain_type (value, &t, &is_land)) {
+			def->terrain_type = t;
+			def->terrain_is_land = is_land;
+			def->has_terrain_type = true;
+		} else {
+			def->has_terrain_type = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized terrain type)");
+		}
+	} else if (slice_matches_str (key, "adjacent_to")) {
+		if (parse_tile_animation_adjacent_to (value, def->adjacent_to, &def->adjacent_to_count))
+			def->has_adjacent_to = true;
+		else
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized adjacent_to value)");
+	} else if (slice_matches_str (key, "min_delay_ms")) {
+		struct string_slice v = *value;
+		int n;
+		if (read_int (&v, &n)) { def->min_delay_ms = n; def->has_min_delay_ms = true; }
+		else add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+	} else if (slice_matches_str (key, "max_delay_ms")) {
+		struct string_slice v = *value;
+		int n;
+		if (read_int (&v, &n)) { def->max_delay_ms = n; def->has_max_delay_ms = true; }
+		else add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+	} else if (slice_matches_str (key, "spawn_chance_percent")) {
+		struct string_slice v = *value;
+		int n;
+		if (read_int (&v, &n)) { def->spawn_chance_percent = n; def->has_spawn_chance_percent = true; }
+		else add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+	} else if (slice_matches_str (key, "show_in_day_night_hours")) {
+		unsigned int mask = 0;
+		if (parse_tile_animation_hour_list (value, &mask)) { def->day_night_hour_mask = mask; def->has_day_night_hour_mask = true; }
+		else add_key_parse_error (parse_errors, line_number, key, value, "(expected comma-delimited 0..23 hour list)");
+	} else if (slice_matches_str (key, "show_in_seasons")) {
+		unsigned int mask = 0;
+		if (parse_tile_animation_season_list (value, &mask)) { def->season_mask = mask; def->has_season_mask = true; }
+		else add_key_parse_error (parse_errors, line_number, key, value, "(expected comma-delimited season list)");
+	} else
+		add_unrecognized_key_error (unrecognized_keys, line_number, key);
+}
+
+void
+load_tile_animation_config_file (char const * file_path, int path_is_relative_to_mod_dir, int log_missing, int drop_existing_configs)
+{
+	char path[MAX_PATH];
+	if (path_is_relative_to_mod_dir) {
+		if (is->mod_rel_dir == NULL)
+			return;
+		snprintf (path, sizeof path, "%s\\%s", is->mod_rel_dir, file_path);
+	} else
+		strncpy (path, file_path, sizeof path);
+	path[(sizeof path) - 1] = '\0';
+
+	char * text = file_to_string (path);
+	if (text == NULL) {
+		if (log_missing) {
+			char ss[256];
+			snprintf (ss, sizeof ss, "[C3X] Tile animations config file not found: %s", path);
+			(*p_OutputDebugStringA) (ss);
+		}
+		return;
+	}
+
+	if (drop_existing_configs)
+		clear_tile_animation_configs ();
+	snprintf (is->current_tile_animations_config_path, sizeof is->current_tile_animations_config_path, path);
+
+	struct parsed_tile_animation_definition def;
+	init_parsed_tile_animation_definition (&def);
+	bool in_section = false;
+	int section_start_line = 0;
+	int line_number = 0;
+	struct error_line * parse_errors = NULL;
+	struct error_line * unrecognized_keys = NULL;
+
+	char * cursor = text;
+	while (*cursor != '\0') {
+		line_number++;
+		char * line_start = cursor;
+		char * line_end = cursor;
+		while ((*line_end != '\0') && (*line_end != '\n'))
+			line_end++;
+		bool has_newline = (*line_end == '\n');
+		if (has_newline)
+			*line_end = '\0';
+		struct string_slice line = { .str = line_start, .len = line_end - line_start };
+		struct string_slice trimmed = trim_string_slice (&line, 0);
+		if (line_is_empty_or_comment (&trimmed)) {
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		if (trimmed.str[0] == '#') {
+			struct string_slice directive = trimmed;
+			directive.str++;
+			directive.len--;
+			directive = trim_string_slice (&directive, 0);
+			if ((directive.len > 0) && slice_matches_str (&directive, "Animation")) {
+				if (in_section)
+					finalize_parsed_tile_animation_definition (&def, section_start_line, &parse_errors);
+				in_section = true;
+				section_start_line = line_number;
+			}
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		if (! in_section) {
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		struct string_slice key = {0}, value = {0};
+		enum key_value_parse_status status = parse_trimmed_key_value (&trimmed, &key, &value);
+		if (status == KVP_NO_EQUALS) {
+			char * line_text = extract_slice (&trimmed);
+			struct error_line * err = add_error_line (&parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected '=')", line_number, line_text);
+			free (line_text);
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		} else if (status == KVP_EMPTY_KEY) {
+			struct error_line * err = add_error_line (&parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: (missing key)", line_number);
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		handle_tile_animation_definition_key (&def, &key, &value, line_number, &parse_errors, &unrecognized_keys);
+		cursor = has_newline ? line_end + 1 : line_end;
+	}
+
+	if (in_section)
+		finalize_parsed_tile_animation_definition (&def, section_start_line, &parse_errors);
+	free_parsed_tile_animation_definition (&def);
+	free (text);
+
+	struct loaded_config_name * top_lcn = is->loaded_config_names;
+	while (top_lcn->next != NULL)
+		top_lcn = top_lcn->next;
+	struct loaded_config_name * new_lcn = malloc (sizeof *new_lcn);
+	new_lcn->name = strdup (path);
+	new_lcn->next = NULL;
+	top_lcn->next = new_lcn;
+
+	if ((parse_errors != NULL) || (unrecognized_keys != NULL)) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "Tile animation config errors in %s:", path);
+		PopupForm_add_text (popup, __, s, false);
+		for (struct error_line * line = parse_errors; line != NULL; line = line->next)
+			PopupForm_add_text (popup, __, line->text, false);
+		if (unrecognized_keys != NULL) {
+			PopupForm_add_text (popup, __, "", false);
+			PopupForm_add_text (popup, __, "Unrecognized keys:", false);
+			for (struct error_line * line = unrecognized_keys; line != NULL; line = line->next)
+				PopupForm_add_text (popup, __, line->text, false);
+		}
+		patch_show_popup (popup, __, 0, 0);
+	}
+	free_error_lines (parse_errors);
+	free_error_lines (unrecognized_keys);
+}
+
+void
+load_tile_animation_configs ()
+{
+	if (! is->current_config.enable_custom_animations) {
+		clear_tile_animation_configs ();
+		return;
+	}
+
+	if (is->tile_animation_effect_base <= 0)
+		is->tile_animation_effect_base = 1000;
+	load_tile_animation_config_file ("default.tile_animations.txt", 1, 1, 1);
+	load_tile_animation_config_file ("user.tile_animations.txt", 1, 0, 1);
+
+	char * scenario_filename = "scenario.tile_animations.txt";
+	char * scenario_path = BIC_get_asset_path (p_bic_data, __, scenario_filename, false);
+	if ((scenario_path != NULL) && (0 != strcmp (scenario_filename, scenario_path)))
+		load_tile_animation_config_file (scenario_path, 0, 0, 1);
+}
+
+struct tile_animation_state *
+get_or_create_tile_animation_state (int key, int tile_index, int animation_index)
+{
+	int stored = 0;
+	if (itable_look_up (&is->tile_animation_state_by_key, key, &stored))
+		return (struct tile_animation_state *)stored;
+
+	struct tile_animation_state * state = malloc (sizeof *state);
+	if (state == NULL)
+		return NULL;
+	memset (state, 0, sizeof *state);
+	state->tile_index = tile_index;
+	state->animation_index = animation_index;
+	state->next_forced_ms = -1;
+	itable_insert (&is->tile_animation_state_by_key, key, (int)state);
+	return state;
+}
+
+void
+tile_animation_scheduler_tick ()
+{
+	if (! is->current_config.enable_custom_animations)
+		return;
+
+	if (is->tile_animation_count <= 0)
+		return;
+
+	int width = p_bic_data->Map.Width;
+	int height = p_bic_data->Map.Height;
+	int tile_count = width * height;
+	if (tile_count <= 0)
+		return;
+
+	int budget = 96;
+	long long now_ms = tile_animation_now_ms ();
+
+	for (int t = 0; t < budget; t++) {
+		int tile_index = is->tile_animation_scan_cursor % tile_count;
+		is->tile_animation_scan_cursor++;
+		if (is->tile_animation_scan_cursor >= tile_count)
+			is->tile_animation_scan_cursor = 0;
+
+		int tile_x = tile_index % width;
+		int tile_y = tile_index / width;
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+
+		for (int i = 0; i < is->tile_animation_count; i++) {
+			struct tile_animation_config * cfg = &is->tile_animation_configs[i];
+			if (! tile_animation_rule_matches_tile (cfg, tile, tile_x, tile_y, false))
+				continue;
+
+			int key = tile_index * MAX_TILE_ANIMATION_CONFIGS + i;
+			struct tile_animation_state * state = get_or_create_tile_animation_state (key, tile_index, i);
+			if (state == NULL)
+				continue;
+
+			int min_delay = not_below (0, cfg->min_delay_ms);
+			int max_delay = cfg->max_delay_ms;
+			if ((max_delay >= 0) && (max_delay < min_delay))
+				max_delay = min_delay;
+
+			bool slot_busy = tile->Body.field_D8 != NULL;
+			if (state->active) {
+				if (! slot_busy) {
+					state->active = false;
+					int jitter = 0;
+					if (max_delay > min_delay)
+						jitter = rand_int (p_rand_object, __, max_delay - min_delay + 1);
+					state->next_earliest_ms = now_ms + min_delay + jitter;
+					state->next_forced_ms = (max_delay >= 0) ? (now_ms + max_delay) : -1;
+				}
+				continue;
+			}
+
+			if (! state->initialized) {
+				state->initialized = true;
+				int initial_delay = 0;
+				if (max_delay > 0)
+					initial_delay = rand_int (p_rand_object, __, max_delay + 1);
+				else if (min_delay > 0)
+					initial_delay = rand_int (p_rand_object, __, min_delay + 1);
+				state->next_earliest_ms = now_ms + initial_delay;
+				state->next_forced_ms = (max_delay >= 0) ? (now_ms + max_delay) : -1;
+			}
+
+			if (now_ms < state->next_earliest_ms)
+				continue;
+			if (slot_busy)
+				continue;
+
+			bool force_spawn = (state->next_forced_ms >= 0) && (now_ms >= state->next_forced_ms);
+			int chance = clamp (0, 100, cfg->spawn_chance_percent);
+			if (! force_spawn) {
+				if ((chance <= 0) || (rand_int (p_rand_object, __, 100) >= chance)) {
+					state->next_earliest_ms = now_ms + 1000 + rand_int (p_rand_object, __, 1000);
+					continue;
+				}
+			}
+
+			Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true);
+			state->active = true;
+			state->next_earliest_ms = now_ms + min_delay;
+			state->next_forced_ms = (max_delay >= 0) ? (now_ms + max_delay) : -1;
+		}
+	}
+}
+
+bool
+is_custom_tile_animation_effect (int effect_id)
+{
+	int e = effect_id;
+	int base = is->tile_animation_effect_base;
+	return (e >= base) && (e < base + is->tile_animation_count);
+}
+
+struct tile_animation_config *
+get_tile_animation_for_effect (int effect_id)
+{
+	if (! is_custom_tile_animation_effect (effect_id))
+		return NULL;
+	int idx = effect_id - is->tile_animation_effect_base;
+	if ((idx < 0) || (idx >= is->tile_animation_count))
+		return NULL;
+	return &is->tile_animation_configs[idx];
+}
+
+void __stdcall
+patch_on_timer_0x9F6500 (void)
+{
+	on_timer_0x9F6500 ();
+	if (is->current_config.enable_custom_animations)
+		tile_animation_scheduler_tick ();
+}
+
+void __fastcall
+patch_Units_Image_Data_load_animated_effect (Units_Image_Data * this, int edx, FLC_Animation * anim, int effect_id)
+{
+	if (! is->current_config.enable_custom_animations) {
+		Units_Image_Data_load_animated_effect (this, __, anim, effect_id);
+		return;
+	}
+
+	struct tile_animation_config * cfg = get_tile_animation_for_effect (effect_id);
+	if ((cfg == NULL) || (cfg->flc_path == NULL) || (cfg->flc_path[0] == '\0')) {
+		Units_Image_Data_load_animated_effect (this, __, anim, effect_id);
+		return;
+	}
+
+	char rel_art_path[MAX_PATH];
+	snprintf (rel_art_path, sizeof rel_art_path, "Animations\\%s", cfg->flc_path);
+	rel_art_path[(sizeof rel_art_path) - 1] = '\0';
+
+	char asset_path[MAX_PATH];
+	get_mod_art_path (rel_art_path, asset_path, sizeof asset_path);
+	asset_path[(sizeof asset_path) - 1] = '\0';
+
+	Units_Image_Data_load_animation (this, __, asset_path, anim, 0, -1, 1, true);
+}
+
+void __fastcall
+patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_x, int tile_y, bool randomize_start_frame)
+{
+	if (is->current_config.enable_custom_animations && is_custom_tile_animation_effect (effect_id)) {
+		if (Tile_has_city (this))
+			return;
+		if (this->Body.field_D8 != NULL)
+			return;
+	}
+	Tile_spawn_animated_effect (this, __, effect_id, tile_x, tile_y, randomize_start_frame);
+}
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

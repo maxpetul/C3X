@@ -1,0 +1,32 @@
+[======================================================================= NOTE =======================================================================]
+[Instead of editing this file, changes to the settings should be placed in either the scenario or user config files. The scenario config file must   ]
+[be named scenario.tile_animations.txt and must be located in your scenario search folder. Of course it only applies if you are using a scenario.   ]
+[The user config file must be named user.tile_animations.txt and located in the C3X folder, which is the folder where this file is. When creating   ]
+[scenario or user configs, note that all tile animations defined here will be removed and only your scenario or user-defined animations will be used ]
+[====================================================================================================================================================]
+
+[
+  ;  Tile Animation config fields (each Animation block begins with "#Animation")
+  ;  - name                     : Text (required). Internal animation name; must be unique.
+  ;  - flc_path                 : FLC filename under Art/Animations/.
+  ;  - type                     : Text (required). "terrain" or "resource".
+  ;                               - terrain: animation can appear on matching terrain tiles.
+  ;                               - resource: animation replaces the static resource PCX draw on matching resource tiles.
+  ;  - resource_type            : Text. Resource name. Required if type = resource.
+  ;  - terrain_type             : Text. Required if type = terrain.
+  ;                               Valid values: desert, plains, grassland, jungle, tundra, floodplain, swamp, hills, mountains,
+  ;                                            forest, volcano, snow-forest, snow-mountains, snow-volcano, coast, sea, ocean, land
+  ;                               "land" means any non-water tile.
+  ;  - adjacent_to              : Text. Optional adjacency requirements.
+  ;                               Comma-delimited values using:
+  ;                                 <terrain_or_land>
+  ;                               or
+  ;                                 <terrain_or_land>:<direction>
+  ;                               Direction values: northeast, east, southeast, south, southwest, west, northwest, north
+  ;                               Example: tundra:northwest, desert:southwest
+  ;  - min_delay_ms             : Number. Optional minimum delay after previous loop finishes before respawn is allowed.
+  ;  - max_delay_ms             : Number. Optional maximum delay; if reached, spawn is forced.
+  ;  - spawn_chance_percent     : Number. Chance [0..100] to spawn when eligible.
+  ;  - show_in_day_night_hours  : Comma-delimited numbers [0..23]. Optional allowed day/night cycle hours.
+  ;  - show_in_seasons          : Comma-delimited seasons. Optional allowed seasons: spring, summer, fall, winter.
+]
