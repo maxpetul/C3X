@@ -250,6 +250,7 @@ void load_tile_animation_configs ();
 bool tile_has_matching_resource_animation_for_draw (Tile * tile, int tile_x, int tile_y);
 void tile_animation_scheduler_tick ();
 void rebuild_tile_animation_rule_match_cache ();
+void __fastcall patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_x, int tile_y, bool randomize_start_frame);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -37245,6 +37246,8 @@ void
 reset_tile_animation_runtime_state ()
 {
 	free_tile_animation_selected_matrix ();
+	is->tile_animation_spawn_effect_override = 0;
+	is->tile_animation_spawn_effect_override_active = false;
 }
 
 void
@@ -37762,8 +37765,6 @@ tile_animation_scheduler_tick ()
 		return;
 	if ((p_main_screen_form == NULL) || p_main_screen_form->is_now_loading_game)
 		return;
-	if ((p_bic_data->Map.Renderer.field_3EA4 <= 0) || (p_bic_data->Map.Renderer.field_3EA8 <= 0))
-		return;
 
 	if (is->tile_animation_count <= 0)
 		return;
@@ -37773,11 +37774,16 @@ tile_animation_scheduler_tick ()
 	if (! is->tile_animation_selected_valid || (is->tile_animation_selected_matrix == NULL))
 		return;
 
+	int matched_count = 0;
+	int skipped_existing_effect = 0;
+	int spawn_attempts = 0;
+
 	Map * map = &p_bic_data->Map;
 	for (int tile_index = 0; tile_index < map->TileCount; tile_index++) {
 		int i = (int)is->tile_animation_selected_matrix[tile_index] - 1;
 		if ((i < 0) || (i >= is->tile_animation_count))
 			continue;
+		matched_count++;
 		int tile_x, tile_y;
 		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
 		Tile * tile = tile_at (tile_x, tile_y);
@@ -37787,10 +37793,21 @@ tile_animation_scheduler_tick ()
 		struct tile_animation_config * cfg = &is->tile_animation_configs[i];
 		if ((cfg == NULL) || (! cfg->in_use))
 			continue;
-		if (tile->Body.field_D8 != NULL)
+		if (tile->Body.field_D8 != NULL) {
+			skipped_existing_effect++;
 			continue;
+		}
 
-		Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true);
+		spawn_attempts++;
+		patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true);
+	}
+
+	if (matched_count > 0) {
+		char ss[220];
+		snprintf (ss, sizeof ss, "[C3X] tile anim tick: matched=%d spawn_attempts=%d skipped_existing=%d\n",
+			matched_count, spawn_attempts, skipped_existing_effect);
+		ss[(sizeof ss) - 1] = '\0';
+		(*p_OutputDebugStringA) (ss);
 	}
 }
 
@@ -37842,6 +37859,10 @@ patch_Units_Image_Data_load_animated_effect (Units_Image_Data * this, int edx, F
 	char asset_path[MAX_PATH];
 	get_mod_art_path (rel_art_path, asset_path, sizeof asset_path);
 	asset_path[(sizeof asset_path) - 1] = '\0';
+	char ss[300];
+	snprintf (ss, sizeof ss, "[C3X] tile anim load: effect_id=%d path=%s\n", effect_id, asset_path);
+	ss[(sizeof ss) - 1] = '\0';
+	(*p_OutputDebugStringA) (ss);
 
 	Units_Image_Data_load_animation (this, __, asset_path, anim, 0, -1, 1, true);
 }
@@ -37854,6 +37875,13 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_
 			return;
 		if (this->Body.field_D8 != NULL)
 			return;
+		char ss[200];
+		snprintf (ss, sizeof ss, "[C3X] tile anim spawn: effect_id=%d tile=(%d,%d) rand=%d\n",
+			effect_id, tile_x, tile_y, randomize_start_frame ? 1 : 0);
+		ss[(sizeof ss) - 1] = '\0';
+		(*p_OutputDebugStringA) (ss);
+		Tile_spawn_animated_effect (this, __, effect_id, tile_x, tile_y, randomize_start_frame);
+		return;
 	}
 	Tile_spawn_animated_effect (this, __, effect_id, tile_x, tile_y, randomize_start_frame);
 }

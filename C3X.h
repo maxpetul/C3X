@@ -2293,6 +2293,8 @@ struct district_button_image_set {
 	struct tile_animation_config tile_animation_configs[MAX_TILE_ANIMATION_CONFIGS];
 	int tile_animation_count;
 	int tile_animation_effect_base;
+	int tile_animation_spawn_effect_override;
+	bool tile_animation_spawn_effect_override_active;
 	byte * tile_animation_selected_matrix;
 	int tile_animation_selected_tile_count;
 	int tile_animation_selected_animation_count;

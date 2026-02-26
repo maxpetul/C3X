@@ -30,6 +30,6 @@
 
 #Animation
 name         = Test
-flc_path     = DisorderDefault.flc
+flc_path     = Disorder\TEST.INI
 type         = resource
 resource_type = Cattle
