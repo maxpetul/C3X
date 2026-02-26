@@ -37793,7 +37793,13 @@ tile_animation_scheduler_tick ()
 		struct tile_animation_config * cfg = &is->tile_animation_configs[i];
 		if ((cfg == NULL) || (! cfg->in_use))
 			continue;
+
+		int active_effect_id = -1;
 		if (tile->Body.field_D8 != NULL) {
+			int * effect_record = (int *)tile->Body.field_D8;
+			active_effect_id = effect_record[2];
+		}
+		if (active_effect_id == cfg->effect_id) {
 			skipped_existing_effect++;
 			continue;
 		}
@@ -37873,14 +37879,16 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_
 	if (is->current_config.enable_custom_animations && is_custom_tile_animation_effect (effect_id)) {
 		if (Tile_has_city (this))
 			return;
-		if (this->Body.field_D8 != NULL)
-			return;
 		char ss[200];
-		snprintf (ss, sizeof ss, "[C3X] tile anim spawn: effect_id=%d tile=(%d,%d) rand=%d\n",
-			effect_id, tile_x, tile_y, randomize_start_frame ? 1 : 0);
+		snprintf (ss, sizeof ss, "[C3X] tile anim spawn: effect_id=%d tile=(%d,%d) rand=%d tile_ptr=0x%X\n",
+			effect_id, tile_x, tile_y, randomize_start_frame ? 1 : 0, (int)this);
 		ss[(sizeof ss) - 1] = '\0';
 		(*p_OutputDebugStringA) (ss);
 		Tile_spawn_animated_effect (this, __, effect_id, tile_x, tile_y, randomize_start_frame);
+		snprintf (ss, sizeof ss, "[C3X] tile anim spawn result: tile=(%d,%d) effect_ptr=0x%X\n",
+			tile_x, tile_y, (int)this->Body.field_D8);
+		ss[(sizeof ss) - 1] = '\0';
+		(*p_OutputDebugStringA) (ss);
 		return;
 	}
 	Tile_spawn_animated_effect (this, __, effect_id, tile_x, tile_y, randomize_start_frame);
