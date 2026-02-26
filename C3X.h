@@ -976,22 +976,10 @@ struct tile_animation_config {
 	int resource_id;
 	struct tile_animation_adjacent_requirement adjacent_to[MAX_TILE_ANIMATION_ADJACENCY];
 	int adjacent_to_count;
-	int min_delay_ms;
-	int max_delay_ms;
-	int spawn_chance_percent;
 	unsigned int day_night_hour_mask; // bits 0..23
 	unsigned int season_mask; // bits 0..3
 	int effect_id;
 	bool in_use;
-};
-
-struct tile_animation_state {
-	int tile_index;
-	int animation_index;
-	bool initialized;
-	bool active;
-	long long next_earliest_ms;
-	long long next_forced_ms;
 };
 
 struct wonder_location {
@@ -1338,9 +1326,6 @@ struct parsed_tile_animation_definition {
 	bool terrain_is_land;
 	struct tile_animation_adjacent_requirement adjacent_to[MAX_TILE_ANIMATION_ADJACENCY];
 	int adjacent_to_count;
-	int min_delay_ms;
-	int max_delay_ms;
-	int spawn_chance_percent;
 	unsigned int day_night_hour_mask;
 	unsigned int season_mask;
 	bool has_name;
@@ -1349,9 +1334,6 @@ struct parsed_tile_animation_definition {
 	bool has_resource_type;
 	bool has_terrain_type;
 	bool has_adjacent_to;
-	bool has_min_delay_ms;
-	bool has_max_delay_ms;
-	bool has_spawn_chance_percent;
 	bool has_day_night_hour_mask;
 	bool has_season_mask;
 };
@@ -2308,11 +2290,15 @@ struct district_button_image_set {
 
 	// Natural Wonder labels: table mapping natural wonder name strings to their IDs, count of defined natural wonders,
 	struct table natural_wonder_name_to_id;
-	struct table tile_animation_state_by_key;
 	struct tile_animation_config tile_animation_configs[MAX_TILE_ANIMATION_CONFIGS];
 	int tile_animation_count;
 	int tile_animation_effect_base;
-	int tile_animation_scan_cursor;
+	byte * tile_animation_selected_matrix;
+	int tile_animation_selected_tile_count;
+	int tile_animation_selected_animation_count;
+	int tile_animation_selected_map_width;
+	int tile_animation_selected_map_height;
+	bool tile_animation_selected_valid;
 
 	struct ai_candidate_bridge_or_canal_entry * ai_candidate_bridge_or_canals;
 	int ai_candidate_bridge_or_canals_count;

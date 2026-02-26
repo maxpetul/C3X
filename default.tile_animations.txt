@@ -24,9 +24,12 @@
   ;                                 <terrain_or_land>:<direction>
   ;                               Direction values: northeast, east, southeast, south, southwest, west, northwest, north
   ;                               Example: tundra:northwest, desert:southwest
-  ;  - min_delay_ms             : Number. Optional minimum delay after previous loop finishes before respawn is allowed.
-  ;  - max_delay_ms             : Number. Optional maximum delay; if reached, spawn is forced.
-  ;  - spawn_chance_percent     : Number. Chance [0..100] to spawn when eligible.
   ;  - show_in_day_night_hours  : Comma-delimited numbers [0..23]. Optional allowed day/night cycle hours.
   ;  - show_in_seasons          : Comma-delimited seasons. Optional allowed seasons: spring, summer, fall, winter.
 ]
+
+#Animation
+name         = Test
+flc_path     = DisorderDefault.flc
+type         = resource
+resource_type = Cattle
