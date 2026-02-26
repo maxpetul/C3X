@@ -31,5 +31,5 @@
 #Animation
 name         = Test
 flc_path     = Disorder\TEST.INI
-type         = resource
-resource_type = Cattle
+type         = terrain
+terrain_type = forest

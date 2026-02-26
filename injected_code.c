@@ -34427,7 +34427,6 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -37774,16 +37773,11 @@ tile_animation_scheduler_tick ()
 	if (! is->tile_animation_selected_valid || (is->tile_animation_selected_matrix == NULL))
 		return;
 
-	int matched_count = 0;
-	int skipped_existing_effect = 0;
-	int spawn_attempts = 0;
-
 	Map * map = &p_bic_data->Map;
 	for (int tile_index = 0; tile_index < map->TileCount; tile_index++) {
 		int i = (int)is->tile_animation_selected_matrix[tile_index] - 1;
 		if ((i < 0) || (i >= is->tile_animation_count))
 			continue;
-		matched_count++;
 		int tile_x, tile_y;
 		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
 		Tile * tile = tile_at (tile_x, tile_y);
@@ -37794,26 +37788,11 @@ tile_animation_scheduler_tick ()
 		if ((cfg == NULL) || (! cfg->in_use))
 			continue;
 
-		int active_effect_id = -1;
-		if (tile->Body.field_D8 != NULL) {
-			int * effect_record = (int *)tile->Body.field_D8;
-			active_effect_id = effect_record[2];
-		}
-		if (active_effect_id == cfg->effect_id) {
-			skipped_existing_effect++;
+		// Keep one ambient effect per tile. Runtime effect IDs are reused from vanilla,
+		// so don't key this check off effect_id.
+		if (tile->Body.field_D8 != NULL)
 			continue;
-		}
-
-		spawn_attempts++;
 		patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true);
-	}
-
-	if (matched_count > 0) {
-		char ss[220];
-		snprintf (ss, sizeof ss, "[C3X] tile anim tick: matched=%d spawn_attempts=%d skipped_existing=%d\n",
-			matched_count, spawn_attempts, skipped_existing_effect);
-		ss[(sizeof ss) - 1] = '\0';
-		(*p_OutputDebugStringA) (ss);
 	}
 }
 
@@ -37852,7 +37831,10 @@ patch_Units_Image_Data_load_animated_effect (Units_Image_Data * this, int edx, F
 		return;
 	}
 
-	struct tile_animation_config * cfg = get_tile_animation_for_effect (effect_id);
+	int cfg_effect_id = effect_id;
+	if (is->tile_animation_spawn_effect_override_active)
+		cfg_effect_id = is->tile_animation_spawn_effect_override;
+	struct tile_animation_config * cfg = get_tile_animation_for_effect (cfg_effect_id);
 	if ((cfg == NULL) || (cfg->flc_path == NULL) || (cfg->flc_path[0] == '\0')) {
 		Units_Image_Data_load_animated_effect (this, __, anim, effect_id);
 		return;
@@ -37865,10 +37847,6 @@ patch_Units_Image_Data_load_animated_effect (Units_Image_Data * this, int edx, F
 	char asset_path[MAX_PATH];
 	get_mod_art_path (rel_art_path, asset_path, sizeof asset_path);
 	asset_path[(sizeof asset_path) - 1] = '\0';
-	char ss[300];
-	snprintf (ss, sizeof ss, "[C3X] tile anim load: effect_id=%d path=%s\n", effect_id, asset_path);
-	ss[(sizeof ss) - 1] = '\0';
-	(*p_OutputDebugStringA) (ss);
 
 	Units_Image_Data_load_animation (this, __, asset_path, anim, 0, -1, 1, true);
 }
@@ -37879,16 +37857,13 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_
 	if (is->current_config.enable_custom_animations && is_custom_tile_animation_effect (effect_id)) {
 		if (Tile_has_city (this))
 			return;
-		char ss[200];
-		snprintf (ss, sizeof ss, "[C3X] tile anim spawn: effect_id=%d tile=(%d,%d) rand=%d tile_ptr=0x%X\n",
-			effect_id, tile_x, tile_y, randomize_start_frame ? 1 : 0, (int)this);
-		ss[(sizeof ss) - 1] = '\0';
-		(*p_OutputDebugStringA) (ss);
-		Tile_spawn_animated_effect (this, __, effect_id, tile_x, tile_y, randomize_start_frame);
-		snprintf (ss, sizeof ss, "[C3X] tile anim spawn result: tile=(%d,%d) effect_ptr=0x%X\n",
-			tile_x, tile_y, (int)this->Body.field_D8);
-		ss[(sizeof ss) - 1] = '\0';
-		(*p_OutputDebugStringA) (ss);
+		int prev_override = is->tile_animation_spawn_effect_override;
+		bool had_override = is->tile_animation_spawn_effect_override_active;
+		is->tile_animation_spawn_effect_override = effect_id;
+		is->tile_animation_spawn_effect_override_active = true;
+		Tile_spawn_animated_effect (this, __, AE_Disorder, tile_x, tile_y, randomize_start_frame);
+		is->tile_animation_spawn_effect_override = prev_override;
+		is->tile_animation_spawn_effect_override_active = had_override;
 		return;
 	}
 	Tile_spawn_animated_effect (this, __, effect_id, tile_x, tile_y, randomize_start_frame);
