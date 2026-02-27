@@ -35352,26 +35352,25 @@ patch_Leader_get_attitude_toward (Leader * this, int edx, int civ_id, int param_
 	if (!is->current_config.allow_extraterritorial_colonies)
 		return score;
 
-	// Note, ideally we'd loop over p_colonies like in vanilla, but it's not clear what the 
-	// structure is of it, so for now just loop over all tiles
-
 	int penalty = is->current_config.per_extraterritorial_colony_relation_penalty;
 	if (penalty != 0) {
 		int this_civ_id = this->ID;
-		Map * map = &p_bic_data->Map;
-		for (int index = 0; index < map->TileCount; index++) {
-			int x, y;
-			tile_index_to_coords (map, index, &x, &y);
-			Tile * tile = tile_at (x, y);
-			if ((tile == NULL) || (tile == p_null_tile))
-				continue;
-			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != this_civ_id)
-				continue;
-			if (! Tile_has_colony (tile))
-				continue;
-			if (tile->vtable->m70_Get_Tile_Building_OwnerID (tile) != civ_id)
-				continue;
-			score -= penalty;
+		if ((p_colonies != NULL) && (p_colonies->Items != NULL)) {
+			for (int n = 0; n <= p_colonies->LastIndex; n++) {
+				Tile_Building_Body * colony_body = p_colonies->Items[n].Object;
+				if ((colony_body == NULL) ||
+				    ((int)colony_body == offsetof (Tile_Building, Body)))
+					continue;
+
+				Tile * tile = tile_at (colony_body->X, colony_body->Y);
+				if ((tile == NULL) || (tile == p_null_tile))
+					continue;
+				if (tile->vtable->m38_Get_Territory_OwnerID (tile) != this_civ_id)
+					continue;
+				if (colony_body->OwnerID != civ_id)
+					continue;
+				score -= penalty;
+			}
 		}
 	}
 	return score;
