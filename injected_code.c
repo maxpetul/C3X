@@ -220,6 +220,7 @@ bool __fastcall patch_City_has_resource (City * this, int edx, int resource_id);
 bool __fastcall patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, bool param_2);
 char __fastcall patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing);
 void __fastcall patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7);
+void __fastcall patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_x, int tile_y, bool randomize_start_frame);
 bool can_build_district_on_tile (Tile * tile, int district_id, int civ_id);
 bool city_can_build_district (City * city, int district_id);
 bool leader_can_build_district (Leader * leader, int district_id);
@@ -251,6 +252,7 @@ bool tile_has_matching_resource_animation_for_draw (Tile * tile, int tile_x, int
 void tile_animation_scheduler_tick ();
 void rebuild_tile_animation_rule_match_cache ();
 void __fastcall patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_x, int tile_y, bool randomize_start_frame);
+void reset_tile_animation_runtime_state ();
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -21510,6 +21512,7 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 		is->destroy_tnx_cache (is->tnx_cache);
 		is->tnx_cache = NULL;
 	}
+	reset_tile_animation_runtime_state ();
 
 	unsigned tr = load_scenario (this, __, param_1, param_2);
 	char * scenario_path = param_1;
@@ -25765,6 +25768,8 @@ patch_Map_impl_generate (Map * this, int edx, int seed, bool is_multiplayer_game
 
 	if (is->current_config.enable_natural_wonders)
 		place_natural_wonders_on_map ();
+	if (is->current_config.enable_custom_animations)
+		reset_tile_animation_runtime_state ();
 }
 
 int __fastcall
@@ -26647,6 +26652,7 @@ void * __cdecl
 patch_do_load_game (char * param_1)
 {
 	void * tr = do_load_game (param_1);
+	reset_tile_animation_runtime_state ();
 
 	if (is->current_config.restore_unit_directions_on_game_load && (p_units->Units != NULL))
 		for (int n = 0; n <= p_units->LastIndex; n++) {
@@ -30290,6 +30296,8 @@ int __cdecl
 patch_move_game_data (byte * buffer, bool save_else_load)
 {
 	int tr = move_game_data (buffer, save_else_load);
+	if (! save_else_load && is->current_config.enable_custom_animations)
+		reset_tile_animation_runtime_state ();
 
 	if (! save_else_load) {
 		// Free all district_instance structs first
@@ -37118,9 +37126,12 @@ tile_animation_rule_matches_tile_base (struct tile_animation_config const * cfg,
 void
 free_tile_animation_selected_matrix ()
 {
-	if (is->tile_animation_selected_matrix != NULL)
-		free (is->tile_animation_selected_matrix);
-	is->tile_animation_selected_matrix = NULL;
+	if (is->tile_animation_selected_mask_matrix != NULL)
+		free (is->tile_animation_selected_mask_matrix);
+	if (is->tile_animation_selected_next_index != NULL)
+		free (is->tile_animation_selected_next_index);
+	is->tile_animation_selected_mask_matrix = NULL;
+	is->tile_animation_selected_next_index = NULL;
 	is->tile_animation_selected_tile_count = 0;
 	is->tile_animation_selected_animation_count = 0;
 	is->tile_animation_selected_map_width = 0;
@@ -37140,17 +37151,25 @@ rebuild_tile_animation_rule_match_cache ()
 		return;
 	}
 
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
 	bool need_new_buffer =
-		(is->tile_animation_selected_matrix == NULL) ||
+		(is->tile_animation_selected_mask_matrix == NULL) ||
+		(is->tile_animation_selected_next_index == NULL) ||
 		(is->tile_animation_selected_tile_count != tile_count);
 	if (need_new_buffer) {
 		free_tile_animation_selected_matrix ();
-		is->tile_animation_selected_matrix = calloc (tile_count, sizeof *is->tile_animation_selected_matrix);
-		if (is->tile_animation_selected_matrix == NULL)
+		is->tile_animation_selected_mask_matrix = calloc (tile_count * words_per_tile, sizeof *is->tile_animation_selected_mask_matrix);
+		is->tile_animation_selected_next_index = calloc (tile_count, sizeof *is->tile_animation_selected_next_index);
+		if ((is->tile_animation_selected_mask_matrix == NULL) ||
+		    (is->tile_animation_selected_next_index == NULL)) {
+			free_tile_animation_selected_matrix ();
 			return;
+		}
 		is->tile_animation_selected_tile_count = tile_count;
-	} else
-		memset (is->tile_animation_selected_matrix, 0, tile_count * sizeof *is->tile_animation_selected_matrix);
+	} else {
+		memset (is->tile_animation_selected_mask_matrix, 0, tile_count * words_per_tile * sizeof *is->tile_animation_selected_mask_matrix);
+		memset (is->tile_animation_selected_next_index, 0, tile_count * sizeof *is->tile_animation_selected_next_index);
+	}
 
 	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
 		int tile_x, tile_y;
@@ -37158,21 +37177,20 @@ rebuild_tile_animation_rule_match_cache ()
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile == NULL) || (tile == p_null_tile))
 			continue;
+		unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
 
 		for (int i = 0; i < is->tile_animation_count; i++) {
 			struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
 			if (! cfg->in_use)
 				continue;
 
-			bool matches = tile_animation_matches_time_filters (cfg)
-				&& tile_animation_rule_matches_tile_base (cfg, tile, tile_x, tile_y);
-			if (! matches)
-				continue;
+				bool matches = tile_animation_matches_time_filters (cfg)
+					&& tile_animation_rule_matches_tile_base (cfg, tile, tile_x, tile_y);
+				if (! matches)
+					continue;
 
-			// One animation max per tile. First matching config wins.
-			is->tile_animation_selected_matrix[tile_index] = (byte)(i + 1);
-			break;
-		}
+				tile_mask[i / 32] |= 1u << (i % 32);
+			}
 	}
 
 	is->tile_animation_selected_animation_count = is->tile_animation_count;
@@ -37186,7 +37204,9 @@ tile_animation_cache_needs_rebuild ()
 {
 	if (! is->tile_animation_selected_valid)
 		return true;
-	if (is->tile_animation_selected_matrix == NULL)
+	if (is->tile_animation_selected_mask_matrix == NULL)
+		return true;
+	if (is->tile_animation_selected_next_index == NULL)
 		return true;
 	if (is->tile_animation_count <= 0)
 		return true;
@@ -37207,19 +37227,21 @@ tile_animation_rule_matches_tile (struct tile_animation_config const * cfg, Tile
 		return false;
 
 	if (is->tile_animation_selected_valid &&
-	    (is->tile_animation_selected_matrix != NULL) &&
+	    (is->tile_animation_selected_mask_matrix != NULL) &&
 	    (tile_x >= 0) && (tile_y >= 0) &&
 	    (tile_x < p_bic_data->Map.Width) &&
 	    (tile_y < p_bic_data->Map.Height)) {
 		int tile_index = tile_coords_to_index (&p_bic_data->Map, tile_x, tile_y);
 		int animation_index = cfg - &is->tile_animation_configs[0];
-		if ((tile_index >= 0) &&
-		    (animation_index >= 0) &&
-		    (animation_index < is->tile_animation_count)) {
-			int selected_index = (int)is->tile_animation_selected_matrix[tile_index] - 1;
-			if (for_draw)
-				return selected_index == animation_index;
-		}
+			if ((tile_index >= 0) &&
+			    (animation_index >= 0) &&
+			    (animation_index < is->tile_animation_count)) {
+				int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+				unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
+				bool selected = (tile_mask[animation_index / 32] & (1u << (animation_index % 32))) != 0;
+				if (for_draw)
+					return selected;
+			}
 	}
 
 	(void)for_draw;
@@ -37256,8 +37278,8 @@ clear_tile_animation_configs ()
 		struct tile_animation_config * cfg = &is->tile_animation_configs[i];
 		if (cfg->name != NULL)
 			free ((void *)cfg->name);
-		if (cfg->flc_path != NULL)
-			free ((void *)cfg->flc_path);
+		if (cfg->ini_path != NULL)
+			free ((void *)cfg->ini_path);
 		memset (cfg, 0, sizeof *cfg);
 	}
 	is->tile_animation_count = 0;
@@ -37277,8 +37299,8 @@ free_parsed_tile_animation_definition (struct parsed_tile_animation_definition *
 {
 	if (def->name != NULL)
 		free (def->name);
-	if (def->flc_path != NULL)
-		free (def->flc_path);
+	if (def->ini_path != NULL)
+		free (def->ini_path);
 	if (def->resource_type != NULL)
 		free (def->resource_type);
 	init_parsed_tile_animation_definition (def);
@@ -37463,7 +37485,7 @@ add_tile_animation_from_definition (struct parsed_tile_animation_definition * de
 	struct tile_animation_config cfg;
 	memset (&cfg, 0, sizeof cfg);
 	cfg.name = strdup (def->name);
-	cfg.flc_path = strdup (def->flc_path);
+	cfg.ini_path = strdup (def->ini_path);
 	cfg.type = def->type;
 	cfg.terrain_type = def->terrain_type;
 	cfg.terrain_is_land = def->terrain_is_land;
@@ -37477,7 +37499,7 @@ add_tile_animation_from_definition (struct parsed_tile_animation_definition * de
 		struct string_slice resource_name = {.str = def->resource_type, .len = strlen (def->resource_type)};
 		if (! find_resource_id_by_name (&resource_name, &cfg.resource_id)) {
 			free ((void *)cfg.name);
-			free ((void *)cfg.flc_path);
+			free ((void *)cfg.ini_path);
 			return false;
 		}
 	}
@@ -37489,8 +37511,8 @@ add_tile_animation_from_definition (struct parsed_tile_animation_definition * de
 		struct tile_animation_config * old = &is->tile_animation_configs[existing];
 		if (old->name != NULL)
 			free ((void *)old->name);
-		if (old->flc_path != NULL)
-			free ((void *)old->flc_path);
+		if (old->ini_path != NULL)
+			free ((void *)old->ini_path);
 		*old = cfg;
 	} else {
 		is->tile_animation_configs[dest] = cfg;
@@ -37510,10 +37532,10 @@ finalize_parsed_tile_animation_definition (struct parsed_tile_animation_definiti
 		struct error_line * e = add_error_line (parse_errors);
 		snprintf (e->text, sizeof e->text, "^  Line %d: name (value is required)", section_start_line);
 	}
-	if (! def->has_flc_path) {
+	if (! def->has_ini_path) {
 		ok = false;
 		struct error_line * e = add_error_line (parse_errors);
-		snprintf (e->text, sizeof e->text, "^  Line %d: flc_path (value is required)", section_start_line);
+		snprintf (e->text, sizeof e->text, "^  Line %d: ini_path (value is required)", section_start_line);
 	}
 	if (! def->has_type) {
 		ok = false;
@@ -37555,15 +37577,15 @@ handle_tile_animation_definition_key (struct parsed_tile_animation_definition * 
 			def->name = extract_slice (&v);
 			def->has_name = def->name != NULL;
 		}
-	} else if (slice_matches_str (key, "flc_path")) {
-		if (def->flc_path != NULL) free (def->flc_path);
+	} else if (slice_matches_str (key, "ini_path")) {
+		if (def->ini_path != NULL) free (def->ini_path);
 		struct string_slice v = trim_string_slice (value, 1);
 		if (v.len <= 0) {
-			def->has_flc_path = false;
+			def->has_ini_path = false;
 			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
 		} else {
-			def->flc_path = extract_slice (&v);
-			def->has_flc_path = def->flc_path != NULL;
+			def->ini_path = extract_slice (&v);
+			def->has_ini_path = def->ini_path != NULL;
 		}
 	} else if (slice_matches_str (key, "type")) {
 		struct string_slice v = trim_string_slice (value, 1);
@@ -37770,18 +37792,33 @@ tile_animation_scheduler_tick ()
 
 	if (tile_animation_cache_needs_rebuild ())
 		rebuild_tile_animation_rule_match_cache ();
-	if (! is->tile_animation_selected_valid || (is->tile_animation_selected_matrix == NULL))
+	if (! is->tile_animation_selected_valid ||
+	    (is->tile_animation_selected_mask_matrix == NULL) ||
+	    (is->tile_animation_selected_next_index == NULL))
 		return;
 
 	Map * map = &p_bic_data->Map;
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
 	for (int tile_index = 0; tile_index < map->TileCount; tile_index++) {
-		int i = (int)is->tile_animation_selected_matrix[tile_index] - 1;
-		if ((i < 0) || (i >= is->tile_animation_count))
-			continue;
+		unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
 		int tile_x, tile_y;
 		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+
+		int i = -1;
+		int first_candidate = (int)is->tile_animation_selected_next_index[tile_index];
+		if ((first_candidate < 0) || (first_candidate >= is->tile_animation_count))
+			first_candidate = 0;
+		for (int n = 0; n < is->tile_animation_count; n++) {
+			int candidate = (first_candidate + n) % is->tile_animation_count;
+			if ((tile_mask[candidate / 32] & (1u << (candidate % 32))) != 0) {
+				i = candidate;
+				break;
+			}
+		}
+		if ((i < 0) || (i >= is->tile_animation_count))
 			continue;
 
 		struct tile_animation_config * cfg = &is->tile_animation_configs[i];
@@ -37792,6 +37829,7 @@ tile_animation_scheduler_tick ()
 		// so don't key this check off effect_id.
 		if (tile->Body.field_D8 != NULL)
 			continue;
+		is->tile_animation_selected_next_index[tile_index] = (byte)((i + 1) % is->tile_animation_count);
 		patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true);
 	}
 }
@@ -37835,13 +37873,13 @@ patch_Units_Image_Data_load_animated_effect (Units_Image_Data * this, int edx, F
 	if (is->tile_animation_spawn_effect_override_active)
 		cfg_effect_id = is->tile_animation_spawn_effect_override;
 	struct tile_animation_config * cfg = get_tile_animation_for_effect (cfg_effect_id);
-	if ((cfg == NULL) || (cfg->flc_path == NULL) || (cfg->flc_path[0] == '\0')) {
+	if ((cfg == NULL) || (cfg->ini_path == NULL) || (cfg->ini_path[0] == '\0')) {
 		Units_Image_Data_load_animated_effect (this, __, anim, effect_id);
 		return;
 	}
 
 	char rel_art_path[MAX_PATH];
-	snprintf (rel_art_path, sizeof rel_art_path, "Animations\\%s", cfg->flc_path);
+	snprintf (rel_art_path, sizeof rel_art_path, "Animations\\%s", cfg->ini_path);
 	rel_art_path[(sizeof rel_art_path) - 1] = '\0';
 
 	char asset_path[MAX_PATH];

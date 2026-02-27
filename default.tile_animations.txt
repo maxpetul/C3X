@@ -8,7 +8,7 @@
 [
   ;  Tile Animation config fields (each Animation block begins with "#Animation")
   ;  - name                     : Text (required). Internal animation name; must be unique.
-  ;  - flc_path                 : FLC filename under Art/Animations/.
+  ;  - ini_path                 : INI filename under Art/Animations/.
   ;  - type                     : Text (required). "terrain" or "resource".
   ;                               - terrain: animation can appear on matching terrain tiles.
   ;                               - resource: animation replaces the static resource PCX draw on matching resource tiles.
@@ -30,6 +30,13 @@
 
 #Animation
 name         = Test
-flc_path     = Disorder\TEST.INI
+ini_path     = Test\British Celtic Worker.INI
 type         = terrain
 terrain_type = forest
+
+#Animation
+name         = Test2
+ini_path     = Test\British Celtic Worker.INI
+type         = terrain
+terrain_type = jungle
+

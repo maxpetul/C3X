@@ -969,7 +969,7 @@ struct tile_animation_adjacent_requirement {
 
 struct tile_animation_config {
 	char const * name;
-	char const * flc_path;
+	char const * ini_path;
 	enum tile_animation_type type;
 	enum SquareTypes terrain_type;
 	bool terrain_is_land;
@@ -1319,7 +1319,7 @@ struct parsed_natural_wonder_definition {
 
 struct parsed_tile_animation_definition {
 	char * name;
-	char * flc_path;
+	char * ini_path;
 	char * resource_type;
 	enum tile_animation_type type;
 	enum SquareTypes terrain_type;
@@ -1329,7 +1329,7 @@ struct parsed_tile_animation_definition {
 	unsigned int day_night_hour_mask;
 	unsigned int season_mask;
 	bool has_name;
-	bool has_flc_path;
+	bool has_ini_path;
 	bool has_type;
 	bool has_resource_type;
 	bool has_terrain_type;
@@ -2295,7 +2295,8 @@ struct district_button_image_set {
 	int tile_animation_effect_base;
 	int tile_animation_spawn_effect_override;
 	bool tile_animation_spawn_effect_override_active;
-	byte * tile_animation_selected_matrix;
+	unsigned int * tile_animation_selected_mask_matrix;
+	byte * tile_animation_selected_next_index;
 	int tile_animation_selected_tile_count;
 	int tile_animation_selected_animation_count;
 	int tile_animation_selected_map_width;

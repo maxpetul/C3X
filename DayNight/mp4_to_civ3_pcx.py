@@ -12,6 +12,12 @@ Output modes:
 - indexed: Civ3-style indexed palette and PCX output
 - rgb: RGB output (PNG recommended for editing)
 
+Optional cutout (Option B: MOG2 background subtraction):
+- Learn a background model across the sampled frames
+- Foreground mask per frame
+- Cleanup + keep only largest blob
+- Everything else magenta
+
 Dependencies:
   pip install pillow opencv-python numpy
 """
@@ -44,7 +50,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--columns", type=int, required=True, help="Number of columns (sampled frames)")
     p.add_argument("--slot_w", type=int, required=True, help="Slot inner width (excluding border)")
     p.add_argument("--slot_h", type=int, required=True, help="Slot inner height (excluding border)")
-    p.add_argument("--out", required=True, help="Output path (pcx for indexed, png for rgb is recommended)")
+    p.add_argument("--out", required=True, help="Output path (pcx for indexed; png recommended for rgb)")
+    p.add_argument("--mog2_learning_rate", type=float, default=0.001, help="MOG2 learning rate per frame (0 freezes; small like 0.001 prevents absorbing the subject)")
+    p.add_argument("--mog2_warmup", type=int, default=0, help="Number of initial sampled frames used for warmup (background learning). Use only if animal not present yet.")
+    p.add_argument("--mog2_freeze_after_warmup", action="store_true", help="After warmup, freeze background model (learningRate=0).")
     p.add_argument(
         "--mode",
         choices=["indexed", "rgb"],
@@ -57,6 +66,56 @@ def parse_args() -> argparse.Namespace:
         default="nearest",
         help="Resampling method for resizing frames (default: nearest / no interpolation)",
     )
+
+    # Cutout (Option B)
+    p.add_argument("--cutout", action="store_true", help="Enable background removal (MOG2)")
+    p.add_argument(
+        "--mog2_history",
+        type=int,
+        default=200,
+        help="MOG2 history length (bigger = more stable background model)",
+    )
+    p.add_argument(
+        "--mog2_var_threshold",
+        type=float,
+        default=16.0,
+        help="MOG2 varThreshold (lower = more foreground; higher = less/noisier suppression)",
+    )
+    p.add_argument(
+        "--mog2_detect_shadows",
+        action="store_true",
+        help="Enable MOG2 shadow detection (usually OFF for clean masks)",
+    )
+    p.add_argument(
+        "--cutout_center_frac",
+        type=float,
+        default=0.85,
+        help="Center region fraction (0-1) to bias toward the subject",
+    )
+    p.add_argument(
+        "--cutout_keep_largest",
+        action="store_true",
+        help="Keep only the largest connected component (recommended)",
+    )
+    p.add_argument(
+        "--cutout_min_area",
+        type=int,
+        default=200,
+        help="Minimum component area to keep (ignored if keep_largest is on)",
+    )
+    p.add_argument(
+        "--cutout_dilate",
+        type=int,
+        default=2,
+        help="Dilate mask pixels (grows subject a bit to avoid edge chomp)",
+    )
+    p.add_argument(
+        "--cutout_blur",
+        type=int,
+        default=3,
+        help="Blur kernel size for mask (odd number; 0 disables). Helps soften chattery edges.",
+    )
+
     return p.parse_args()
 
 
@@ -82,16 +141,12 @@ def center_crop_to_aspect(im: Image.Image, target_w: int, target_h: int) -> Imag
 
     if src_aspect > target_aspect:
         new_w = int(round(h * target_aspect))
-        new_h = h
         left = (w - new_w) // 2
-        top = 0
+        return im.crop((left, 0, left + new_w, h))
     else:
-        new_w = w
         new_h = int(round(w / target_aspect))
-        left = 0
         top = (h - new_h) // 2
-
-    return im.crop((left, top, left + new_w, top + new_h))
+        return im.crop((0, top, w, top + new_h))
 
 
 def get_duration_ms(cap: cv2.VideoCapture) -> float:
@@ -100,7 +155,6 @@ def get_duration_ms(cap: cv2.VideoCapture) -> float:
     if fps > 0 and frame_count > 0:
         return max(0.0, (frame_count - 1.0) / fps * 1000.0)
 
-    # Fallback: seek to end and use POS_MSEC
     cur = cap.get(cv2.CAP_PROP_POS_FRAMES)
     cap.set(cv2.CAP_PROP_POS_AVI_RATIO, 1.0)
     _ok, _ = cap.read()
@@ -124,6 +178,123 @@ def read_frame_at_time(cap: cv2.VideoCapture, t_ms: float) -> np.ndarray:
         raise RuntimeError(f"Failed to read frame at time {t_ms:.2f}ms")
     return cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
+
+# --------------------------
+# Option B: MOG2 cutout helpers
+# --------------------------
+
+def center_gate_mask(h: int, w: int, frac: float) -> np.ndarray:
+    frac = float(np.clip(frac, 0.05, 1.0))
+    cw = max(1, int(round(w * frac)))
+    ch = max(1, int(round(h * frac)))
+    x0 = (w - cw) // 2
+    y0 = (h - ch) // 2
+    mask = np.zeros((h, w), dtype=np.uint8)
+    mask[y0:y0 + ch, x0:x0 + cw] = 255
+    return mask
+
+
+def keep_largest_component(mask: np.ndarray) -> np.ndarray:
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    if num <= 1:
+        return mask
+    # pick component with max area
+    best_i = 1
+    best_area = int(stats[1, cv2.CC_STAT_AREA])
+    for i in range(2, num):
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        if area > best_area:
+            best_area = area
+            best_i = i
+    out = np.zeros_like(mask)
+    out[labels == best_i] = 255
+    return out
+
+
+def filter_small_components(mask: np.ndarray, min_area: int) -> np.ndarray:
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    out = np.zeros_like(mask)
+    for i in range(1, num):
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        if area >= int(min_area):
+            out[labels == i] = 255
+    return out
+
+
+def cleanup_mask(mask: np.ndarray, dilate_iters: int) -> np.ndarray:
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    # Close to fill holes, open to remove specks
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k, iterations=2)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k, iterations=1)
+    if dilate_iters and int(dilate_iters) > 0:
+        mask = cv2.dilate(mask, k, iterations=int(dilate_iters))
+    return mask
+
+def mog2_cutout_frames(
+    frames_rgb: List[np.ndarray],
+    history: int,
+    var_threshold: float,
+    detect_shadows: bool,
+    center_frac: float,
+    keep_largest: bool,
+    min_area: int,
+    dilate_iters: int,
+    blur_k: int,
+    learning_rate: float,
+    warmup: int,
+    freeze_after_warmup: bool,
+) -> List[np.ndarray]:
+    subtractor = cv2.createBackgroundSubtractorMOG2(
+        history=int(history),
+        varThreshold=float(var_threshold),
+        detectShadows=bool(detect_shadows),
+    )
+
+    out_frames: List[np.ndarray] = []
+
+    for i, fr in enumerate(frames_rgb):
+        # Warmup phase (optional): let it learn background a bit
+        if i < int(warmup):
+            lr = 0.5
+        else:
+            if freeze_after_warmup and int(warmup) > 0:
+                lr = 0.0
+            else:
+                lr = float(learning_rate)
+
+        fg = subtractor.apply(fr, learningRate=lr)
+
+        # If shadows enabled, OpenCV uses 127 for shadows; treat as background.
+        fg = (fg == 255).astype(np.uint8) * 255
+
+        # Gate to center
+        h, w = fg.shape
+        gate = center_gate_mask(h, w, center_frac)
+        fg = cv2.bitwise_and(fg, gate)
+
+        fg = cleanup_mask(fg, dilate_iters=dilate_iters)
+
+        if keep_largest:
+            fg = keep_largest_component(fg)
+        else:
+            fg = filter_small_components(fg, min_area=min_area)
+
+        if blur_k and int(blur_k) > 0:
+            k = int(blur_k)
+            if k % 2 == 0:
+                k += 1
+            fg = cv2.GaussianBlur(fg, (k, k), 0)
+            fg = (fg > 127).astype(np.uint8) * 255
+
+        out = fr.copy()
+        out[fg == 0] = MAGENTA
+        out_frames.append(out)
+
+    return out_frames
+
+# --------------------------
+# Palette + sheet building
+# --------------------------
 
 def build_sample_palette_from_frames(frames_rgb: List[Image.Image]) -> List[Tuple[int, int, int]]:
     if not frames_rgb:
@@ -185,7 +356,7 @@ def build_sheet_rgb(frames: List[Image.Image], cols: int, slot_w: int, slot_h: i
     sheet_w = cols * slot_w + (cols + 1)
     sheet_h = rows * slot_h + (rows + 1)
 
-    sheet = Image.new("RGB", (sheet_w, sheet_h), color=GREEN)  # grid lines
+    sheet = Image.new("RGB", (sheet_w, sheet_h), color=GREEN)
     magenta_inner = Image.new("RGB", (slot_w, slot_h), color=MAGENTA)
 
     def cell_xy(col: int, row: int) -> Tuple[int, int]:
@@ -194,11 +365,8 @@ def build_sheet_rgb(frames: List[Image.Image], cols: int, slot_w: int, slot_h: i
         return x, y
 
     for c in range(cols):
-        # row 0: frame
         x, y = cell_xy(c, 0)
         sheet.paste(frames[c], (x, y))
-
-        # rows 1..7: magenta
         for r in range(1, rows):
             x2, y2 = cell_xy(c, r)
             sheet.paste(magenta_inner, (x2, y2))
@@ -220,26 +388,43 @@ def main() -> None:
     duration_ms = get_duration_ms(cap)
     times = linspace_times(duration_ms, args.columns)
 
-    frames: List[Image.Image] = []
+    raw_frames_np: List[np.ndarray] = []
     for t_ms in times:
-        fr = read_frame_at_time(cap, t_ms)
-        im = Image.fromarray(fr, mode="RGB")
+        raw_frames_np.append(read_frame_at_time(cap, t_ms))
+    cap.release()
+
+    if args.cutout:
+        processed_np = mog2_cutout_frames(
+        raw_frames_np,
+        history=args.mog2_history,
+        var_threshold=args.mog2_var_threshold,
+        detect_shadows=args.mog2_detect_shadows,
+        center_frac=args.cutout_center_frac,
+        keep_largest=True,
+        min_area=args.cutout_min_area,
+        dilate_iters=args.cutout_dilate,
+        blur_k=args.cutout_blur,
+        learning_rate=args.mog2_learning_rate,
+        warmup=args.mog2_warmup,
+        freeze_after_warmup=args.mog2_freeze_after_warmup,
+    )
+    else:
+        processed_np = raw_frames_np
+
+    frames: List[Image.Image] = []
+    for fr_np in processed_np:
+        im = Image.fromarray(fr_np, mode="RGB")
         im = center_crop_to_aspect(im, args.slot_w, args.slot_h)
         im = im.resize((args.slot_w, args.slot_h), resample=resample)
         frames.append(im)
 
-    cap.release()
-
     sheet_rgb = build_sheet_rgb(frames, args.columns, args.slot_w, args.slot_h)
 
     if args.mode == "rgb":
-        # Strongly recommend PNG for RGB intermediates.
-        # We'll still honor the user's --out extension.
         sheet_rgb.save(args.out)
         print(f"Saved RGB: {args.out}")
         return
 
-    # indexed mode => force Civ3 palette and write PCX
     sampled_colors = build_sample_palette_from_frames(frames)
     palette_list = make_civ3_palette(sampled_colors)
 
@@ -249,8 +434,7 @@ def main() -> None:
     indexed = sheet_rgb.quantize(palette=pal_img, dither=Image.NONE)
 
     ext = os.path.splitext(args.out)[1].lower()
-    if ext not in [".pcx"]:
-        # Save PCX anyway, but warn via print
+    if ext != ".pcx":
         print("Note: --mode indexed is intended for .pcx output.")
 
     indexed.save(args.out, format="PCX")
