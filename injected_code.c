@@ -21879,7 +21879,7 @@ patch_Map_impl_is_near_river_within_work_area (Map * this, int edx, int x, int y
 		return false;
 	}
 
-	return Map_impl_is_near_river (this, __, x, y, num_tiles);
+	return this->vtable->is_near_river (this, __, x, y, num_tiles);
 }
 
 bool __fastcall
@@ -21900,7 +21900,7 @@ patch_Map_impl_is_near_lake_within_work_area (Map * this, int edx, int x, int y,
 		return false;
 	}
 
-	return Map_impl_is_near_lake (this, __, x, y, num_tiles);
+	return this->vtable->is_near_lake (this, __, x, y, num_tiles);
 }
 
 bool __fastcall
@@ -21912,7 +21912,7 @@ patch_Map_impl_has_fresh_water_within_work_area (Map * this, int edx, int tile_x
 
 			// If an Aqueduct, default to original logic (city must be next to coast)
 			if ((p_bic_data->Improvements[improv_id].ImprovementFlags & ITF_Allows_City_Level_2) != 0)
-				return Map_impl_has_fresh_water(this, __, tile_x, tile_y);
+				return this->vtable->has_fresh_water (this, __, tile_x, tile_y);
 		}
 		if (patch_Map_impl_is_near_river_within_work_area (this, __, tile_x, tile_y, 1))
 			return true;
@@ -21921,7 +21921,7 @@ patch_Map_impl_has_fresh_water_within_work_area (Map * this, int edx, int tile_x
 		return false;
 	}
 
-	return Map_impl_has_fresh_water (this, __, tile_x, tile_y);
+	return this->vtable->has_fresh_water (this, __, tile_x, tile_y);
 }
 
 bool 

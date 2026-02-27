@@ -2087,10 +2087,10 @@ struct Map_vtable
   bool (__fastcall * check_goody_hut_location) (Map *, __, int, int);
   byte (__fastcall * m19_Create_Tiles)(Map * this, __, Tile ** out_array);
   int m20;
-  byte (__fastcall * is_near_lake) (Map * this, __, int x, int y, int num_tiles);
-  byte (__fastcall * is_near_river) (Map * this, __, int x, int y, int num_tiles);
+  bool (__fastcall * is_near_lake) (Map * this, __, int x, int y, int num_tiles);
+  bool (__fastcall * is_near_river) (Map * this, __, int x, int y, int num_tiles);
   int m23;
-  int (__fastcall * has_fresh_water) (Map * this, __, int x, int y);
+  bool (__fastcall * has_fresh_water) (Map * this, __, int x, int y);
   int m25;
   int m26;
   int m27;
