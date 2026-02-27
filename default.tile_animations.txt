@@ -33,10 +33,3 @@ name         = Test
 ini_path     = Test\British Celtic Worker.INI
 type         = terrain
 terrain_type = forest
-
-#Animation
-name         = Test2
-ini_path     = Test\British Celtic Worker.INI
-type         = terrain
-terrain_type = jungle
-
