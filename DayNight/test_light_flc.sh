@@ -18,6 +18,9 @@ Options:
   --cell-h N                Cell height (default: 64)
   --frames N                Animation frames (default: 12)
   --fps N                   FPS metadata value (default: 12)
+  --frame-change-rate N     0..1 temporal smoothing (default: 1.0 for clear motion)
+  --hz1 N                   Primary flicker frequency in Hz (default: 1.2)
+  --hz2 N                   Secondary flicker frequency in Hz (default: 2.4)
   --name-prefix NAME        Output name prefix (default: Lights)
   --with-ring-frame         Append ring frame
   --python CMD              Python executable (default: python3)
@@ -35,6 +38,9 @@ CELL_W=128
 CELL_H=64
 FRAMES=12
 FPS=12
+FRAME_CHANGE_RATE=1.0
+HZ1=1.2
+HZ2=2.4
 NAME_PREFIX="Lights"
 WITH_RING_FRAME=0
 PYTHON_BIN="python"
@@ -51,6 +57,9 @@ while [[ $# -gt 0 ]]; do
     --cell-h) CELL_H="${2:-}"; shift 2 ;;
     --frames) FRAMES="${2:-}"; shift 2 ;;
     --fps) FPS="${2:-}"; shift 2 ;;
+    --frame-change-rate) FRAME_CHANGE_RATE="${2:-}"; shift 2 ;;
+    --hz1) HZ1="${2:-}"; shift 2 ;;
+    --hz2) HZ2="${2:-}"; shift 2 ;;
     --name-prefix) NAME_PREFIX="${2:-}"; shift 2 ;;
     --with-ring-frame) WITH_RING_FRAME=1; shift ;;
     --python) PYTHON_BIN="${2:-}"; shift 2 ;;
@@ -112,6 +121,23 @@ for s in "${LIGHT_STYLES[@]}"; do
   STYLE_ARGS+=(--light-style "$s")
 done
 
+# Match generate_light_pcx.sh global city-light defaults.
+GLOBAL_ARGS=(
+  --core-color "#ff8a20"
+  --glow-color "#dc6a00"
+  --core-radius 1.1
+  --halo-radius 13.0
+  --core-gain 2.5
+  --halo-gain 20.0
+  --highlight-gain 0.5
+  --size-boost 1.7
+  --size-radius 6.5
+  --size-gamma 0.75
+  --halo-sep 0.75
+  --halo-gamma 1.3
+  --blend-mode screen
+)
+
 CMD=(
   "$PYTHON_BIN" "$FLICKER_SCRIPT"
   --in "$INP"
@@ -122,7 +148,11 @@ CMD=(
   --cell-h "$CELL_H"
   --frames "$FRAMES"
   --fps "$FPS"
+  --frame-change-rate "$FRAME_CHANGE_RATE"
+  --hz1 "$HZ1"
+  --hz2 "$HZ2"
   --name-prefix "$NAME_PREFIX"
+  "${GLOBAL_ARGS[@]}"
   "${LK_ARGS[@]}"
   "${STYLE_ARGS[@]}"
   "${EXTRA_ARGS[@]}"

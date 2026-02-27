@@ -49,6 +49,14 @@ CIV3_SPEED = 4  # Civ3 convention
 # -----------------------------
 # Packing helpers
 # -----------------------------
+def clamp8(v: float) -> int:
+    if v <= 0:
+        return 0
+    if v >= 255:
+        return 255
+    return int(v + 0.5)
+
+
 def pack_u16(v: int) -> bytes:
     return struct.pack("<H", v & 0xFFFF)
 
@@ -57,6 +65,13 @@ def pack_i32(v: int) -> bytes:
 
 def pack_u32(v: int) -> bytes:
     return struct.pack("<I", v & 0xFFFFFFFF)
+
+
+def palette_bytes_768(im_p: Image.Image) -> bytes:
+    pal = im_p.getpalette() or []
+    if len(pal) < 768:
+        pal = pal + [0] * (768 - len(pal))
+    return bytes(pal[:768])
 
 
 # -----------------------------
@@ -206,6 +221,7 @@ def write_flc(
     civ_xs_orig: int,
     civ_ys_orig: int,
     include_ring_frame: bool,
+    flc_speed_ms: int,
 ) -> None:
     if not frames_p:
         raise ValueError("No frames")
@@ -230,7 +246,7 @@ def write_flc(
         directions=civ_directions_bitmask,
     ).pack_40_bytes()
 
-    pal768 = bytes((frames_p[0].getpalette() or [0] * 768)[:768])
+    pal768 = palette_bytes_768(frames_p[0])
 
     # Build chunks:
     # - one BRUN keyframe with palette (not counted in header frames)
@@ -239,9 +255,8 @@ def write_flc(
 
     key_pix = frames_p[0].tobytes()
     key_subchunks = [
-        # Keep palette first for decoders that apply color changes before image data.
-        make_subchunk(CHUNK_COLOR_256, make_color_256_payload(pal768)),
         make_subchunk(CHUNK_BYTE_RUN, make_byte_run_payload(key_pix, w, h)),
+        make_subchunk(CHUNK_COLOR_256, make_color_256_payload(pal768)),
     ]
     frame_chunks.append(make_frame_chunk(key_subchunks))
 
@@ -268,7 +283,7 @@ def write_flc(
         frames_without_ring=frames_without_ring,
         w=w,
         h=h,
-        speed_ms=CIV3_SPEED,
+        speed_ms=flc_speed_ms,
         creator=CIV3_CREATOR,
         oframe1=oframe1,
         oframe2=oframe2,
@@ -289,7 +304,9 @@ def _flicker_multiplier(frame_i: int, frames: int, fps: float, phase: float, amp
     a = math.sin(2.0 * math.pi * hz1 * t + phase)
     b = math.sin(2.0 * math.pi * hz2 * t + phase * 1.37 + 0.9)
     v = math.tanh((0.65 * a + 0.35 * b) * 1.2)
-    return max(0.0, 1.0 + amp * v)
+    # Keep weight in [0, 1] for build_glow_maps(wtime=...).
+    # Center at 0.5 so both dimming and brightening are represented.
+    return max(0.0, min(1.0, 0.5 + amp * v))
 
 def _phase_for_cell(r: int, c: int, seed: int) -> float:
     # deterministic cell-level phase
@@ -297,6 +314,123 @@ def _phase_for_cell(r: int, c: int, seed: int) -> float:
     v ^= (v >> 16)
     frac = (v & 0x00FFFFFF) / float(0x01000000)
     return frac * 2.0 * math.pi
+
+
+def _coord_hash_u32(x: int, y: int, seed: int) -> int:
+    v = (x * 374761393 + y * 668265263 + seed * 700001) & 0xFFFFFFFF
+    v ^= (v >> 13) & 0xFFFFFFFF
+    v = (v * 1274126177) & 0xFFFFFFFF
+    v ^= (v >> 16) & 0xFFFFFFFF
+    return v
+
+
+def apply_per_pixel_flicker(
+    overlay_rgba: Image.Image,
+    frame_i: int,
+    fps: float,
+    amp: float,
+    hz1: float,
+    hz2: float,
+    seed: int,
+) -> Image.Image:
+    """
+    Subtle pixel-level modulation so lights don't all move in lockstep.
+    Background magenta is preserved exactly.
+    """
+    w, h = overlay_rgba.size
+    out = overlay_rgba.copy()
+    px = out.load()
+    t = frame_i / max(1.0, fps)
+
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if (r, g, b) == c3.MAGENTA:
+                continue
+            ph = (_coord_hash_u32(x, y, seed) & 0x00FFFFFF) / float(0x01000000) * (2.0 * math.pi)
+            s1 = math.sin(2.0 * math.pi * hz1 * t + ph)
+            s2 = math.sin(2.0 * math.pi * hz2 * t + ph * 1.37 + 0.9)
+            v = math.tanh((0.65 * s1 + 0.35 * s2) * 1.2)
+            mult = max(0.0, 1.0 + amp * v)
+            px[x, y] = (clamp8(r * mult), clamp8(g * mult), clamp8(b * mult), a)
+
+    return out
+
+
+def apply_global_flicker_gain(
+    overlay_rgba: Image.Image,
+    weight_0_1: float,
+    strength: float,
+) -> Image.Image:
+    """
+    Apply a frame-wide gain to non-magenta pixels.
+    This guarantees visible frame-to-frame movement even after quantization.
+    """
+    w, h = overlay_rgba.size
+    out = overlay_rgba.copy()
+    px = out.load()
+
+    # Map weight [0,1] to gain around 1.0 with asymmetric swing:
+    # stronger dimming than brightening avoids clipping bright cores to 255
+    # across all frames, which can flatten visible flicker after quantization.
+    delta = (weight_0_1 * 2.0 - 1.0)
+    s = max(0.0, strength)
+    if delta >= 0.0:
+        gain = 1.0 + (0.18 * s * delta)
+    else:
+        gain = 1.0 + (0.70 * s * delta)
+
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if (r, g, b) == c3.MAGENTA:
+                continue
+            px[x, y] = (clamp8(r * gain), clamp8(g * gain), clamp8(b * gain), a)
+
+    return out
+
+
+def ensure_adjacent_frames_differ(frames_p: List[Image.Image], transparent_index: int) -> int:
+    """
+    Prevent accidental frame collapse after quantization by nudging several
+    non-transparent pixels if two adjacent indexed frames are byte-identical.
+    """
+    if len(frames_p) < 2:
+        return 0
+
+    adjusted = 0
+
+    for i in range(1, len(frames_p)):
+        if frames_p[i].tobytes() != frames_p[i - 1].tobytes():
+            continue
+
+        fr = frames_p[i].copy()
+        px = fr.load()
+        w, h = fr.size
+        seed = (i * 1103515245 + w * 12345 + h * 2654435761) & 0xFFFFFFFF
+
+        changed = 0
+        total = w * h
+        target_changes = max(8, min(64, total // 512))
+        for n in range(total):
+            p = (seed + n * 2654435761) % total
+            x = p % w
+            y = p // w
+            idx = int(px[x, y])
+            if idx == transparent_index:
+                continue
+
+            # Keep index 255 reserved for transparency.
+            px[x, y] = (idx + 1) % 255
+            changed += 1
+            if changed >= target_changes:
+                break
+
+        if changed > 0:
+            frames_p[i] = fr
+            adjusted += 1
+
+    return adjusted
 
 def render_overlay_frame_rgba(
     mask_source_rgb: Image.Image,
@@ -351,6 +485,7 @@ def render_overlay_frame_rgba(
         k_size_radius= float(st.get("size_radius", size_radius))
         k_size_gamma = float(st.get("size_gamma", size_gamma))
         k_highlight  = float(st.get("highlight", highlight_gain))
+        k_blend_mode = str(st.get("blend_mode", blend_mode)).lower()
 
         # For overlays, interior mask is full 255 (no clipping to city silhouette)
         interior = Image.new("L", (w, h), 255)
@@ -373,7 +508,7 @@ def render_overlay_frame_rgba(
         core_layer = c3.layer_from_alpha(k_core_color, core_alpha)
         halo_layer = c3.layer_from_alpha(k_glow_color, halo_alpha)
 
-        if blend_mode == "add":
+        if k_blend_mode == "add":
             comp = ImageChops.add(comp, core_layer, scale=1.0)
             comp = ImageChops.add(comp, halo_layer, scale=1.0)
         else:
@@ -474,14 +609,61 @@ def count_light_key_pixels(
     return counts
 
 
+def parse_light_styles_local(values: List[str]) -> Dict[Tuple[int, int, int], Dict[str, object]]:
+    """
+    Local style parser for flicker generation.
+    Keeps compatibility with civ3_city_lights style syntax, and also accepts:
+    - highlight_gain (alias for highlight)
+    - blend_mode (per-key: add|screen)
+    """
+    styles: Dict[Tuple[int, int, int], Dict[str, object]] = {}
+    for raw in values or []:
+        parts = [p.strip() for p in raw.replace(",", ";").split(";") if p.strip()]
+        kv: Dict[str, str] = {}
+        for p in parts:
+            if "=" in p:
+                k, v = p.split("=", 1)
+                kv[k.strip().lower()] = v.strip()
+        if "key" not in kv:
+            raise SystemExit("Each --light-style must include key=<color>")
+
+        key_rgb = c3.parse_rgb_one(kv["key"])
+        entry: Dict[str, object] = {}
+
+        if "core" in kv:
+            entry["core_color"] = c3.parse_rgb_one(kv["core"])
+        if "glow" in kv:
+            entry["glow_color"] = c3.parse_rgb_one(kv["glow"])
+
+        for numk in [
+            "core_gain", "halo_gain", "core_radius", "halo_radius",
+            "halo_sep", "halo_gamma", "highlight", "size_boost",
+            "size_radius", "size_gamma"
+        ]:
+            if numk in kv:
+                entry[numk] = float(kv[numk])
+
+        if "highlight_gain" in kv:
+            entry["highlight"] = float(kv["highlight_gain"])
+
+        if "blend_mode" in kv:
+            bm = kv["blend_mode"].strip().lower()
+            if bm in ("screen", "add"):
+                entry["blend_mode"] = bm
+
+        styles[key_rgb] = entry
+    return styles
+
+
 def build_shared_palette_source(overlays_rgba: List[Image.Image]) -> Image.Image:
     if not overlays_rgba:
         raise ValueError("No overlays to build shared palette")
-    # Merge all frame colors so the shared palette can represent the full animation range.
-    merged = overlays_rgba[0].convert("RGB")
-    for ov in overlays_rgba[1:]:
-        merged = ImageChops.lighter(merged, ov.convert("RGB"))
-    return c3.quantize_to_p_256(merged)
+    # Build palette from all frame pixels (not a max-light merge), so darker shades remain available.
+    w, h = overlays_rgba[0].size
+    atlas = Image.new("RGB", (w, h * len(overlays_rgba)))
+    for i, ov in enumerate(overlays_rgba):
+        atlas.paste(ov.convert("RGB"), (0, i * h))
+    return c3.quantize_to_p_256(atlas)
 
 
 # -----------------------------
@@ -520,6 +702,8 @@ def main() -> None:
     ap.add_argument("--hz1", type=float, default=2.2, help="Primary flicker frequency (Hz).")
     ap.add_argument("--hz2", type=float, default=5.1, help="Secondary flicker frequency (Hz).")
     ap.add_argument("--seed", type=int, default=1337, help="Deterministic seed.")
+    ap.add_argument("--frame-change-rate", type=float, default=0.75,
+                    help="0..1. Lower = more gradual frame-to-frame change, higher = snappier.")
 
     # Light keys/styles (same syntax as your compositor)
     ap.add_argument("--light-key", action="append", default=["#00feff"],
@@ -551,10 +735,13 @@ def main() -> None:
     ap.add_argument("--civ-xs-orig", type=int, default=240, help="xs_orig in Civ3 FlicAnimHeader (default 240).")
     ap.add_argument("--civ-ys-orig", type=int, default=240, help="ys_orig in Civ3 FlicAnimHeader (default 240).")
     ap.add_argument("--with-ring-frame", action="store_true", help="Append explicit ring frame (off by default).")
+    ap.add_argument("--flc-speed", type=int, default=170,
+                    help="FLC header speed/delay in milliseconds for viewer playback (default 170).")
 
     ap.add_argument("--name-prefix", default="Lights", help="Output naming prefix.")
 
     args = ap.parse_args()
+    args.frame_change_rate = max(0.0, min(1.0, args.frame_change_rate))
 
     os.makedirs(args.out_dir, exist_ok=True)
 
@@ -568,9 +755,10 @@ def main() -> None:
     if sw < expected_w or sh < expected_h:
         raise SystemExit(f"Sheet is {sw}x{sh}, but rows*cell is {expected_w}x{expected_h}. Check --rows/--cols/--cell-w/--cell-h.")
 
-    # Parse keys/styles using your compositor parser (so CLI matches)
+    # Parse keys with compositor parser; parse styles locally to support
+    # flicker-specific compatibility aliases like highlight_gain.
     light_keys = c3.parse_rgb_list(args.light_key)
-    styles = c3.parse_styles(args.light_style)
+    styles = parse_light_styles_local(args.light_style)
     core_color = c3.parse_rgb_one(args.core_color)
     glow_color = c3.parse_rgb_one(args.glow_color)
 
@@ -591,6 +779,7 @@ def main() -> None:
             # Build frame overlays first, then quantize all frames with a shared palette.
             cell_phase = _phase_for_cell(r, c, args.seed)
             overlays_rgba: List[Image.Image] = []
+            prev_overlay: Optional[Image.Image] = None
             for i in range(args.frames):
                 mult = _flicker_multiplier(i, args.frames, args.fps, cell_phase, args.amp, args.hz1, args.hz2)
 
@@ -613,6 +802,27 @@ def main() -> None:
                     halo_sep=args.halo_sep,
                     halo_gamma=args.halo_gamma,
                 )
+
+                # Add pixel-level shimmer variation.
+                overlay_rgba = apply_per_pixel_flicker(
+                    overlay_rgba=overlay_rgba,
+                    frame_i=i,
+                    fps=args.fps,
+                    amp=args.amp * 1.25,
+                    hz1=args.hz1,
+                    hz2=args.hz2,
+                    seed=args.seed ^ (r * 10007 + c * 10009),
+                )
+                overlay_rgba = apply_global_flicker_gain(
+                    overlay_rgba=overlay_rgba,
+                    weight_0_1=mult,
+                    strength=1.0,
+                )
+
+                # Smooth temporal changes: lower rate => more gradual transitions.
+                if prev_overlay is not None and args.frame_change_rate < 1.0:
+                    overlay_rgba = Image.blend(prev_overlay, overlay_rgba, args.frame_change_rate)
+                prev_overlay = overlay_rgba
                 overlays_rgba.append(overlay_rgba)
 
             palette_source = build_shared_palette_source(overlays_rgba)
@@ -624,6 +834,9 @@ def main() -> None:
                 )
                 for overlay_rgba in overlays_rgba
             ]
+            adjusted = ensure_adjacent_frames_differ(frames_p, args.transparent_index)
+            if adjusted > 0:
+                print(f"NOTE: Cell r{r:02d}c{c:02d} had {adjusted} quantized frame collapse(s); applied anti-collapse nudges.")
 
             out_name = f"{args.name_prefix}_r{r:02d}c{c:02d}.flc"
             out_path = os.path.join(args.out_dir, out_name)
@@ -639,6 +852,7 @@ def main() -> None:
                 civ_xs_orig=args.civ_xs_orig,
                 civ_ys_orig=args.civ_ys_orig,
                 include_ring_frame=args.with_ring_frame,
+                flc_speed_ms=args.flc_speed,
             )
 
             ring_note = "+ring" if args.with_ring_frame else ""
