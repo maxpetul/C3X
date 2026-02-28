@@ -88,7 +88,9 @@ enum retreat_rules {
 	RR_STANDARD = 0,
 	RR_NONE,
 	RR_ALL_UNITS,
-	RR_IF_FASTER
+	RR_IF_FASTER,
+	RR_IF_NOT_SLOWER,
+	RR_IF_FAST_AND_NOT_SLOWER,
 };
 
 enum line_drawing_override {
@@ -233,7 +235,7 @@ struct c3x_config {
 	enum retreat_rules land_retreat_rules;
 	enum retreat_rules sea_retreat_rules;
 	bool allow_defensive_retreat_on_water;
-	struct table limit_defensive_retreat_on_water_to_types;
+	struct table limit_defensive_retreat_on_water_to_types; // Table mapping unit type IDs to 1's; used as a hash set
 	int ai_multi_city_start;
 	int max_tries_to_place_fp_city;
 	int * ai_multi_start_extra_palaces;
@@ -257,6 +259,7 @@ struct c3x_config {
 	bool immunize_aircraft_against_bombardment;
 	bool replay_ai_moves_in_hotseat_games;
 	struct table ptw_arty_types; // Table mapping unit type IDs to 1's; used as a hash set
+	struct table can_bombard_only_sea_tiles; // Table mapping unit type IDs to 1's; used as a hash set
 	bool restore_unit_directions_on_game_load;
 	bool apply_grid_ini_setting_on_game_load;
 	bool charm_flag_triggers_ptw_like_targeting;
@@ -277,6 +280,7 @@ struct c3x_config {
 	enum minimap_doubling_mode double_minimap_size;
 	bool allow_multipage_civilopedia_descriptions;
 	enum unit_cycle_search_criteria unit_cycle_search_criteria;
+	bool reformat_turns_remaining_on_domestic_advisor_screen;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
@@ -315,6 +319,8 @@ struct c3x_config {
 	bool allow_unload_from_army;
 	enum land_transport_rules land_transport_rules;
 	bool allow_adjacent_resources_of_different_types;
+	bool allow_corruption_in_capital;
+	int special_capital_decorruption_effect;
 	int luxury_randomized_appearance_rate_percent;
 	int tiles_per_non_luxury_resource;
 	bool no_land_anti_air_from_inside_naval_transport;
@@ -367,6 +373,7 @@ struct c3x_config {
 	bool patch_ai_can_sacrifice_without_special_ability;
 	bool patch_crash_in_leader_unit_ai;
 	bool patch_failure_to_find_new_city_build;
+	bool patch_passengers_out_of_order_on_menu;
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
@@ -1425,7 +1432,9 @@ struct injected_state {
 	void (* qsort) (void *, size_t, size_t, int (*) (void const *, void const *));
 	int (* memcmp) (void const *, void const *, size_t);
 	void * (* memcpy) (void *, void const *, size_t);
+	void * (* memmove) (void *, void const *, size_t);
 	int (* tolower) (int);
+	int (* toupper) (int);
 
 	Unit * sb_next_up; // The unit currently doing a stack bombard or NULL otherwise. Gets set to NULL if the unit is despawned.
 

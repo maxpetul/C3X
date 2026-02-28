@@ -50,6 +50,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define memcmp is->memcmp
 #define memcpy is->memcpy
 #define tolower is->tolower
+#define toupper is->toupper
 
 #include "common.c"
 
@@ -99,11 +100,7 @@ char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resum
 void *
 memmove (void * dest, void const * src, size_t size)
 {
-	char const * _src = src;
-	char * _dest = dest, * tr = dest;
-	for (char const * src_end = _src + size; _src != src_end; _src++, _dest++)
-		*_dest = *_src;
-	return tr;
+	return is->memmove (dest, src, size);
 }
 
 // Also need to define memset for some reason
@@ -700,6 +697,7 @@ reset_to_base_config ()
 	}
 
 	table_deinit (&cc->limit_defensive_retreat_on_water_to_types);
+	table_deinit (&cc->can_bombard_only_sea_tiles);
 
 	// Free set of PTW artillery types and list of converted types
 	table_deinit (&cc->ptw_arty_types);
@@ -1388,6 +1386,9 @@ parse_work_area_improvement (char ** p_cursor, struct error_line ** p_unrecogniz
 {
 	char * cur = *p_cursor;
 	struct work_area_improvement * out = out_parsed_work_area_improvement;
+	out->improv_id = -1;
+	out->work_area_radius_limit = 0;
+	out->work_area_radius_bonus = 0;
 
 	struct string_slice improv_name;
 	if (skip_white_space (&cur) &&
@@ -1401,11 +1402,11 @@ parse_work_area_improvement (char ** p_cursor, struct error_line ** p_unrecogniz
 		struct string_slice ss;
 		if (parse_string (&cur, &ss)) {
 			if (slice_matches_str (&ss, "extra"))
-				out->work_area_radius_bonus += num;
+				out->work_area_radius_bonus = num;
 			else
 				return RPR_PARSE_ERROR;
 		} else
-			out->work_area_radius_limit += num;
+			out->work_area_radius_limit = num;
 
 		int improv_id;
 		if (slice_matches_str (&improv_name, "default")) {
@@ -1693,10 +1694,12 @@ bool
 read_retreat_rules (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
-	if      (slice_matches_str (&trimmed, "standard" )) { *out_val = RR_STANDARD;  return true; }
-	else if (slice_matches_str (&trimmed, "none"     )) { *out_val = RR_NONE;      return true; }
-	else if (slice_matches_str (&trimmed, "all-units")) { *out_val = RR_ALL_UNITS; return true; }
-	else if (slice_matches_str (&trimmed, "if-faster")) { *out_val = RR_IF_FASTER; return true; }
+	if      (slice_matches_str (&trimmed, "standard"              )) { *out_val = RR_STANDARD;               return true; }
+	else if (slice_matches_str (&trimmed, "none"                  )) { *out_val = RR_NONE;                   return true; }
+	else if (slice_matches_str (&trimmed, "all-units"             )) { *out_val = RR_ALL_UNITS;              return true; }
+	else if (slice_matches_str (&trimmed, "if-faster"             )) { *out_val = RR_IF_FASTER;              return true; }
+	else if (slice_matches_str (&trimmed, "if-not-slower"         )) { *out_val = RR_IF_NOT_SLOWER;          return true; }
+	else if (slice_matches_str (&trimmed, "if-fast-and-not-slower")) { *out_val = RR_IF_FAST_AND_NOT_SLOWER; return true; }
 	else
 		return false;
 }
@@ -2237,7 +2240,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 			free (full_path);
 			return;
 		}
-		text = utf8_to_windows1252 (utf8_text);
+		text = convert_from_utf8 (utf8_text, *p_code_page);
 		free (utf8_text);
 		if (text == NULL) {
 			snprintf (err_msg, sizeof err_msg, "Failed to re-encode contents of \"%s\". This file must contain UTF-8 text and only characters usable by Civ 3.", full_path);
@@ -2439,6 +2442,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->ptw_arty_types))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "can_bombard_only_sea_tiles")) {
+					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->can_bombard_only_sea_tiles))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "civ_aliases_by_era")) {
 					if (0 <= (recog_err_offset = read_recognizables (&value,
@@ -16419,6 +16425,15 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 
 	// Disable a jump that skips playing victory animations for air units if they've been configured to have a victory anim
 	set_nopification (cfg->aircraft_victory_animation != NULL, ADDR_SKIP_VICTORY_ANIM_IF_AIR, 6);
+
+	// Bypass capital check to return zero corruption
+	// replacing 0x75 (= jnz) with 0xEB (= uncond. jump)
+	WITH_MEM_PROTECTION (ADDR_CORRUPTION_CAPITAL_CHECK, 1, PAGE_EXECUTE_READWRITE)
+		*ADDR_CORRUPTION_CAPITAL_CHECK = cfg->allow_corruption_in_capital ? 0xEB : 0x75;
+
+	// Insert amount added to building decorruption effect just for the capital
+	WITH_MEM_PROTECTION (ADDR_ADD_CAPITAL_CORRUPTION_BUILDING_EFFECT, 3, PAGE_EXECUTE_READWRITE)
+		*(ADDR_ADD_CAPITAL_CORRUPTION_BUILDING_EFFECT + 2) = clamp (0, 100, cfg->special_capital_decorruption_effect);
 }
 
 void
@@ -17340,6 +17355,7 @@ patch_init_floating_point ()
 		{"patch_ai_can_sacrifice_without_special_ability"        , true , offsetof (struct c3x_config, patch_ai_can_sacrifice_without_special_ability)},
 		{"patch_crash_in_leader_unit_ai"                         , true , offsetof (struct c3x_config, patch_crash_in_leader_unit_ai)},
 		{"patch_failure_to_find_new_city_build"                  , true , offsetof (struct c3x_config, patch_failure_to_find_new_city_build)},
+		{"patch_passengers_out_of_order_on_menu"                 , true , offsetof (struct c3x_config, patch_passengers_out_of_order_on_menu)},
 		{"delete_off_map_ai_units"                               , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
 		{"fix_overlapping_specialist_yield_icons"                , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
 		{"prevent_autorazing"                                    , false, offsetof (struct c3x_config, prevent_autorazing)},
@@ -17371,6 +17387,7 @@ patch_init_floating_point ()
 		{"enable_debug_mode_switch"                              , false, offsetof (struct c3x_config, enable_debug_mode_switch)},
 		{"accentuate_cities_on_minimap"                          , false, offsetof (struct c3x_config, accentuate_cities_on_minimap)},
 		{"allow_multipage_civilopedia_descriptions"              , true , offsetof (struct c3x_config, allow_multipage_civilopedia_descriptions)},
+		{"reformat_turns_remaining_on_domestic_advisor_screen"   , true , offsetof (struct c3x_config, reformat_turns_remaining_on_domestic_advisor_screen)},
 		{"enable_trade_net_x"                                    , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                            , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                    , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -17435,6 +17452,7 @@ patch_init_floating_point ()
 		{"no_land_anti_air_from_inside_naval_transport"          , false, offsetof (struct c3x_config, no_land_anti_air_from_inside_naval_transport)},
 		{"prevent_enslaving_by_bombardment"                      , false, offsetof (struct c3x_config, prevent_enslaving_by_bombardment)},
 		{"allow_adjacent_resources_of_different_types"           , false, offsetof (struct c3x_config, allow_adjacent_resources_of_different_types)},
+		{"allow_corruption_in_capital"                           , false, offsetof (struct c3x_config, allow_corruption_in_capital)},
 		{"allow_sale_of_small_wonders"                           , false, offsetof (struct c3x_config, allow_sale_of_small_wonders)},
 	};
 
@@ -17443,46 +17461,48 @@ patch_init_floating_point ()
 		int base_val;
 		int offset;
 	} integer_config_options[] = {
-		{"limit_railroad_movement"                           ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
-		{"minimum_city_separation"                           ,     1, offsetof (struct c3x_config, minimum_city_separation)},
-		{"anarchy_length_percent"                            ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
-		{"ai_multi_city_start"                               ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
-		{"max_tries_to_place_fp_city"                        , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
-		{"ai_research_multiplier"                            ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
-		{"ai_settler_perfume_on_founding_duration"           ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
-		{"extra_unit_maintenance_per_shields"                ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
-		{"ai_build_artillery_ratio"                          ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
-		{"ai_artillery_value_damage_percent"                 ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
-		{"ai_build_bomber_ratio"                             ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
-		{"max_ai_naval_escorts"                              ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
-		{"ai_worker_requirement_percent"                     ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
-		{"chance_for_nukes_to_destroy_max_one_hp_units"      ,   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
-		{"rebase_range_multiplier"                           ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
-		{"elapsed_minutes_per_day_night_hour_transition"     ,     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
-		{"fixed_hours_per_turn_for_day_night_cycle"          ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
-		{"pinned_hour_for_day_night_cycle"                   ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
-		{"years_to_double_building_culture"                  ,  1000, offsetof (struct c3x_config, years_to_double_building_culture)},
-		{"tourism_time_scale_percent"                        ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
-		{"luxury_randomized_appearance_rate_percent"         ,   100, offsetof (struct c3x_config, luxury_randomized_appearance_rate_percent)},
-		{"tiles_per_non_luxury_resource"                     ,    32, offsetof (struct c3x_config, tiles_per_non_luxury_resource)},
-		{"city_limit"                                        ,  2048, offsetof (struct c3x_config, city_limit)},
-		{"maximum_pop_before_neighborhood_needed"            ,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
-		{"per_neighborhood_pop_growth_enabled"			     ,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
-		{"minimum_natural_wonder_separation"                 ,    10, offsetof (struct c3x_config, minimum_natural_wonder_separation)},
-		{"distribution_hub_food_yield_divisor"			     ,     1, offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
-		{"distribution_hub_shield_yield_divisor"		     ,     1, offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
-		{"ai_ideal_distribution_hub_count_per_100_cities"    ,     1, offsetof (struct c3x_config, ai_ideal_distribution_hub_count_per_100_cities)},
-		{"max_distribution_hub_count_per_100_cities"         ,    50, offsetof (struct c3x_config, max_distribution_hub_count_per_100_cities)},
-		{"central_rail_hub_distribution_food_bonus_percent"  ,    25, offsetof (struct c3x_config, central_rail_hub_distribution_food_bonus_percent)},
-		{"central_rail_hub_distribution_shield_bonus_percent",    25, offsetof (struct c3x_config, central_rail_hub_distribution_shield_bonus_percent)},
-		{"neighborhood_needed_message_frequency"             ,     4, offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
-		{"max_contiguous_bridge_districts"                   ,     3, offsetof (struct c3x_config, max_contiguous_bridge_districts)},
-		{"max_contiguous_canal_districts"                    ,     5, offsetof (struct c3x_config, max_contiguous_canal_districts)},
-		{"ai_canal_eval_min_bisected_land_tiles"             ,    10, offsetof (struct c3x_config, ai_canal_eval_min_bisected_land_tiles)},
-		{"ai_bridge_canal_eval_block_size"                   ,    20, offsetof (struct c3x_config, ai_bridge_canal_eval_block_size)},
-		{"ai_bridge_eval_lake_tile_threshold"                ,     6, offsetof (struct c3x_config, ai_bridge_eval_lake_tile_threshold)},
-		{"ai_city_district_max_build_wait_turns"             ,    20, offsetof (struct c3x_config, ai_city_district_max_build_wait_turns)},
-		{"per_extraterritorial_colony_relation_penalty"      ,     0, offsetof (struct c3x_config, per_extraterritorial_colony_relation_penalty)},
+		{"limit_railroad_movement"                           ,     0,  offsetof (struct c3x_config, limit_railroad_movement)},
+		{"minimum_city_separation"                           ,     1,  offsetof (struct c3x_config, minimum_city_separation)},
+		{"anarchy_length_percent"                            ,   100,  offsetof (struct c3x_config, anarchy_length_percent)},
+		{"ai_multi_city_start"                               ,     0,  offsetof (struct c3x_config, ai_multi_city_start)},
+		{"max_tries_to_place_fp_city"                        , 10000,  offsetof (struct c3x_config, max_tries_to_place_fp_city)},
+		{"ai_research_multiplier"                            ,   100,  offsetof (struct c3x_config, ai_research_multiplier)},
+		{"ai_settler_perfume_on_founding_duration"           ,     0,  offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
+		{"extra_unit_maintenance_per_shields"                ,     0,  offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
+		{"ai_build_artillery_ratio"                          ,    16,  offsetof (struct c3x_config, ai_build_artillery_ratio)},
+		{"ai_artillery_value_damage_percent"                 ,    50,  offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
+		{"ai_build_bomber_ratio"                             ,    70,  offsetof (struct c3x_config, ai_build_bomber_ratio)},
+		{"max_ai_naval_escorts"                              ,     3,  offsetof (struct c3x_config, max_ai_naval_escorts)},
+		{"ai_worker_requirement_percent"                     ,   150,  offsetof (struct c3x_config, ai_worker_requirement_percent)},
+		{"chance_for_nukes_to_destroy_max_one_hp_units"      ,   100,  offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
+		{"rebase_range_multiplier"                           ,     6,  offsetof (struct c3x_config, rebase_range_multiplier)},
+		{"elapsed_minutes_per_day_night_hour_transition"     ,     3,  offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
+		{"fixed_hours_per_turn_for_day_night_cycle"          ,     1,  offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
+		{"pinned_hour_for_day_night_cycle"                   ,     0,  offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
+		{"years_to_double_building_culture"                  ,  1000,  offsetof (struct c3x_config, years_to_double_building_culture)},
+		{"tourism_time_scale_percent"                        ,   100,  offsetof (struct c3x_config, tourism_time_scale_percent)},
+		{"luxury_randomized_appearance_rate_percent"    ,       100,   offsetof (struct c3x_config, luxury_randomized_appearance_rate_percent)},
+		{"tiles_per_non_luxury_resource"                ,        32,   offsetof (struct c3x_config, tiles_per_non_luxury_resource)},
+		{"special_capital_decorruption_effect"               ,    10,  offsetof (struct c3x_config, special_capital_decorruption_effect)},
+		{"city_limit"                                        ,  2048,  offsetof (struct c3x_config, city_limit)},
+		{"maximum_pop_before_neighborhood_needed"            ,     8,  offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
+		{"per_neighborhood_pop_growth_enabled"			     ,     2,  offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
+		{"minimum_natural_wonder_separation"                 ,     10, offsetof (struct c3x_config, minimum_natural_wonder_separation)},
+		{"distribution_hub_food_yield_divisor"			     ,     1,  offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
+		{"distribution_hub_shield_yield_divisor"		     ,     1,  offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
+		{"ai_ideal_distribution_hub_count_per_100_cities"    ,     1,  offsetof (struct c3x_config, ai_ideal_distribution_hub_count_per_100_cities)},
+		{"neighborhood_needed_message_frequency"             ,     4,  offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
+		{"max_distribution_hub_count_per_100_cities"         ,    50,  offsetof (struct c3x_config, max_distribution_hub_count_per_100_cities)},
+		{"central_rail_hub_distribution_food_bonus_percent"  ,    25,  offsetof (struct c3x_config, central_rail_hub_distribution_food_bonus_percent)},
+		{"central_rail_hub_distribution_shield_bonus_percent",    25,  offsetof (struct c3x_config, central_rail_hub_distribution_shield_bonus_percent)},
+		{"neighborhood_needed_message_frequency"             ,     4,  offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
+		{"max_contiguous_bridge_districts"                   ,     3,  offsetof (struct c3x_config, max_contiguous_bridge_districts)},
+		{"max_contiguous_canal_districts"                    ,     5,  offsetof (struct c3x_config, max_contiguous_canal_districts)},
+		{"ai_canal_eval_min_bisected_land_tiles"             ,    10,  offsetof (struct c3x_config, ai_canal_eval_min_bisected_land_tiles)},
+		{"ai_bridge_canal_eval_block_size"                   ,    20,  offsetof (struct c3x_config, ai_bridge_canal_eval_block_size)},
+		{"ai_bridge_eval_lake_tile_threshold"                ,     6,  offsetof (struct c3x_config, ai_bridge_eval_lake_tile_threshold)},
+		{"ai_city_district_max_build_wait_turns"             ,    20,  offsetof (struct c3x_config, ai_city_district_max_build_wait_turns)},
+		{"per_extraterritorial_colony_relation_penalty"      ,     0,  offsetof (struct c3x_config, per_extraterritorial_colony_relation_penalty)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -17523,6 +17543,8 @@ patch_init_floating_point ()
 	memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
 	memcpy   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcpy");
 	tolower  = (void *)(*p_GetProcAddress) (is->msvcrt, "tolower");
+	toupper  = (void *)(*p_GetProcAddress) (is->msvcrt, "toupper");
+	is->memmove = (void *)(*p_GetProcAddress) (is->msvcrt, "memmove"); // No #define for this one, instead it has a wrapper func
 
 	// Intercept the game's calls to MessageBoxA. We can't do this through the patcher since that would interfere with the runtime loader.
 	WITH_MEM_PROTECTION (p_MessageBoxA, 4, PAGE_READWRITE)
@@ -24256,18 +24278,29 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 	if ((this->defender != NULL) && ((class == UTC_Land) || (class == UTC_Sea))) {
 		enum retreat_rules retreat_rules = (class == UTC_Land) ? is->current_config.land_retreat_rules : is->current_config.sea_retreat_rules;
 		if (retreat_rules != RR_STANDARD) {
+			int attacker_max_mp = patch_Unit_get_max_move_points (this->attacker),
+			    defender_max_mp = patch_Unit_get_max_move_points (this->defender);
+
 			if (retreat_rules == RR_NONE)
 				this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 0;
-			else if (retreat_rules == RR_ALL_UNITS) {
-				if (! UnitType_has_ability (&p_bic_data->UnitTypes[this->attacker->Body.UnitTypeID], __, UTA_Immobile))
-					this->attacker_eligible_to_retreat = 1;
-				if (! UnitType_has_ability (&p_bic_data->UnitTypes[this->defender->Body.UnitTypeID], __, UTA_Immobile))
-					this->defender_eligible_to_retreat = 1;
-			} else if (retreat_rules == RR_IF_FASTER) {
-				int diff = patch_Unit_get_max_move_points (this->attacker) - patch_Unit_get_max_move_points (this->defender);
-				this->attacker_eligible_to_retreat = diff > 0;
-				this->defender_eligible_to_retreat = diff < 0;
+			else if (retreat_rules == RR_ALL_UNITS)
+				this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 1;
+			else if (retreat_rules == RR_IF_FASTER) {
+				this->attacker_eligible_to_retreat = attacker_max_mp > defender_max_mp;
+				this->defender_eligible_to_retreat = defender_max_mp > attacker_max_mp;
+			} else if (retreat_rules == RR_IF_NOT_SLOWER) {
+				this->attacker_eligible_to_retreat = attacker_max_mp >= defender_max_mp;
+				this->defender_eligible_to_retreat = defender_max_mp >= attacker_max_mp;
+			} else if (retreat_rules == RR_IF_FAST_AND_NOT_SLOWER) {
+				this->attacker_eligible_to_retreat = attacker_max_mp >= defender_max_mp && attacker_max_mp > p_bic_data->General.RoadsMovementRate;
+				this->defender_eligible_to_retreat = defender_max_mp >= attacker_max_mp && defender_max_mp > p_bic_data->General.RoadsMovementRate;
 			}
+
+			// Prevent immobile units from retreating
+			this->attacker_eligible_to_retreat &= ! UnitType_has_ability (&p_bic_data->UnitTypes[this->attacker->Body.UnitTypeID], __, UTA_Immobile);
+			this->defender_eligible_to_retreat &= ! UnitType_has_ability (&p_bic_data->UnitTypes[this->defender->Body.UnitTypeID], __, UTA_Immobile);
+
+			// Prevent defender from retreating if in a city
 			this->defender_eligible_to_retreat &= city_at (this->defender_location_x, this->defender_location_y) == NULL;
 		}
 	}
@@ -27631,12 +27664,17 @@ bool __fastcall
 patch_Unit_check_bombard_target (Unit * this, int edx, int tile_x, int tile_y)
 {
 	bool base = Unit_check_bombard_target (this, __, tile_x, tile_y);
-	Tile * tile;
+	Tile * tile = tile_at (tile_x, tile_y);
 	int overlays;
+
 	if (base &&
+	    itable_look_up_or (&is->current_config.can_bombard_only_sea_tiles, this->Body.UnitTypeID, 0) &&
+	    ! tile->vtable->m35_Check_Is_Water (tile))
+		return false;
+
+	else if (base &&
 	    is->current_config.disallow_useless_bombard_vs_airfields &&
 	    ! Unit_has_ability (this, __, UTA_Nuclear_Weapon) &&
-	    ((tile = tile_at (tile_x, tile_y)) != p_null_tile) &&
 	    ((overlays = tile->vtable->m42_Get_Overlays (tile, __, 0)) & 0x20000000) && // if tile has an airfield AND
 	    (overlays == 0x20000000)) { // tile only has an airfield
 		UnitType * this_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
@@ -35783,6 +35821,73 @@ patch_City_m22 (City * this, int edx, bool param_1)
 					break;
 				}
 	}
+}
+
+int __fastcall
+patch_PCX_Image_process_dom_adv_turn_count_text (PCX_Image * this, int edx, char * str)
+{
+	if (is->current_config.reformat_turns_remaining_on_domestic_advisor_screen) {
+		char * start = strstr (str, p_advisor_internal_form->Labels[16].S); // Search for "turns"
+		if (start == NULL)
+			start = strstr (str, p_advisor_internal_form->Labels[17].S); // Search for "turn"
+
+		if (start != NULL) {
+			*start = toupper (*start); // Upcase first letter of "turn/s"
+
+			char s[64]; // Must be same size as "str" param, which is a 64-byte stack-allocated string
+			snprintf (s, sizeof s, "%.*s %s", start - str, str, start); // Reprint string with space before "Turn/s"
+			s[(sizeof s) - 1] = '\0';
+			memcpy (str, s, sizeof s);
+		}
+	}
+
+	return PCX_Image_process_text (this, __, str);
+}
+
+int
+compare_menu_unit_items (void const * a, void const * b)
+{
+	return MenuUnitItem_should_appear_after ((MenuUnitItem *)a, __, (MenuUnitItem *)b) ? 1 : -1;
+}
+
+int __fastcall
+patch_MenuUnitList_get_length_before_sorting (MenuUnitList * this)
+{
+	int length = MenuUnitList_get_length (this);
+
+	if (is->current_config.patch_passengers_out_of_order_on_menu && length > 0) {
+		qsort (this->items, length, sizeof this->items[0], compare_menu_unit_items);
+
+		// Fix any units not being listed immediately after the unit they're contained in
+		// First, loop over all units in the list, stopping at each that might contain others
+		for (int n = 0; n < length - 1; n++) {
+			Unit * container = this->items[n].unit;
+			if ((int)container > 1 && // original code checks if unit ptrs are NULL or equal to 1
+			    p_bic_data->UnitTypes[container->Body.UnitTypeID].Transport_Capacity > 0) {
+
+				// Advance iterator "j" past the container and past any empty slots or correctly positioned units right after it
+				int j = n + 1;
+				while (j < length && ((int)this->items[j].unit <= 1 || this->items[j].unit->Body.Container_Unit == container->Body.ID))
+					j++;
+
+				// Check the rest of the list for out-of-place passengers
+				for (int k = j + 1; k < length; k++) {
+					if ((int)this->items[k].unit > 1 && this->items[k].unit->Body.Container_Unit == container->Body.ID) {
+
+						// Move item from index "k" to index "j" and advance "j" past it
+						MenuUnitItem moved = this->items[k];
+						memmove (&this->items[j + 1], &this->items[j], (k - j) * sizeof this->items[0]);
+						this->items[j] = moved;
+						j++;
+					}
+				}
+			}
+		}
+
+		// The caller is checking if the length is > 0 before sorting the list. Since we've already sorted it, return 0.
+		return 0;
+	} else
+		return length;
 }
 
 Unit * __fastcall

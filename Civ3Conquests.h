@@ -2087,10 +2087,10 @@ struct Map_vtable
   bool (__fastcall * check_goody_hut_location) (Map *, __, int, int);
   byte (__fastcall * m19_Create_Tiles)(Map * this, __, Tile ** out_array);
   int m20;
-  bool (__fastcall * is_near_lake) (Map * this, __, int x, int y, int num_tiles);
-  bool (__fastcall * is_near_river) (Map * this, __, int x, int y, int num_tiles);
+  byte (__fastcall * is_near_lake) (Map * this, __, int x, int y, int num_tiles);
+  byte (__fastcall * is_near_river) (Map * this, __, int x, int y, int num_tiles);
   int m23;
-  bool (__fastcall * has_fresh_water) (Map * this, __, int x, int y);
+  int (__fastcall * has_fresh_water) (Map * this, __, int x, int y);
   int m25;
   int m26;
   int m27;
@@ -6284,6 +6284,7 @@ typedef struct DiploForm DiploForm;
 typedef struct TextBuffer TextBuffer;
 typedef struct OpenGLRenderer OpenGLRenderer;
 typedef struct MenuUnitItem MenuUnitItem;
+typedef struct MenuUnitList MenuUnitList;
 typedef struct MappedFile MappedFile;
 
 // Contains font info for a particular size & style
@@ -6456,6 +6457,14 @@ struct MenuUnitItem
 	bool is_flag_unit;
 	bool is_state_blank;
 	byte field_B;
+};
+
+struct MenuUnitList
+{
+	int field_0;
+	MenuUnitItem * items;
+	MenuUnitItem * items_end;
+	int field_C;
 };
 
 struct MappedFile
