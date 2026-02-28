@@ -37903,6 +37903,19 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_
 		is->tile_animation_spawn_effect_override = effect_id;
 		is->tile_animation_spawn_effect_override_active = true;
 		Tile_spawn_animated_effect (this, __, AE_Disorder, tile_x, tile_y, randomize_start_frame);
+
+		// Placeholder: per-effect pixel offset after vanilla centers the animation on the tile.
+		// Positive X moves right, positive Y moves down.
+		_1A4 * fx = this->Body.field_D8;
+		if (fx != NULL) {
+			int x_off = 30;
+			int y_off = 30;
+			fx->struct_188.summary.pixel_loc_x += x_off;
+			fx->struct_188.summary.pixel_loc_y += y_off;
+			fx->struct_188.summary.pixel_target_x += x_off;
+			fx->struct_188.summary.pixel_target_y += y_off;
+		}
+
 		is->tile_animation_spawn_effect_override = prev_override;
 		is->tile_animation_spawn_effect_override_active = had_override;
 		return;
