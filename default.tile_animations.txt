@@ -29,7 +29,8 @@
 ]
 
 #Animation
-name         = Test
-ini_path     = Test\British Celtic Worker.INI
+name         = Wave
+ini_path     = Wave\Wave.INI
 type         = terrain
-terrain_type = forest
+terrain_type = coast
+adjacent_to  = land:northwest

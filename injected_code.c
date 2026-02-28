@@ -34435,7 +34435,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -37888,6 +37888,8 @@ patch_Units_Image_Data_load_animated_effect (Units_Image_Data * this, int edx, F
 	asset_path[(sizeof asset_path) - 1] = '\0';
 
 	Units_Image_Data_load_animation (this, __, asset_path, anim, 0, -1, 1, true);
+
+	anim->Animation_Info->field_1D8[AT_ATTACK1] = 0.15f;
 }
 
 void __fastcall
