@@ -315,6 +315,7 @@ struct c3x_config {
 	bool show_territory_colors_on_water_tiles_in_minimap;
 	bool convert_some_popups_into_online_mp_messages;
 	bool enable_debug_mode_switch;
+	bool patch_view_all_tile_animations_in_debug_mode;
 	bool accentuate_cities_on_minimap;
 	enum minimap_doubling_mode double_minimap_size;
 	bool allow_multipage_civilopedia_descriptions;
@@ -974,6 +975,12 @@ struct tile_animation_config {
 	enum SquareTypes terrain_type;
 	bool terrain_is_land;
 	int resource_id;
+	enum direction direction;
+	int x_offset;
+	int y_offset;
+	bool has_direction;
+	bool has_x_offset;
+	bool has_y_offset;
 	struct tile_animation_adjacent_requirement adjacent_to[MAX_TILE_ANIMATION_ADJACENCY];
 	int adjacent_to_count;
 	unsigned int day_night_hour_mask; // bits 0..23
@@ -1324,6 +1331,9 @@ struct parsed_tile_animation_definition {
 	enum tile_animation_type type;
 	enum SquareTypes terrain_type;
 	bool terrain_is_land;
+	enum direction direction;
+	int x_offset;
+	int y_offset;
 	struct tile_animation_adjacent_requirement adjacent_to[MAX_TILE_ANIMATION_ADJACENCY];
 	int adjacent_to_count;
 	unsigned int day_night_hour_mask;
@@ -1333,6 +1343,9 @@ struct parsed_tile_animation_definition {
 	bool has_type;
 	bool has_resource_type;
 	bool has_terrain_type;
+	bool has_direction;
+	bool has_x_offset;
+	bool has_y_offset;
 	bool has_adjacent_to;
 	bool has_day_night_hour_mask;
 	bool has_season_mask;

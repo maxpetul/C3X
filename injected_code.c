@@ -37490,6 +37490,12 @@ add_tile_animation_from_definition (struct parsed_tile_animation_definition * de
 	cfg.type = def->type;
 	cfg.terrain_type = def->terrain_type;
 	cfg.terrain_is_land = def->terrain_is_land;
+	cfg.direction = def->direction;
+	cfg.x_offset = def->x_offset;
+	cfg.y_offset = def->y_offset;
+	cfg.has_direction = def->has_direction;
+	cfg.has_x_offset = def->has_x_offset;
+	cfg.has_y_offset = def->has_y_offset;
 	cfg.day_night_hour_mask = def->day_night_hour_mask;
 	cfg.season_mask = def->season_mask;
 	cfg.adjacent_to_count = def->adjacent_to_count;
@@ -37616,6 +37622,29 @@ handle_tile_animation_definition_key (struct parsed_tile_animation_definition * 
 			def->has_terrain_type = false;
 			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized terrain type)");
 		}
+	} else if (slice_matches_str (key, "direction")) {
+		enum direction dir;
+		if (read_direction_value (value, &dir)) {
+			def->direction = dir;
+			def->has_direction = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized direction)");
+	} else if (slice_matches_str (key, "x_offset")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->x_offset = ival;
+			def->has_x_offset = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+	} else if (slice_matches_str (key, "y_offset")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->y_offset = ival;
+			def->has_y_offset = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 	} else if (slice_matches_str (key, "adjacent_to")) {
 		if (parse_tile_animation_adjacent_to (value, def->adjacent_to, &def->adjacent_to_count))
 			def->has_adjacent_to = true;
@@ -37898,18 +37927,23 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_
 	if (is->current_config.enable_custom_animations && is_custom_tile_animation_effect (effect_id)) {
 		if (Tile_has_city (this))
 			return;
+		struct tile_animation_config * cfg = get_tile_animation_for_effect (effect_id);
 		int prev_override = is->tile_animation_spawn_effect_override;
 		bool had_override = is->tile_animation_spawn_effect_override_active;
 		is->tile_animation_spawn_effect_override = effect_id;
 		is->tile_animation_spawn_effect_override_active = true;
 		Tile_spawn_animated_effect (this, __, AE_Disorder, tile_x, tile_y, randomize_start_frame);
 
-		// Placeholder: per-effect pixel offset after vanilla centers the animation on the tile.
+		// Optional per-effect direction and pixel offsets after vanilla centers the animation on the tile.
 		// Positive X moves right, positive Y moves down.
 		Tile_Animated_Effect * fx = this->Body.active_tile_effect;
-		if (fx != NULL) {
-			int x_off = 0; //25;
-			int y_off = 0;
+		if ((fx != NULL) && (cfg != NULL)) {
+			if (cfg->has_direction) {
+				fx->flc_animation.summary.direction = cfg->direction;
+				fx->flc_animation.summary.direction_2 = cfg->direction;
+			}
+			int x_off = cfg->has_x_offset ? cfg->x_offset : 0;
+			int y_off = cfg->has_y_offset ? cfg->y_offset : 0;
 			fx->flc_animation.summary.pixel_loc_x += x_off;
 			fx->flc_animation.summary.pixel_loc_y += y_off;
 			fx->flc_animation.summary.pixel_target_x += x_off;
