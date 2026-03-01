@@ -8,7 +8,7 @@
 [
   ;  Tile Animation config fields (each Animation block begins with "#Animation")
   ;  - name                     : Text (required). Internal animation name; must be unique.
-  ;  - ini_path                 : INI filename under Art/Animations/.
+  ;  - ini_path                 : INI filename under Art/Animations/ (required).
   ;  - type                     : Text (required). "terrain" or "resource".
   ;                               - terrain: animation can appear on matching terrain tiles.
   ;                               - resource: animation replaces the static resource PCX draw on matching resource tiles.
@@ -24,6 +24,13 @@
   ;                                 <terrain_or_land>:<direction>
   ;                               Direction values: northeast, east, southeast, south, southwest, west, northwest, north
   ;                               Example: tundra:northwest, desert:southwest
+  ;  - direction                : Text. Optional animation facing override.
+  ;                               Valid values: northeast, east, southeast, south, southwest, west, northwest, north
+  ;                               If omitted, vanilla/default facing is used.
+  ;  - x_offset                 : Integer. Optional horizontal pixel offset after centering (positive moves right).
+  ;  - y_offset                 : Integer. Optional vertical pixel offset after centering (positive moves down).
+  ;  - frame_time_seconds       : Float. Optional playback frame time for AT_ATTACK1.
+  ;                               Lower values animate faster. 0.15 matches the previous hardcoded default.
   ;  - show_in_day_night_hours  : Comma-delimited numbers [0..23]. Optional allowed day/night cycle hours.
   ;  - show_in_seasons          : Comma-delimited seasons. Optional allowed seasons: spring, summer, fall, winter.
 ]
@@ -46,7 +53,8 @@ name          = Cattle
 ini_path      = UnitC3XDistricts\MilkCow\MilkCow.INI
 type          = resource
 resource_type = Cattle
-direction     = northwest
+direction     = southeast
+frame_time_seconds = 0.15
 
 #Animation
 name          = Horses

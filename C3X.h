@@ -978,9 +978,11 @@ struct tile_animation_config {
 	enum direction direction;
 	int x_offset;
 	int y_offset;
+	float frame_time_seconds;
 	bool has_direction;
 	bool has_x_offset;
 	bool has_y_offset;
+	bool has_frame_time_seconds;
 	struct tile_animation_adjacent_requirement adjacent_to[MAX_TILE_ANIMATION_ADJACENCY];
 	int adjacent_to_count;
 	unsigned int day_night_hour_mask; // bits 0..23
@@ -1334,6 +1336,7 @@ struct parsed_tile_animation_definition {
 	enum direction direction;
 	int x_offset;
 	int y_offset;
+	float frame_time_seconds;
 	struct tile_animation_adjacent_requirement adjacent_to[MAX_TILE_ANIMATION_ADJACENCY];
 	int adjacent_to_count;
 	unsigned int day_night_hour_mask;
@@ -1346,6 +1349,7 @@ struct parsed_tile_animation_definition {
 	bool has_direction;
 	bool has_x_offset;
 	bool has_y_offset;
+	bool has_frame_time_seconds;
 	bool has_adjacent_to;
 	bool has_day_night_hour_mask;
 	bool has_season_mask;

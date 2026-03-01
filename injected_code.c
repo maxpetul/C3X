@@ -37493,9 +37493,11 @@ add_tile_animation_from_definition (struct parsed_tile_animation_definition * de
 	cfg.direction = def->direction;
 	cfg.x_offset = def->x_offset;
 	cfg.y_offset = def->y_offset;
+	cfg.frame_time_seconds = def->frame_time_seconds;
 	cfg.has_direction = def->has_direction;
 	cfg.has_x_offset = def->has_x_offset;
 	cfg.has_y_offset = def->has_y_offset;
+	cfg.has_frame_time_seconds = def->has_frame_time_seconds;
 	cfg.day_night_hour_mask = def->day_night_hour_mask;
 	cfg.season_mask = def->season_mask;
 	cfg.adjacent_to_count = def->adjacent_to_count;
@@ -37645,6 +37647,13 @@ handle_tile_animation_definition_key (struct parsed_tile_animation_definition * 
 			def->has_y_offset = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+	} else if (slice_matches_str (key, "frame_time_seconds")) {
+		float fval;
+		if (read_float (value, &fval)) {
+			def->frame_time_seconds = fval;
+			def->has_frame_time_seconds = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected float)");
 	} else if (slice_matches_str (key, "adjacent_to")) {
 		if (parse_tile_animation_adjacent_to (value, def->adjacent_to, &def->adjacent_to_count))
 			def->has_adjacent_to = true;
@@ -37918,7 +37927,8 @@ patch_Units_Image_Data_load_animated_effect (Units_Image_Data * this, int edx, F
 
 	Units_Image_Data_load_animation (this, __, asset_path, anim, 0, -1, 1, true);
 
-	anim->Animation_Info->anim_frame_time_seconds[AT_ATTACK1] = 0.15f;
+	float frame_time_seconds = cfg->has_frame_time_seconds ? cfg->frame_time_seconds : 0.15f;
+	anim->Animation_Info->anim_frame_time_seconds[AT_ATTACK1] = frame_time_seconds;
 }
 
 void __fastcall
