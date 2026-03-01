@@ -2259,6 +2259,24 @@ read_barbarian_activity_override (struct string_slice const * s, enum barbarian_
 	return found;
 }
 
+bool
+read_tile_animation_direction_value (struct string_slice const * s, enum direction * out_dir, bool * out_is_coastal_wave)
+{
+	if (out_is_coastal_wave != NULL)
+		*out_is_coastal_wave = false;
+
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if (slice_matches_str (&trimmed, "coastal-wave")) {
+		if (out_dir != NULL)
+			*out_dir = DIR_SE;
+		if (out_is_coastal_wave != NULL)
+			*out_is_coastal_wave = true;
+		return true;
+	}
+
+	return read_direction_value (s, out_dir);
+}
+
 int
 read_units_per_tile_limit (struct string_slice const * s, int * out_limits)
 {
@@ -37027,6 +37045,49 @@ tile_matches_terrain_or_land (Tile * tile, enum SquareTypes terrain_type, bool i
 }
 
 bool
+tile_animation_neighbor_is_land_in_direction (int tile_x, int tile_y, enum direction dir)
+{
+	int dx = 0, dy = 0;
+	if (! direction_to_offset (dir, &dx, &dy))
+		return false;
+
+	int nx = tile_x + dx;
+	int ny = tile_y + dy;
+	wrap_tile_coords (&p_bic_data->Map, &nx, &ny);
+	Tile * n = tile_at (nx, ny);
+	if ((n == NULL) || (n == p_null_tile))
+		return false;
+	return ! n->vtable->m35_Check_Is_Water (n);
+}
+
+bool
+get_tile_animation_coastal_wave_direction (int tile_x, int tile_y, enum direction * out_dir)
+{
+	bool has_land_nw = tile_animation_neighbor_is_land_in_direction (tile_x, tile_y, DIR_NW);
+	bool has_land_ne = tile_animation_neighbor_is_land_in_direction (tile_x, tile_y, DIR_NE);
+	bool has_land_sw = tile_animation_neighbor_is_land_in_direction (tile_x, tile_y, DIR_SW);
+	bool has_land_se = tile_animation_neighbor_is_land_in_direction (tile_x, tile_y, DIR_SE);
+
+	if (has_land_nw && ! has_land_se) {
+		*out_dir = DIR_NW;
+		return true;
+	}
+	if (has_land_ne && ! has_land_sw) {
+		*out_dir = DIR_NE;
+		return true;
+	}
+	if (has_land_sw && ! has_land_ne) {
+		*out_dir = DIR_SW;
+		return true;
+	}
+	if (has_land_se && ! has_land_nw) {
+		*out_dir = DIR_SE;
+		return true;
+	}
+	return false;
+}
+
+bool
 tile_animation_adjacent_requirement_matches (struct tile_animation_adjacent_requirement const * req,
 						     int tile_x,
 						     int tile_y)
@@ -37118,6 +37179,12 @@ tile_animation_rule_matches_tile_base (struct tile_animation_config const * cfg,
 				break;
 			}
 		if (! matched)
+			return false;
+	}
+
+	if (cfg->direction_is_coastal_wave) {
+		enum direction dir = DIR_ZERO;
+		if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &dir))
 			return false;
 	}
 
@@ -37226,6 +37293,12 @@ tile_animation_rule_matches_tile (struct tile_animation_config const * cfg, Tile
 {
 	if ((cfg == NULL) || (! cfg->in_use) || (tile == NULL) || (tile == p_null_tile))
 		return false;
+
+	if (cfg->direction_is_coastal_wave) {
+		enum direction dir = DIR_ZERO;
+		if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &dir))
+			return false;
+	}
 
 	if (is->tile_animation_selected_valid &&
 	    (is->tile_animation_selected_mask_matrix != NULL) &&
@@ -37491,6 +37564,7 @@ add_tile_animation_from_definition (struct parsed_tile_animation_definition * de
 	cfg.terrain_type = def->terrain_type;
 	cfg.terrain_is_land = def->terrain_is_land;
 	cfg.direction = def->direction;
+	cfg.direction_is_coastal_wave = def->direction_is_coastal_wave;
 	cfg.x_offset = def->x_offset;
 	cfg.y_offset = def->y_offset;
 	cfg.frame_time_seconds = def->frame_time_seconds;
@@ -37626,8 +37700,10 @@ handle_tile_animation_definition_key (struct parsed_tile_animation_definition * 
 		}
 	} else if (slice_matches_str (key, "direction")) {
 		enum direction dir;
-		if (read_direction_value (value, &dir)) {
+		bool is_coastal_wave = false;
+		if (read_tile_animation_direction_value (value, &dir, &is_coastal_wave)) {
 			def->direction = dir;
+			def->direction_is_coastal_wave = is_coastal_wave;
 			def->has_direction = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized direction)");
@@ -37938,6 +38014,18 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_
 		if (Tile_has_city (this))
 			return;
 		struct tile_animation_config * cfg = get_tile_animation_for_effect (effect_id);
+		enum direction effective_direction = DIR_ZERO;
+		bool has_effective_direction = false;
+		if (cfg != NULL) {
+			if (cfg->direction_is_coastal_wave) {
+				if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &effective_direction))
+					return;
+				has_effective_direction = true;
+			} else if (cfg->has_direction) {
+				effective_direction = cfg->direction;
+				has_effective_direction = true;
+			}
+		}
 		int prev_override = is->tile_animation_spawn_effect_override;
 		bool had_override = is->tile_animation_spawn_effect_override_active;
 		is->tile_animation_spawn_effect_override = effect_id;
@@ -37948,9 +38036,9 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_
 		// Positive X moves right, positive Y moves down.
 		Tile_Animated_Effect * fx = this->Body.active_tile_effect;
 		if ((fx != NULL) && (cfg != NULL)) {
-			if (cfg->has_direction) {
-				fx->flc_animation.summary.direction = cfg->direction;
-				fx->flc_animation.summary.direction_2 = cfg->direction;
+			if (has_effective_direction) {
+				fx->flc_animation.summary.direction = effective_direction;
+				fx->flc_animation.summary.direction_2 = effective_direction;
 			}
 			int x_off = cfg->has_x_offset ? cfg->x_offset : 0;
 			int y_off = cfg->has_y_offset ? cfg->y_offset : 0;

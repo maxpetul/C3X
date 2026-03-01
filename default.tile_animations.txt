@@ -25,7 +25,13 @@
   ;                               Direction values: northeast, east, southeast, south, southwest, west, northwest, north
   ;                               Example: tundra:northwest, desert:southwest
   ;  - direction                : Text. Optional animation facing override.
-  ;                               Valid values: northeast, east, southeast, south, southwest, west, northwest, north
+  ;                               Valid values: northeast, east, southeast, south, southwest, west, northwest, north, coastal-wave
+  ;                               coastal-wave: computes direction per-tile using diagonal coast shape:
+  ;                                 NW if land at northwest and not southeast
+  ;                                 NE if land at northeast and not southwest
+  ;                                 SW if land at southwest and not northeast
+  ;                                 SE if land at southeast and not northwest
+  ;                               If coastal-wave has no matching rule, the animation is hidden on that tile.
   ;                               If omitted, vanilla/default facing is used.
   ;  - x_offset                 : Integer. Optional horizontal pixel offset after centering (positive moves right).
   ;  - y_offset                 : Integer. Optional vertical pixel offset after centering (positive moves down).
@@ -40,7 +46,7 @@ name         = Wave
 ini_path     = Wave\Wave.INI
 type         = terrain
 terrain_type = coast
-adjacent_to  = land:northwest
+direction    = coastal-wave
 
 #Animation
 name          = Whales

@@ -976,6 +976,7 @@ struct tile_animation_config {
 	bool terrain_is_land;
 	int resource_id;
 	enum direction direction;
+	bool direction_is_coastal_wave;
 	int x_offset;
 	int y_offset;
 	float frame_time_seconds;
@@ -1334,6 +1335,7 @@ struct parsed_tile_animation_definition {
 	enum SquareTypes terrain_type;
 	bool terrain_is_land;
 	enum direction direction;
+	bool direction_is_coastal_wave;
 	int x_offset;
 	int y_offset;
 	float frame_time_seconds;
