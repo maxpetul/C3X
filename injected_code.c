@@ -37908,7 +37908,7 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_
 		// Positive X moves right, positive Y moves down.
 		Tile_Animated_Effect * fx = this->Body.active_tile_effect;
 		if (fx != NULL) {
-			int x_off = 25;
+			int x_off = 0; //25;
 			int y_off = 0;
 			fx->flc_animation.summary.pixel_loc_x += x_off;
 			fx->flc_animation.summary.pixel_loc_y += y_off;

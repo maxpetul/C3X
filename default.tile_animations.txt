@@ -34,3 +34,21 @@ ini_path     = Wave\Wave.INI
 type         = terrain
 terrain_type = coast
 adjacent_to  = land:northwest
+
+#Animation
+name          = Whales
+ini_path      = UnitC3XDistricts\Whale\Whale.INI
+type          = resource
+resource_type = Whales
+
+#Animation
+name          = Cattle
+ini_path      = UnitC3XDistricts\MilkCow\MilkCow.INI
+type          = resource
+resource_type = Cattle
+
+#Animation
+name          = Horses
+ini_path      = UnitC3XDistricts\Horse_Painted\HorsePainted.INI
+type          = resource
+resource_type = Horses
