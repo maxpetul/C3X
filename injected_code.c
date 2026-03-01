@@ -37828,7 +37828,7 @@ tile_animation_scheduler_tick ()
 
 		// Keep one ambient effect per tile. Runtime effect IDs are reused from vanilla,
 		// so don't key this check off effect_id.
-		if (tile->Body.field_D8 != NULL)
+		if (tile->Body.active_tile_effect != NULL)
 			continue;
 		is->tile_animation_selected_next_index[tile_index] = (byte)((i + 1) % is->tile_animation_count);
 		patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true);
@@ -37889,7 +37889,7 @@ patch_Units_Image_Data_load_animated_effect (Units_Image_Data * this, int edx, F
 
 	Units_Image_Data_load_animation (this, __, asset_path, anim, 0, -1, 1, true);
 
-	anim->Animation_Info->field_1D8[AT_ATTACK1] = 0.15f;
+	anim->Animation_Info->anim_frame_time_seconds[AT_ATTACK1] = 0.15f;
 }
 
 void __fastcall
@@ -37906,14 +37906,14 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_
 
 		// Placeholder: per-effect pixel offset after vanilla centers the animation on the tile.
 		// Positive X moves right, positive Y moves down.
-		_1A4 * fx = this->Body.field_D8;
+		Tile_Animated_Effect * fx = this->Body.active_tile_effect;
 		if (fx != NULL) {
 			int x_off = 25;
 			int y_off = 0;
-			fx->struct_188.summary.pixel_loc_x += x_off;
-			fx->struct_188.summary.pixel_loc_y += y_off;
-			fx->struct_188.summary.pixel_target_x += x_off;
-			fx->struct_188.summary.pixel_target_y += y_off;
+			fx->flc_animation.summary.pixel_loc_x += x_off;
+			fx->flc_animation.summary.pixel_loc_y += y_off;
+			fx->flc_animation.summary.pixel_target_x += x_off;
+			fx->flc_animation.summary.pixel_target_y += y_off;
 		}
 
 		is->tile_animation_spawn_effect_override = prev_override;
