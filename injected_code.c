@@ -37908,8 +37908,8 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_
 		// Positive X moves right, positive Y moves down.
 		_1A4 * fx = this->Body.field_D8;
 		if (fx != NULL) {
-			int x_off = 30;
-			int y_off = 30;
+			int x_off = 25;
+			int y_off = 0;
 			fx->struct_188.summary.pixel_loc_x += x_off;
 			fx->struct_188.summary.pixel_loc_y += y_off;
 			fx->struct_188.summary.pixel_target_x += x_off;
