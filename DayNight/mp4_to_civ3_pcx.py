@@ -3,20 +3,24 @@
 mp4_to_civ3_sheet.py
 
 Build a Civ3-style sheet from an MP4:
-- N columns sampled by time
+- N columns sampled by time OR by frame index
 - 8 rows (only first row contains frames)
 - Other rows magenta fill
 - SINGLE shared 1px green grid lines (no doubled borders)
 
 Output modes:
 - indexed: Civ3-style indexed palette and PCX output
-- rgb: RGB output (PNG recommended for editing)
+- rgb: RGB output (PCX supported; PNG also fine)
 
 Optional cutout (Option B: MOG2 background subtraction):
 - Learn a background model across the sampled frames
 - Foreground mask per frame
 - Cleanup + keep only largest blob
 - Everything else magenta
+
+Key knobs added:
+- --sample_by frame/time, with backoff handling
+- --fit crop/contain (contain avoids chopping fish at edges by letterboxing/padding)
 
 Dependencies:
   pip install pillow opencv-python numpy
@@ -50,10 +54,88 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--columns", type=int, required=True, help="Number of columns (sampled frames)")
     p.add_argument("--slot_w", type=int, required=True, help="Slot inner width (excluding border)")
     p.add_argument("--slot_h", type=int, required=True, help="Slot inner height (excluding border)")
-    p.add_argument("--out", required=True, help="Output path (pcx for indexed; png recommended for rgb)")
-    p.add_argument("--mog2_learning_rate", type=float, default=0.001, help="MOG2 learning rate per frame (0 freezes; small like 0.001 prevents absorbing the subject)")
-    p.add_argument("--mog2_warmup", type=int, default=0, help="Number of initial sampled frames used for warmup (background learning). Use only if animal not present yet.")
-    p.add_argument("--mog2_freeze_after_warmup", action="store_true", help="After warmup, freeze background model (learningRate=0).")
+    p.add_argument(
+        "--out",
+        required=True,
+        help="Output file path (.pcx recommended for your workflow; png also supported). Must be a file, not a directory.",
+    )
+
+    # Fit strategy (fixes “fish bottom cut off”)
+    p.add_argument(
+        "--fit",
+        choices=["crop", "contain"],
+        default="contain",
+        help="How to adapt frames to slot aspect. crop=center-crop to fill; contain=scale to fit and pad (prevents cutoff).",
+    )
+    p.add_argument(
+        "--pad_color",
+        choices=["magenta", "green", "black"],
+        default="magenta",
+        help="Padding color used when --fit contain.",
+    )
+
+    # Sampling strategy
+    p.add_argument(
+        "--sample_by",
+        choices=["time", "frame"],
+        default="frame",
+        help="How to sample frames: 'frame' (robust) or 'time' (uses CAP_PROP_POS_MSEC). Default: frame",
+    )
+
+    # Time-based sampling controls
+    p.add_argument(
+        "--time_endpoint_mode",
+        choices=["exclude", "include", "clamp"],
+        default="exclude",
+        help=(
+            "Only used when --sample_by time. "
+            "'exclude' never samples the exact end time (recommended). "
+            "'include' includes duration endpoint (may fail near end). "
+            "'clamp' includes endpoint but clamps to duration-epsilon."
+        ),
+    )
+    p.add_argument(
+        "--time_epsilon_ms",
+        type=float,
+        default=1.0,
+        help="Only used when --sample_by time and endpoint mode uses clamping. Default: 1.0ms",
+    )
+    p.add_argument(
+        "--time_seek_backoff_ms",
+        type=float,
+        nargs="*",
+        default=[0.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0],
+        help="Only used when --sample_by time. Backoff steps (ms) tried if read fails at target time.",
+    )
+
+    # Frame-index sampling controls
+    p.add_argument(
+        "--frame_endpoint_mode",
+        choices=["exclude_last", "include_last"],
+        default="exclude_last",
+        help=(
+            "Only used when --sample_by frame. "
+            "'exclude_last' avoids sampling the last reported frame index (recommended). "
+            "'include_last' may fail on some MP4s."
+        ),
+    )
+    p.add_argument(
+        "--frame_seek_backoff",
+        type=int,
+        nargs="*",
+        default=[0, 1, 2, 3, 5, 8, 13],
+        help="Only used when --sample_by frame. If a frame read fails, try idx-backoff steps (in frames).",
+    )
+
+    # MOG2 tuning
+    p.add_argument("--mog2_learning_rate", type=float, default=0.001, help="MOG2 learning rate per frame")
+    p.add_argument("--mog2_warmup", type=int, default=0, help="Number of initial sampled frames used for warmup")
+    p.add_argument(
+        "--mog2_freeze_after_warmup",
+        action="store_true",
+        help="After warmup, freeze background model (learningRate=0).",
+    )
+
     p.add_argument(
         "--mode",
         choices=["indexed", "rgb"],
@@ -69,52 +151,17 @@ def parse_args() -> argparse.Namespace:
 
     # Cutout (Option B)
     p.add_argument("--cutout", action="store_true", help="Enable background removal (MOG2)")
-    p.add_argument(
-        "--mog2_history",
-        type=int,
-        default=200,
-        help="MOG2 history length (bigger = more stable background model)",
-    )
-    p.add_argument(
-        "--mog2_var_threshold",
-        type=float,
-        default=16.0,
-        help="MOG2 varThreshold (lower = more foreground; higher = less/noisier suppression)",
-    )
-    p.add_argument(
-        "--mog2_detect_shadows",
-        action="store_true",
-        help="Enable MOG2 shadow detection (usually OFF for clean masks)",
-    )
-    p.add_argument(
-        "--cutout_center_frac",
-        type=float,
-        default=0.85,
-        help="Center region fraction (0-1) to bias toward the subject",
-    )
-    p.add_argument(
-        "--cutout_keep_largest",
-        action="store_true",
-        help="Keep only the largest connected component (recommended)",
-    )
-    p.add_argument(
-        "--cutout_min_area",
-        type=int,
-        default=200,
-        help="Minimum component area to keep (ignored if keep_largest is on)",
-    )
-    p.add_argument(
-        "--cutout_dilate",
-        type=int,
-        default=2,
-        help="Dilate mask pixels (grows subject a bit to avoid edge chomp)",
-    )
-    p.add_argument(
-        "--cutout_blur",
-        type=int,
-        default=3,
-        help="Blur kernel size for mask (odd number; 0 disables). Helps soften chattery edges.",
-    )
+    p.add_argument("--mog2_history", type=int, default=200, help="MOG2 history length")
+    p.add_argument("--mog2_var_threshold", type=float, default=16.0, help="MOG2 varThreshold")
+    p.add_argument("--mog2_detect_shadows", action="store_true", help="Enable MOG2 shadow detection")
+    p.add_argument("--cutout_center_frac", type=float, default=0.85, help="Center region fraction (0-1)")
+    p.add_argument("--cutout_keep_largest", action="store_true", help="Keep only the largest component")
+    p.add_argument("--cutout_min_area", type=int, default=200, help="Minimum component area to keep")
+    p.add_argument("--cutout_dilate", type=int, default=2, help="Dilate mask pixels")
+    p.add_argument("--cutout_blur", type=int, default=3, help="Blur kernel size for mask (odd; 0 disables)")
+
+    # Debug
+    p.add_argument("--print_video_info", action="store_true", help="Print FPS/frame_count/duration estimates")
 
     return p.parse_args()
 
@@ -128,6 +175,16 @@ def pil_resample(name: str) -> int:
         return Image.BICUBIC
     if name == "lanczos":
         return Image.LANCZOS
+    raise ValueError(name)
+
+
+def pad_color_rgb(name: str) -> Tuple[int, int, int]:
+    if name == "magenta":
+        return MAGENTA
+    if name == "green":
+        return GREEN
+    if name == "black":
+        return BLACK
     raise ValueError(name)
 
 
@@ -149,6 +206,30 @@ def center_crop_to_aspect(im: Image.Image, target_w: int, target_h: int) -> Imag
         return im.crop((0, top, w, top + new_h))
 
 
+def fit_contain(
+    im: Image.Image,
+    target_w: int,
+    target_h: int,
+    pad_rgb: Tuple[int, int, int],
+    resample: int,
+) -> Image.Image:
+    """Scale to fit entirely within target, preserve aspect, then pad to exact size."""
+    w, h = im.size
+    if w <= 0 or h <= 0:
+        return Image.new("RGB", (target_w, target_h), color=pad_rgb)
+
+    scale = min(target_w / w, target_h / h)
+    nw = max(1, int(round(w * scale)))
+    nh = max(1, int(round(h * scale)))
+
+    resized = im.resize((nw, nh), resample=resample)
+    out = Image.new("RGB", (target_w, target_h), color=pad_rgb)
+    ox = (target_w - nw) // 2
+    oy = (target_h - nh) // 2
+    out.paste(resized, (ox, oy))
+    return out
+
+
 def get_duration_ms(cap: cv2.VideoCapture) -> float:
     fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
     frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0
@@ -163,20 +244,125 @@ def get_duration_ms(cap: cv2.VideoCapture) -> float:
     return max(0.0, end_ms)
 
 
-def linspace_times(duration_ms: float, n: int) -> List[float]:
+def linspace_times(duration_ms: float, n: int, endpoint_mode: str, eps_ms: float) -> List[float]:
     if n <= 0:
         return []
     if duration_ms <= 0:
         return [0.0] * n
-    return [float(x) for x in np.linspace(0.0, duration_ms, n)]
+    if n == 1:
+        return [0.0]
+
+    if endpoint_mode == "exclude":
+        return [float(x) for x in np.linspace(0.0, float(duration_ms), n, endpoint=False)]
+    if endpoint_mode == "include":
+        return [float(x) for x in np.linspace(0.0, float(duration_ms), n, endpoint=True)]
+    if endpoint_mode == "clamp":
+        hi = max(0.0, float(duration_ms) - float(max(0.0, eps_ms)))
+        return [float(x) for x in np.linspace(0.0, hi, n, endpoint=True)]
+    raise ValueError(endpoint_mode)
 
 
-def read_frame_at_time(cap: cv2.VideoCapture, t_ms: float) -> np.ndarray:
-    cap.set(cv2.CAP_PROP_POS_MSEC, float(t_ms))
-    ok, frame_bgr = cap.read()
-    if not ok or frame_bgr is None:
-        raise RuntimeError(f"Failed to read frame at time {t_ms:.2f}ms")
-    return cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+def read_frame_at_time_with_backoff(
+    cap: cv2.VideoCapture,
+    t_ms: float,
+    backoffs_ms: List[float],
+) -> np.ndarray:
+    for back in backoffs_ms:
+        t_try = max(0.0, float(t_ms) - float(back))
+        cap.set(cv2.CAP_PROP_POS_MSEC, t_try)
+        ok, frame_bgr = cap.read()
+        if ok and frame_bgr is not None:
+            return cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    raise RuntimeError(f"Failed to read frame near time {t_ms:.2f}ms")
+
+
+def sample_frames_by_time(
+    cap: cv2.VideoCapture,
+    cols: int,
+    endpoint_mode: str,
+    eps_ms: float,
+    backoffs_ms: List[float],
+    print_info: bool,
+) -> List[np.ndarray]:
+    duration_ms = get_duration_ms(cap)
+    times = linspace_times(duration_ms, cols, endpoint_mode=endpoint_mode, eps_ms=eps_ms)
+
+    if print_info:
+        fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+        frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0
+        print(f"[video] fps={fps:.3f} frame_count={frame_count} duration_ms≈{duration_ms:.2f}")
+        if times:
+            print(f"[sample] time range: {times[0]:.2f}ms .. {times[-1]:.2f}ms (count={len(times)})")
+
+    frames: List[np.ndarray] = []
+    for t_ms in times:
+        frames.append(read_frame_at_time_with_backoff(cap, t_ms, backoffs_ms=backoffs_ms))
+    return frames
+
+
+def read_frame_at_index_with_backoff(
+    cap: cv2.VideoCapture,
+    idx: int,
+    frame_count: int,
+    backoffs: List[int],
+) -> np.ndarray:
+    for b in backoffs:
+        j = int(idx) - int(b)
+        if j < 0 or j >= int(frame_count):
+            continue
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(j))
+        ok, frame_bgr = cap.read()
+        if ok and frame_bgr is not None:
+            return cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    raise RuntimeError(f"Failed to read frame index {int(idx)} with backoff (frame_count={int(frame_count)})")
+
+
+def sample_frames_by_index(
+    cap: cv2.VideoCapture,
+    cols: int,
+    print_info: bool,
+    endpoint_mode: str,
+    backoffs: List[int],
+) -> List[np.ndarray]:
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+
+    if frame_count <= 0:
+        duration_ms = get_duration_ms(cap)
+        if print_info:
+            print(f"[video] frame_count unavailable; fps={fps:.3f} duration_ms≈{duration_ms:.2f}. Falling back to time sampling.")
+        return sample_frames_by_time(
+            cap,
+            cols=cols,
+            endpoint_mode="exclude",
+            eps_ms=1.0,
+            backoffs_ms=[0.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0],
+            print_info=print_info,
+        )
+
+    duration_ms = (frame_count - 1) / fps * 1000.0 if fps > 0 else float("nan")
+
+    hi = frame_count - 1
+    if endpoint_mode == "exclude_last":
+        hi = max(0, frame_count - 2)
+
+    if cols == 1:
+        idxs = np.array([0], dtype=int)
+    else:
+        idxs = np.linspace(0, hi, cols, endpoint=True).astype(int)
+
+    if print_info:
+        dur_str = f"{duration_ms:.2f}" if duration_ms == duration_ms else "unknown"
+        print(f"[video] fps={fps:.3f} frame_count={frame_count} duration_ms≈{dur_str}")
+        if len(idxs) > 0:
+            print(f"[sample] frame index range: {int(idxs[0])} .. {int(idxs[-1])} (count={len(idxs)})")
+            if endpoint_mode == "exclude_last":
+                print(f"[sample] exclude_last enabled; max sampled index is {int(hi)} (reported last is {frame_count - 1})")
+
+    frames: List[np.ndarray] = []
+    for idx in idxs:
+        frames.append(read_frame_at_index_with_backoff(cap, int(idx), frame_count=frame_count, backoffs=backoffs))
+    return frames
 
 
 # --------------------------
@@ -198,7 +384,6 @@ def keep_largest_component(mask: np.ndarray) -> np.ndarray:
     num, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     if num <= 1:
         return mask
-    # pick component with max area
     best_i = 1
     best_area = int(stats[1, cv2.CC_STAT_AREA])
     for i in range(2, num):
@@ -223,12 +408,12 @@ def filter_small_components(mask: np.ndarray, min_area: int) -> np.ndarray:
 
 def cleanup_mask(mask: np.ndarray, dilate_iters: int) -> np.ndarray:
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    # Close to fill holes, open to remove specks
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k, iterations=2)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k, iterations=1)
     if dilate_iters and int(dilate_iters) > 0:
         mask = cv2.dilate(mask, k, iterations=int(dilate_iters))
     return mask
+
 
 def mog2_cutout_frames(
     frames_rgb: List[np.ndarray],
@@ -253,7 +438,6 @@ def mog2_cutout_frames(
     out_frames: List[np.ndarray] = []
 
     for i, fr in enumerate(frames_rgb):
-        # Warmup phase (optional): let it learn background a bit
         if i < int(warmup):
             lr = 0.5
         else:
@@ -267,7 +451,6 @@ def mog2_cutout_frames(
         # If shadows enabled, OpenCV uses 127 for shadows; treat as background.
         fg = (fg == 255).astype(np.uint8) * 255
 
-        # Gate to center
         h, w = fg.shape
         gate = center_gate_mask(h, w, center_frac)
         fg = cv2.bitwise_and(fg, gate)
@@ -292,6 +475,7 @@ def mog2_cutout_frames(
 
     return out_frames
 
+
 # --------------------------
 # Palette + sheet building
 # --------------------------
@@ -300,7 +484,7 @@ def build_sample_palette_from_frames(frames_rgb: List[Image.Image]) -> List[Tupl
     if not frames_rgb:
         return []
 
-    thumbs = []
+    thumbs: List[Image.Image] = []
     for im in frames_rgb:
         w, h = im.size
         scale = max(1, math.ceil(max(w, h) / 128))
@@ -317,15 +501,18 @@ def build_sample_palette_from_frames(frames_rgb: List[Image.Image]) -> List[Tupl
         x += t.size[0]
 
     q = mosaic.quantize(colors=SAMPLED_COLORS, method=Image.MEDIANCUT, dither=Image.NONE)
-    pal = q.getpalette()
+    pal = q.getpalette() or []
 
-    colors = []
+    colors: List[Tuple[int, int, int]] = []
     for i in range(SAMPLED_COLORS):
-        r, g, b = pal[i * 3 : i * 3 + 3]
-        colors.append((r, g, b))
+        base = i * 3
+        if base + 2 >= len(pal):
+            break
+        r, g, b = pal[base: base + 3]
+        colors.append((int(r), int(g), int(b)))
 
     seen = set()
-    uniq = []
+    uniq: List[Tuple[int, int, int]] = []
     for c in colors:
         if c not in seen:
             uniq.append(c)
@@ -343,7 +530,7 @@ def make_civ3_palette(sampled: List[Tuple[int, int, int]]) -> List[int]:
     if len(sampled) < SAMPLED_COLORS:
         sampled = sampled + [BLACK] * (SAMPLED_COLORS - len(sampled))
     for (r, g, b) in sampled:
-        pal += [r, g, b]
+        pal += [int(r), int(g), int(b)]
 
     pal += [*GREEN]    # 254
     pal += [*MAGENTA]  # 255
@@ -374,55 +561,86 @@ def build_sheet_rgb(frames: List[Image.Image], cols: int, slot_w: int, slot_h: i
     return sheet
 
 
+def validate_out_path(out_path: str) -> None:
+    if os.path.isdir(out_path):
+        raise ValueError(f"--out must be a file path, not a directory: {out_path}")
+    parent = os.path.dirname(out_path) or "."
+    if parent and not os.path.exists(parent):
+        os.makedirs(parent, exist_ok=True)
+
+
 def main() -> None:
     args = parse_args()
     if args.columns <= 0:
         raise ValueError("--columns must be > 0")
 
+    validate_out_path(args.out)
+
     resample = pil_resample(args.resample)
+    pad_rgb = pad_color_rgb(args.pad_color)
 
     cap = cv2.VideoCapture(args.mp4)
     if not cap.isOpened():
         raise RuntimeError(f"Could not open video: {args.mp4}")
 
-    duration_ms = get_duration_ms(cap)
-    times = linspace_times(duration_ms, args.columns)
-
-    raw_frames_np: List[np.ndarray] = []
-    for t_ms in times:
-        raw_frames_np.append(read_frame_at_time(cap, t_ms))
-    cap.release()
+    try:
+        if args.sample_by == "frame":
+            raw_frames_np = sample_frames_by_index(
+                cap,
+                cols=args.columns,
+                print_info=bool(args.print_video_info),
+                endpoint_mode=args.frame_endpoint_mode,
+                backoffs=[int(x) for x in (args.frame_seek_backoff or [0])],
+            )
+        else:
+            raw_frames_np = sample_frames_by_time(
+                cap,
+                cols=args.columns,
+                endpoint_mode=args.time_endpoint_mode,
+                eps_ms=float(args.time_epsilon_ms),
+                backoffs_ms=[float(x) for x in (args.time_seek_backoff_ms or [0.0])],
+                print_info=bool(args.print_video_info),
+            )
+    finally:
+        cap.release()
 
     if args.cutout:
         processed_np = mog2_cutout_frames(
-        raw_frames_np,
-        history=args.mog2_history,
-        var_threshold=args.mog2_var_threshold,
-        detect_shadows=args.mog2_detect_shadows,
-        center_frac=args.cutout_center_frac,
-        keep_largest=True,
-        min_area=args.cutout_min_area,
-        dilate_iters=args.cutout_dilate,
-        blur_k=args.cutout_blur,
-        learning_rate=args.mog2_learning_rate,
-        warmup=args.mog2_warmup,
-        freeze_after_warmup=args.mog2_freeze_after_warmup,
-    )
+            raw_frames_np,
+            history=args.mog2_history,
+            var_threshold=args.mog2_var_threshold,
+            detect_shadows=args.mog2_detect_shadows,
+            center_frac=args.cutout_center_frac,
+            keep_largest=True if args.cutout_keep_largest else False,
+            min_area=args.cutout_min_area,
+            dilate_iters=args.cutout_dilate,
+            blur_k=args.cutout_blur,
+            learning_rate=args.mog2_learning_rate,
+            warmup=args.mog2_warmup,
+            freeze_after_warmup=args.mog2_freeze_after_warmup,
+        )
     else:
         processed_np = raw_frames_np
 
     frames: List[Image.Image] = []
     for fr_np in processed_np:
         im = Image.fromarray(fr_np, mode="RGB")
-        im = center_crop_to_aspect(im, args.slot_w, args.slot_h)
-        im = im.resize((args.slot_w, args.slot_h), resample=resample)
+
+        if args.fit == "crop":
+            im = center_crop_to_aspect(im, args.slot_w, args.slot_h)
+            im = im.resize((args.slot_w, args.slot_h), resample=resample)
+        else:
+            # contain: NEVER crops; prevents “fish bottom cut off”
+            im = fit_contain(im, args.slot_w, args.slot_h, pad_rgb=pad_rgb, resample=resample)
+
         frames.append(im)
 
     sheet_rgb = build_sheet_rgb(frames, args.columns, args.slot_w, args.slot_h)
 
     if args.mode == "rgb":
-        sheet_rgb.save(args.out)
-        print(f"Saved RGB: {args.out}")
+        # PCX supports 24-bit RGB, so this is fine (and matches your requirement).
+        sheet_rgb.save(args.out, format="PCX")
+        print(f"Saved RGB PCX: {args.out}")
         return
 
     sampled_colors = build_sample_palette_from_frames(frames)
@@ -435,7 +653,7 @@ def main() -> None:
 
     ext = os.path.splitext(args.out)[1].lower()
     if ext != ".pcx":
-        print("Note: --mode indexed is intended for .pcx output.")
+        print("Note: --mode indexed is intended for .pcx output (use .pcx extension).")
 
     indexed.save(args.out, format="PCX")
     print(f"Saved indexed PCX: {args.out}")

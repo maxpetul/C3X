@@ -52,3 +52,9 @@ name          = Horses
 ini_path      = UnitC3XDistricts\Horse_Painted\HorsePainted.INI
 type          = resource
 resource_type = Horses
+
+#Animation
+name          = Fish
+ini_path      = Fish\Fish.INI
+type          = resource
+resource_type = Fish
