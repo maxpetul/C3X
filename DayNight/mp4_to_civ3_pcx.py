@@ -21,6 +21,7 @@ Optional cutout (Option B: MOG2 background subtraction):
 Key knobs added:
 - --sample_by frame/time, with backoff handling
 - --fit crop/contain (contain avoids chopping fish at edges by letterboxing/padding)
+- --zoom (scales the frame up/down before fit; helps make subject larger in-slot)
 
 Dependencies:
   pip install pillow opencv-python numpy
@@ -72,6 +73,17 @@ def parse_args() -> argparse.Namespace:
         choices=["magenta", "green", "black"],
         default="magenta",
         help="Padding color used when --fit contain.",
+    )
+
+    # NEW: zoom
+    p.add_argument(
+        "--zoom",
+        type=float,
+        default=1.0,
+        help=(
+            "Zoom factor applied to each frame BEFORE fit. "
+            "1.0=no change, >1.0 zooms in (subject bigger), <1.0 zooms out."
+        ),
     )
 
     # Sampling strategy
@@ -186,6 +198,38 @@ def pad_color_rgb(name: str) -> Tuple[int, int, int]:
     if name == "black":
         return BLACK
     raise ValueError(name)
+
+
+def apply_zoom_center(im: Image.Image, zoom: float, resample: int) -> Image.Image:
+    """
+    Zoom around center while keeping the SAME output dimensions as input.
+    - zoom > 1: zoom in (subject bigger)
+    - zoom < 1: zoom out (subject smaller; adds border replicated by scaling down + padding)
+    This is done BEFORE fit/crop/contain.
+    """
+    if zoom <= 0:
+        raise ValueError("--zoom must be > 0")
+    if abs(zoom - 1.0) < 1e-9:
+        return im
+
+    w, h = im.size
+    # Scale image
+    nw = max(1, int(round(w * zoom)))
+    nh = max(1, int(round(h * zoom)))
+    scaled = im.resize((nw, nh), resample=resample)
+
+    if zoom >= 1.0:
+        # Center-crop back to original size
+        left = (nw - w) // 2
+        top = (nh - h) // 2
+        return scaled.crop((left, top, left + w, top + h))
+
+    # zoom < 1.0: center-pad back to original size
+    out = Image.new(im.mode, (w, h), color=BLACK if im.mode == "RGB" else 0)
+    ox = (w - nw) // 2
+    oy = (h - nh) // 2
+    out.paste(scaled, (ox, oy))
+    return out
 
 
 def center_crop_to_aspect(im: Image.Image, target_w: int, target_h: int) -> Image.Image:
@@ -573,6 +617,8 @@ def main() -> None:
     args = parse_args()
     if args.columns <= 0:
         raise ValueError("--columns must be > 0")
+    if args.zoom <= 0:
+        raise ValueError("--zoom must be > 0")
 
     validate_out_path(args.out)
 
@@ -626,6 +672,9 @@ def main() -> None:
     for fr_np in processed_np:
         im = Image.fromarray(fr_np, mode="RGB")
 
+        # NEW: apply zoom before fit
+        im = apply_zoom_center(im, zoom=float(args.zoom), resample=resample)
+
         if args.fit == "crop":
             im = center_crop_to_aspect(im, args.slot_w, args.slot_h)
             im = im.resize((args.slot_w, args.slot_h), resample=resample)
@@ -638,7 +687,6 @@ def main() -> None:
     sheet_rgb = build_sheet_rgb(frames, args.columns, args.slot_w, args.slot_h)
 
     if args.mode == "rgb":
-        # PCX supports 24-bit RGB, so this is fine (and matches your requirement).
         sheet_rgb.save(args.out, format="PCX")
         print(f"Saved RGB PCX: {args.out}")
         return
