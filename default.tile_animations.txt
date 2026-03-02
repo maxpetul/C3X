@@ -46,7 +46,7 @@ name         = Wave
 ini_path     = Wave\Wave.INI
 type         = terrain
 terrain_type = coast
-direction    = coastal-wave
+adjacent_to  = land:northwest
 
 #Animation
 name          = Whales
