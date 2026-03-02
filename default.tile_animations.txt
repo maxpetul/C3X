@@ -9,10 +9,41 @@
   ;  Tile Animation config fields (each Animation block begins with "#Animation")
   ;  - name                     : Text (required). Internal animation name; must be unique.
   ;  - ini_path                 : INI filename under Art/Animations/ (required).
-  ;  - type                     : Text (required). "terrain" or "resource".
+  ;  - type                     : Text (required). "terrain", "resource", "pcx", or "coastal-wave".
   ;                               - terrain: animation can appear on matching terrain tiles.
   ;                               - resource: animation replaces the static resource PCX draw on matching resource tiles.
+  ;                               - pcx: animation appears on tiles where a specific map sprite sheet/index is actually drawn.
+  ;                               - coastal-wave: animation appears on coast tiles and auto-computes its facing from diagonal coastline shape.
   ;  - resource_type            : Text. Resource name. Required if type = resource.
+  ;  - pcx_file                 : Text. Required if type = pcx. Use the exact Civ3 Art\Terrain filename. Supported values:
+  ;                                 TerrainBuildings.PCX
+  ;                                 waterfalls.pcx
+  ;                                 floodplains.pcx
+  ;                                 deltaRivers.pcx
+  ;                                 mtnRivers.pcx
+  ;                                 irrigation DESETT.pcx
+  ;                                 irrigation PLAINS.pcx
+  ;                                 irrigation.pcx
+  ;                                 irrigation TUNDRA.pcx
+  ;                                 Volcanos.pcx
+  ;                                 Volcanos forests.pcx
+  ;                                 Volcanos jungles.pcx
+  ;                                 Volcanos-snow.pcx
+  ;                                 grassland forests.pcx
+  ;                                 plains forests.pcx
+  ;                                 tundra forests.pcx
+  ;                                 LMForests.pcx
+  ;                                 Mountains.pcx
+  ;                                 mountain forests.pcx
+  ;                                 mountain jungles.pcx
+  ;                                 Mountains-snow.pcx
+  ;                                 xhills.pcx
+  ;                                 hill forests.pcx
+  ;                                 hill jungle.pcx
+  ;                                 LMHills.pcx
+  ;                                 roads.pcx
+  ;                                 railroads.pcx
+  ;  - pcx_index                : Integer. Required if type = pcx. Sprite index inside that PCX sheet.
   ;  - terrain_type             : Text. Required if type = terrain.
   ;                               Valid values: desert, plains, grassland, jungle, tundra, floodplain, swamp, hills, mountains,
   ;                                            forest, volcano, snow-forest, snow-mountains, snow-volcano, coast, sea, ocean, land
@@ -25,18 +56,12 @@
   ;                               Direction values: northeast, east, southeast, south, southwest, west, northwest, north
   ;                               Example: tundra:northwest, desert:southwest
   ;  - direction                : Text. Optional animation facing override.
-  ;                               Valid values: northeast, east, southeast, south, southwest, west, northwest, north, coastal-wave
-  ;                               coastal-wave: computes direction per-tile using diagonal coast shape:
-  ;                                 NW if land at northwest and not southeast
-  ;                                 NE if land at northeast and not southwest
-  ;                                 SW if land at southwest and not northeast
-  ;                                 SE if land at southeast and not northwest
-  ;                               If coastal-wave has no matching rule, the animation is hidden on that tile.
+  ;                               Valid values: northeast, east, southeast, south, southwest, west, northwest, north
   ;                               If omitted, vanilla/default facing is used.
   ;  - x_offset                 : Integer. Optional horizontal pixel offset after centering (positive moves right).
   ;  - y_offset                 : Integer. Optional vertical pixel offset after centering (positive moves down).
   ;  - frame_time_seconds       : Float. Optional playback frame time for AT_ATTACK1.
-  ;                               Lower values animate faster. 0.15 matches the previous hardcoded default.
+  ;                               Lower values animate faster. (default: 0.15)
   ;  - show_in_day_night_hours  : Comma-delimited numbers [0..23]. Optional allowed day/night cycle hours.
   ;  - show_in_seasons          : Comma-delimited seasons. Optional allowed seasons: spring, summer, fall, winter.
 ]
@@ -74,3 +99,4 @@ name          = Fish
 ini_path      = Fish\Fish.INI
 type          = resource
 resource_type = Fish
+frame_time_seconds = 0.1

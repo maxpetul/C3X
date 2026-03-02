@@ -253,6 +253,12 @@ void tile_animation_scheduler_tick ();
 void rebuild_tile_animation_rule_match_cache ();
 void __fastcall patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_x, int tile_y, bool randomize_start_frame);
 void reset_tile_animation_runtime_state ();
+bool tile_animation_matches_time_filters (struct tile_animation_config const * cfg);
+bool tile_animation_cache_needs_rebuild ();
+void clear_tile_animation_pcx_matches_in_cache ();
+void register_tile_animation_pcx_draw_for_current_tile (Sprite * sprite);
+void rebuild_tile_animation_pcx_sprite_lookup ();
+void refresh_tile_animation_pcx_active_mask ();
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -2264,15 +2270,6 @@ read_tile_animation_direction_value (struct string_slice const * s, enum directi
 {
 	if (out_is_coastal_wave != NULL)
 		*out_is_coastal_wave = false;
-
-	struct string_slice trimmed = trim_string_slice (s, 1);
-	if (slice_matches_str (&trimmed, "coastal-wave")) {
-		if (out_dir != NULL)
-			*out_dir = DIR_SE;
-		if (out_is_coastal_wave != NULL)
-			*out_is_coastal_wave = true;
-		return true;
-	}
 
 	return read_direction_value (s, out_dir);
 }
@@ -18402,6 +18399,13 @@ patch_init_floating_point ()
 	is->day_night_cycle_img_proxies_indexed = false;
 	is->day_night_sprite_proxy_by_season_and_hour = NULL;
 	is->cycle_imgs = NULL;
+	is->tile_animation_pcx_sprite_lookup = (struct table) {0};
+	is->tile_animation_pcx_rule_key_to_index = (struct table) {0};
+	is->tile_animation_pcx_rule_key_count = 0;
+	memset (is->tile_animation_pcx_rule_masks, 0, sizeof is->tile_animation_pcx_rule_masks);
+	memset (is->tile_animation_pcx_word_mask, 0, sizeof is->tile_animation_pcx_word_mask);
+	memset (is->tile_animation_pcx_active_word_mask, 0, sizeof is->tile_animation_pcx_active_word_mask);
+	is->tile_animation_has_pcx_rules = false;
 
 	is->charmed_types_converted_to_ptw_arty = NULL;
 	is->count_charmed_types_converted_to_ptw_arty = 0;
@@ -23953,6 +23957,8 @@ patch_Sprite_draw (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int 
 int __fastcall
 patch_Sprite_draw_on_map (Sprite * this, int edx, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7)
 {
+	if (is->current_config.enable_custom_animations)
+		register_tile_animation_pcx_draw_for_current_tile (this);
 	Sprite * to_draw = get_cycle_sprite_proxy(this);
 	return Sprite_draw_on_map(to_draw ? to_draw : this, __, map_renderer, pixel_x, pixel_y, param_4, param_5, param_6, param_7);
 }
@@ -25114,6 +25120,16 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 	if (is->saved_tile_count >= 0) {
 		p_bic_data->Map.TileCount = is->saved_tile_count;
 		is->saved_tile_count = -1;
+	}
+
+	if (is->current_config.enable_custom_animations && is->tile_animation_has_pcx_rules) {
+		if (is->tile_animation_pcx_sprite_lookup.len == 0)
+			rebuild_tile_animation_pcx_sprite_lookup ();
+		if (tile_animation_cache_needs_rebuild ())
+			rebuild_tile_animation_rule_match_cache ();
+		// Per-frame refresh: clear stale PCX bits and rebuild only time-valid PCX candidates.
+		refresh_tile_animation_pcx_active_mask ();
+		clear_tile_animation_pcx_matches_in_cache ();
 	}
 
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
@@ -34488,7 +34504,13 @@ patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int vi
 		tile = tile_at (is->viewing_tile_info_x, is->viewing_tile_info_y);
 
 	bool suppress_static_resource = false;
-	if ((tile != NULL) && (tile != p_null_tile))
+	bool tile_visible_to_civ = false;
+	if ((visible_to_civ_id >= 0) && (visible_to_civ_id < 32))
+		tile_visible_to_civ = patch_Leader_is_tile_visible (&leaders[visible_to_civ_id], __, tile_x, tile_y);
+
+	// Only replace static resource art with animation when the tile is currently visible to a civ.
+	// If it's not visible, keep vanilla/static resource draw behavior.
+	if ((tile != NULL) && (tile != p_null_tile) && tile_visible_to_civ)
 		suppress_static_resource = tile_has_matching_resource_animation_for_draw (tile, tile_x, tile_y);
 
 	if (! is->current_config.enable_districts) {
@@ -37012,6 +37034,278 @@ patch_Tile_check_water_for_canal_move_to_adjacent_tile_dest (Tile * this)
 	return this->vtable->m35_Check_Is_Water (this);
 }
 
+int
+pack_tile_animation_pcx_lookup_value (int pcx_file_id, int pcx_index)
+{
+	int file_bits = (pcx_file_id < 0) ? 0 : (pcx_file_id + 1);
+	return (file_bits << 12) | (pcx_index & 0xFFF);
+}
+
+bool
+unpack_tile_animation_pcx_lookup_value (int packed, int * out_pcx_file_id, int * out_pcx_index)
+{
+	int file_bits = (packed >> 12) & 0xFFFFF;
+	if (file_bits <= 0)
+		return false;
+	if (out_pcx_file_id != NULL)
+		*out_pcx_file_id = file_bits - 1;
+	if (out_pcx_index != NULL)
+		*out_pcx_index = packed & 0xFFF;
+	return true;
+}
+
+void
+insert_tile_animation_pcx_sprite_mapping (Sprite * sprite, int pcx_file_id, int pcx_index)
+{
+	if ((sprite == NULL) || (sprite->vtable == NULL))
+		return;
+	itable_insert (&is->tile_animation_pcx_sprite_lookup, (int)sprite, pack_tile_animation_pcx_lookup_value (pcx_file_id, pcx_index));
+}
+
+void
+insert_tile_animation_pcx_sprite_range (Sprite * sprites, int count, int pcx_file_id)
+{
+	if ((sprites == NULL) || (count <= 0))
+		return;
+	for (int i = 0; i < count; i++)
+		insert_tile_animation_pcx_sprite_mapping (&sprites[i], pcx_file_id, i);
+}
+
+void
+clear_tile_animation_pcx_sprite_lookup ()
+{
+	table_deinit (&is->tile_animation_pcx_sprite_lookup);
+	is->tile_animation_pcx_sprite_lookup = (struct table) {0};
+}
+
+void
+clear_tile_animation_pcx_rule_lookup ()
+{
+	// Rule lookup maps packed (pcx_file_id, pcx_index) -> rule-mask row index.
+	table_deinit (&is->tile_animation_pcx_rule_key_to_index);
+	is->tile_animation_pcx_rule_key_to_index = (struct table) {0};
+	is->tile_animation_pcx_rule_key_count = 0;
+	memset (is->tile_animation_pcx_rule_masks, 0, sizeof is->tile_animation_pcx_rule_masks);
+}
+
+void
+rebuild_tile_animation_pcx_sprite_lookup ()
+{
+	// Build once-per-map_renderer pointers: Sprite* -> packed (pcx_file_id, pcx_index).
+	// This lets draw-hook registration avoid any name/index inference work.
+	clear_tile_animation_pcx_sprite_lookup ();
+
+	Map_Renderer * mr = &p_bic_data->Map.Renderer;
+	insert_tile_animation_pcx_sprite_mapping (&mr->Terrain_Buldings_Mines, TAPF_TERRAINBUILDINGS, 0);
+	insert_tile_animation_pcx_sprite_range (mr->Waterfalls_Images, 4, TAPF_WATERFALLS);
+	insert_tile_animation_pcx_sprite_range (mr->Flood_Plains_Images, 16, TAPF_FLOODPLAINS);
+	insert_tile_animation_pcx_sprite_range (mr->Delta_Rivers_Images, 16, TAPF_DELTARIVERS);
+	insert_tile_animation_pcx_sprite_range (mr->Mountain_Rivers_Images, 16, TAPF_MTNRIVERS);
+	insert_tile_animation_pcx_sprite_range (mr->Irrigation_Desert_Images, 16, TAPF_IRRIGATION_DESETT);
+	insert_tile_animation_pcx_sprite_range (mr->Irrigation_Plains_Images, 16, TAPF_IRRIGATION_PLAINS);
+	insert_tile_animation_pcx_sprite_range (mr->Irrigation_Images, 16, TAPF_IRRIGATION);
+	insert_tile_animation_pcx_sprite_range (mr->Irrigation_Tundra_Images, 16, TAPF_IRRIGATION_TUNDRA);
+	insert_tile_animation_pcx_sprite_range (mr->Volcanos_Images, 16, TAPF_VOLCANOS);
+	insert_tile_animation_pcx_sprite_range (mr->Volcanos_Forests_Images, 16, TAPF_VOLCANOS_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Volcanos_Jungles_Images, 16, TAPF_VOLCANOS_JUNGLES);
+	insert_tile_animation_pcx_sprite_range (mr->Volcanos_Snow_Images, 16, TAPF_VOLCANOS_SNOW);
+	insert_tile_animation_pcx_sprite_range (mr->Grassland_Forests_Large, 8, TAPF_GRASSLAND_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Grassland_Forests_Small, 10, TAPF_GRASSLAND_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Grassland_Forests_Pines, 12, TAPF_GRASSLAND_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Plains_Forests_Large, 8, TAPF_PLAINS_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Plains_Forests_Small, 10, TAPF_PLAINS_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Plains_Forests_Pines, 12, TAPF_PLAINS_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Tundra_Forests_Large, 8, TAPF_TUNDRA_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Tundra_Forests_Small, 10, TAPF_TUNDRA_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Tundra_Forests_Pines, 12, TAPF_TUNDRA_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->LM_Forests_Large_Images, 8, TAPF_LMFORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->LM_Forests_Small_Images, 10, TAPF_LMFORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->LM_Forests_Pines_Images, 12, TAPF_LMFORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Mountains_Images, 16, TAPF_MOUNTAINS);
+	insert_tile_animation_pcx_sprite_range (mr->Mountains_Forests_Images, 16, TAPF_MOUNTAIN_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Mountains_Jungles_Images, 16, TAPF_MOUNTAIN_JUNGLES);
+	insert_tile_animation_pcx_sprite_range (mr->Mountains_Snow_Images, 16, TAPF_MOUNTAINS_SNOW);
+	insert_tile_animation_pcx_sprite_range (mr->Hills_Images, 16, TAPF_XHILLS);
+	insert_tile_animation_pcx_sprite_range (mr->Hills_Forests_Images, 16, TAPF_HILL_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Hills_Jungle_Images, 16, TAPF_HILL_JUNGLE);
+	insert_tile_animation_pcx_sprite_range (mr->LM_Hills_Images, 16, TAPF_LMHILLS);
+	insert_tile_animation_pcx_sprite_range (mr->Roads_Images, 256, TAPF_ROADS);
+	insert_tile_animation_pcx_sprite_range (mr->Railroads_Images, 272, TAPF_RAILROADS);
+}
+
+bool
+read_tile_animation_pcx_file (struct string_slice const * s, int * out_id)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	int id = TILE_ANIM_PCX_FILE_UNKNOWN;
+
+	if (slice_matches_str (&trimmed, "TerrainBuildings.PCX"))       id = TAPF_TERRAINBUILDINGS;
+	else if (slice_matches_str (&trimmed, "waterfalls.pcx"))        id = TAPF_WATERFALLS;
+	else if (slice_matches_str (&trimmed, "floodplains.pcx"))       id = TAPF_FLOODPLAINS;
+	else if (slice_matches_str (&trimmed, "deltaRivers.pcx"))       id = TAPF_DELTARIVERS;
+	else if (slice_matches_str (&trimmed, "mtnRivers.pcx"))         id = TAPF_MTNRIVERS;
+	else if (slice_matches_str (&trimmed, "irrigation DESETT.pcx")) id = TAPF_IRRIGATION_DESETT;
+	else if (slice_matches_str (&trimmed, "irrigation PLAINS.pcx")) id = TAPF_IRRIGATION_PLAINS;
+	else if (slice_matches_str (&trimmed, "irrigation.pcx"))        id = TAPF_IRRIGATION;
+	else if (slice_matches_str (&trimmed, "irrigation TUNDRA.pcx")) id = TAPF_IRRIGATION_TUNDRA;
+	else if (slice_matches_str (&trimmed, "Volcanos.pcx"))          id = TAPF_VOLCANOS;
+	else if (slice_matches_str (&trimmed, "Volcanos forests.pcx"))  id = TAPF_VOLCANOS_FORESTS;
+	else if (slice_matches_str (&trimmed, "Volcanos jungles.pcx"))  id = TAPF_VOLCANOS_JUNGLES;
+	else if (slice_matches_str (&trimmed, "Volcanos-snow.pcx"))     id = TAPF_VOLCANOS_SNOW;
+	else if (slice_matches_str (&trimmed, "grassland forests.pcx")) id = TAPF_GRASSLAND_FORESTS;
+	else if (slice_matches_str (&trimmed, "plains forests.pcx"))    id = TAPF_PLAINS_FORESTS;
+	else if (slice_matches_str (&trimmed, "tundra forests.pcx"))    id = TAPF_TUNDRA_FORESTS;
+	else if (slice_matches_str (&trimmed, "LMForests.pcx"))         id = TAPF_LMFORESTS;
+	else if (slice_matches_str (&trimmed, "Mountains.pcx"))         id = TAPF_MOUNTAINS;
+	else if (slice_matches_str (&trimmed, "mountain forests.pcx"))  id = TAPF_MOUNTAIN_FORESTS;
+	else if (slice_matches_str (&trimmed, "mountain jungles.pcx"))  id = TAPF_MOUNTAIN_JUNGLES;
+	else if (slice_matches_str (&trimmed, "Mountains-snow.pcx"))    id = TAPF_MOUNTAINS_SNOW;
+	else if (slice_matches_str (&trimmed, "xhills.pcx"))            id = TAPF_XHILLS;
+	else if (slice_matches_str (&trimmed, "hill forests.pcx"))      id = TAPF_HILL_FORESTS;
+	else if (slice_matches_str (&trimmed, "hill jungle.pcx"))       id = TAPF_HILL_JUNGLE;
+	else if (slice_matches_str (&trimmed, "LMHills.pcx"))           id = TAPF_LMHILLS;
+	else if (slice_matches_str (&trimmed, "roads.pcx"))             id = TAPF_ROADS;
+	else if (slice_matches_str (&trimmed, "railroads.pcx"))         id = TAPF_RAILROADS;
+
+	if (id == TILE_ANIM_PCX_FILE_UNKNOWN)
+		return false;
+	if (out_id != NULL)
+		*out_id = id;
+	return true;
+}
+
+void
+refresh_tile_animation_pcx_rule_mask ()
+{
+	// Precompute two things:
+	// 1) which animation bits are PCX-driven at all (tile_animation_pcx_word_mask),
+	// 2) key-specific bitmasks for fast per-draw assignment.
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	for (int w = 0; w < words_per_tile; w++)
+		is->tile_animation_pcx_word_mask[w] = 0;
+	for (int w = 0; w < words_per_tile; w++)
+		is->tile_animation_pcx_active_word_mask[w] = 0;
+	is->tile_animation_has_pcx_rules = false;
+	clear_tile_animation_pcx_rule_lookup ();
+
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+		if (! cfg->in_use || (cfg->type != TAT_PCX))
+			continue;
+		is->tile_animation_pcx_word_mask[i / 32] |= 1u << (i % 32);
+		is->tile_animation_has_pcx_rules = true;
+
+		int packed = pack_tile_animation_pcx_lookup_value (cfg->pcx_file_id, cfg->pcx_index);
+		int key_index = -1;
+		if (! itable_look_up (&is->tile_animation_pcx_rule_key_to_index, packed, &key_index)) {
+			if (is->tile_animation_pcx_rule_key_count >= MAX_TILE_ANIMATION_CONFIGS)
+				continue;
+			key_index = is->tile_animation_pcx_rule_key_count++;
+			itable_insert (&is->tile_animation_pcx_rule_key_to_index, packed, key_index);
+		}
+		// One row per unique (pcx_file, pcx_index), bits mark matching animation configs.
+		is->tile_animation_pcx_rule_masks[key_index][i / 32] |= 1u << (i % 32);
+	}
+
+	refresh_tile_animation_pcx_active_mask ();
+}
+
+void
+refresh_tile_animation_pcx_active_mask ()
+{
+	// Time/season gating is recomputed once per Draw_Tiles pass, then ANDed at draw time.
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	for (int w = 0; w < words_per_tile; w++)
+		is->tile_animation_pcx_active_word_mask[w] = 0;
+	if (! is->tile_animation_has_pcx_rules)
+		return;
+
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+		if (! cfg->in_use || (cfg->type != TAT_PCX))
+			continue;
+		if (! tile_animation_matches_time_filters (cfg))
+			continue;
+		is->tile_animation_pcx_active_word_mask[i / 32] |= 1u << (i % 32);
+	}
+}
+
+void
+clear_tile_animation_pcx_matches_in_cache ()
+{
+	// PCX matches are dynamic because they depend on what sprites were actually drawn this frame.
+	// Keep static terrain/resource cache bits, clear only the PCX-controlled bits.
+	if (! is->tile_animation_has_pcx_rules)
+		return;
+	if (! is->tile_animation_selected_valid || (is->tile_animation_selected_mask_matrix == NULL))
+		return;
+	int tile_count = is->tile_animation_selected_tile_count;
+	if (tile_count <= 0)
+		return;
+
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
+		unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
+		for (int w = 0; w < words_per_tile; w++) {
+			unsigned int clear_mask = is->tile_animation_pcx_word_mask[w];
+			if (clear_mask != 0)
+				tile_mask[w] &= ~clear_mask;
+		}
+	}
+}
+
+void
+register_tile_animation_pcx_draw_for_current_tile (Sprite * sprite)
+{
+	// Called from patch_Sprite_draw_on_map while current_render_tile_* points at the tile being drawn.
+	// We mark candidate animations onto that tile's mask; spawning still happens later in scheduler_tick.
+	if (! is->tile_animation_has_pcx_rules)
+		return;
+	if (! is->tile_animation_selected_valid ||
+	    (is->tile_animation_selected_mask_matrix == NULL) ||
+	    (is->current_render_tile == NULL) ||
+	    (is->current_render_tile == p_null_tile))
+		return;
+	if ((is->current_render_tile_x < 0) || (is->current_render_tile_y < 0))
+		return;
+
+	int packed = 0;
+	if (! itable_look_up (&is->tile_animation_pcx_sprite_lookup, (int)sprite, &packed))
+		return;
+
+	int pcx_file_id = TILE_ANIM_PCX_FILE_UNKNOWN;
+	int pcx_index = -1;
+	if (! unpack_tile_animation_pcx_lookup_value (packed, &pcx_file_id, &pcx_index))
+		return;
+
+	int tile_index = tile_coords_to_index (&p_bic_data->Map, is->current_render_tile_x, is->current_render_tile_y);
+	if (tile_index < 0)
+		return;
+
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
+	int key_index = -1;
+	// Exact file+index match.
+	if (itable_look_up (&is->tile_animation_pcx_rule_key_to_index, packed, &key_index) &&
+	    (key_index >= 0) &&
+	    (key_index < is->tile_animation_pcx_rule_key_count)) {
+		for (int w = 0; w < words_per_tile; w++)
+			tile_mask[w] |= is->tile_animation_pcx_rule_masks[key_index][w] & is->tile_animation_pcx_active_word_mask[w];
+	}
+
+	if (pcx_index >= 0) {
+		// Also allow wildcard rules keyed as (same file, index = -1).
+		int wildcard_packed = pack_tile_animation_pcx_lookup_value (pcx_file_id, -1);
+		if ((wildcard_packed != packed) &&
+		    itable_look_up (&is->tile_animation_pcx_rule_key_to_index, wildcard_packed, &key_index) &&
+		    (key_index >= 0) &&
+		    (key_index < is->tile_animation_pcx_rule_key_count)) {
+			for (int w = 0; w < words_per_tile; w++)
+				tile_mask[w] |= is->tile_animation_pcx_rule_masks[key_index][w] & is->tile_animation_pcx_active_word_mask[w];
+		}
+	}
+}
+
 bool
 read_tile_animation_terrain_type (struct string_slice const * s, enum SquareTypes * out_type, bool * out_is_land)
 {
@@ -37166,9 +37460,15 @@ tile_animation_rule_matches_tile_base (struct tile_animation_config const * cfg,
 		int resource_id = tile->vtable->m39_Get_Resource_Type (tile);
 		if (resource_id != cfg->resource_id)
 			return false;
-	} else {
+	} else if (cfg->type == TAT_TERRAIN) {
 		if (! tile_matches_terrain_or_land (tile, cfg->terrain_type, cfg->terrain_is_land))
 			return false;
+	} else if (cfg->type == TAT_COASTAL_WAVE) {
+		if (! tile_matches_square_type (tile, SQ_Coast))
+			return false;
+	} else {
+		// PCX-based animations are discovered from actual draw calls in patch_Sprite_draw_on_map.
+		return false;
 	}
 
 	if (cfg->adjacent_to_count > 0) {
@@ -37182,7 +37482,8 @@ tile_animation_rule_matches_tile_base (struct tile_animation_config const * cfg,
 			return false;
 	}
 
-	if (cfg->direction_is_coastal_wave) {
+	bool uses_coastal_wave_direction = (cfg->type == TAT_COASTAL_WAVE) || cfg->direction_is_coastal_wave;
+	if (uses_coastal_wave_direction) {
 		enum direction dir = DIR_ZERO;
 		if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &dir))
 			return false;
@@ -37294,7 +37595,8 @@ tile_animation_rule_matches_tile (struct tile_animation_config const * cfg, Tile
 	if ((cfg == NULL) || (! cfg->in_use) || (tile == NULL) || (tile == p_null_tile))
 		return false;
 
-	if (cfg->direction_is_coastal_wave) {
+	bool uses_coastal_wave_direction = (cfg->type == TAT_COASTAL_WAVE) || cfg->direction_is_coastal_wave;
+	if (uses_coastal_wave_direction) {
 		enum direction dir = DIR_ZERO;
 		if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &dir))
 			return false;
@@ -37341,6 +37643,8 @@ void
 reset_tile_animation_runtime_state ()
 {
 	free_tile_animation_selected_matrix ();
+	clear_tile_animation_pcx_sprite_lookup ();
+	refresh_tile_animation_pcx_rule_mask ();
 	is->tile_animation_spawn_effect_override = 0;
 	is->tile_animation_spawn_effect_override_active = false;
 }
@@ -37366,6 +37670,8 @@ init_parsed_tile_animation_definition (struct parsed_tile_animation_definition *
 	memset (def, 0, sizeof *def);
 	def->type = TAT_TERRAIN;
 	def->terrain_type = SQ_Grassland;
+	def->pcx_file_id = TILE_ANIM_PCX_FILE_UNKNOWN;
+	def->pcx_index = -1;
 }
 
 void
@@ -37377,6 +37683,8 @@ free_parsed_tile_animation_definition (struct parsed_tile_animation_definition *
 		free (def->ini_path);
 	if (def->resource_type != NULL)
 		free (def->resource_type);
+	if (def->pcx_file != NULL)
+		free (def->pcx_file);
 	init_parsed_tile_animation_definition (def);
 }
 
@@ -37563,8 +37871,10 @@ add_tile_animation_from_definition (struct parsed_tile_animation_definition * de
 	cfg.type = def->type;
 	cfg.terrain_type = def->terrain_type;
 	cfg.terrain_is_land = def->terrain_is_land;
+	cfg.pcx_file_id = def->pcx_file_id;
+	cfg.pcx_index = def->pcx_index;
 	cfg.direction = def->direction;
-	cfg.direction_is_coastal_wave = def->direction_is_coastal_wave;
+	cfg.direction_is_coastal_wave = (def->type == TAT_COASTAL_WAVE) || def->direction_is_coastal_wave;
 	cfg.x_offset = def->x_offset;
 	cfg.y_offset = def->y_offset;
 	cfg.frame_time_seconds = def->frame_time_seconds;
@@ -37585,6 +37895,14 @@ add_tile_animation_from_definition (struct parsed_tile_animation_definition * de
 			free ((void *)cfg.ini_path);
 			return false;
 		}
+	} else if (cfg.type == TAT_PCX) {
+		if ((cfg.pcx_file_id < 0) || (cfg.pcx_index < 0)) {
+			free ((void *)cfg.name);
+			free ((void *)cfg.ini_path);
+			return false;
+		}
+	} else if (cfg.type == TAT_COASTAL_WAVE) {
+		// No extra required fields.
 	}
 
 	cfg.effect_id = is->tile_animation_effect_base + dest;
@@ -37601,6 +37919,7 @@ add_tile_animation_from_definition (struct parsed_tile_animation_definition * de
 		is->tile_animation_configs[dest] = cfg;
 		is->tile_animation_count = dest + 1;
 	}
+	refresh_tile_animation_pcx_rule_mask ();
 	return true;
 }
 
@@ -37629,6 +37948,16 @@ finalize_parsed_tile_animation_definition (struct parsed_tile_animation_definiti
 		ok = false;
 		struct error_line * e = add_error_line (parse_errors);
 		snprintf (e->text, sizeof e->text, "^  Line %d: resource_type (value is required for type=resource)", section_start_line);
+	}
+	if (def->type == TAT_PCX && ! def->has_pcx_file) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: pcx_file (value is required for type=pcx)", section_start_line);
+	}
+	if (def->type == TAT_PCX && ! def->has_pcx_index) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: pcx_index (value is required for type=pcx)", section_start_line);
 	}
 	if (def->type == TAT_TERRAIN && ! def->has_terrain_type) {
 		ok = false;
@@ -37678,15 +38007,43 @@ handle_tile_animation_definition_key (struct parsed_tile_animation_definition * 
 		} else if (slice_matches_str (&v, "resource")) {
 			def->type = TAT_RESOURCE;
 			def->has_type = true;
+		} else if (slice_matches_str (&v, "pcx")) {
+			def->type = TAT_PCX;
+			def->has_type = true;
+		} else if (slice_matches_str (&v, "coastal-wave")) {
+			def->type = TAT_COASTAL_WAVE;
+			def->has_type = true;
 		} else {
 			def->has_type = false;
-			add_key_parse_error (parse_errors, line_number, key, value, "(expected \"terrain\" or \"resource\")");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected \"terrain\", \"resource\", \"pcx\", or \"coastal-wave\")");
 		}
 	} else if (slice_matches_str (key, "resource_type")) {
 		if (def->resource_type != NULL) free (def->resource_type);
 		struct string_slice v = trim_string_slice (value, 1);
 		def->resource_type = extract_slice (&v);
 		def->has_resource_type = (def->resource_type != NULL) && (def->resource_type[0] != '\0');
+	} else if (slice_matches_str (key, "pcx_file")) {
+		if (def->pcx_file != NULL) free (def->pcx_file);
+		def->pcx_file = NULL;
+		def->pcx_file_id = TILE_ANIM_PCX_FILE_UNKNOWN;
+		if (read_tile_animation_pcx_file (value, &def->pcx_file_id)) {
+			struct string_slice v = trim_string_slice (value, 1);
+			def->pcx_file = extract_slice (&v);
+			def->has_pcx_file = true;
+		} else {
+			def->has_pcx_file = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(unsupported pcx_file)");
+		}
+	} else if (slice_matches_str (key, "pcx_index")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival) && (ival >= 0) && (ival <= 4095)) {
+			def->pcx_index = ival;
+			def->has_pcx_index = true;
+		} else {
+			def->has_pcx_index = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer 0..4095)");
+		}
 	} else if (slice_matches_str (key, "terrain_type")) {
 		enum SquareTypes t;
 		bool is_land = false;
@@ -37889,6 +38246,7 @@ load_tile_animation_configs ()
 	if ((scenario_path != NULL) && (0 != strcmp (scenario_filename, scenario_path)))
 		load_tile_animation_config_file (scenario_path, 0, 0, 1);
 
+	rebuild_tile_animation_pcx_sprite_lookup ();
 	rebuild_tile_animation_rule_match_cache ();
 }
 
@@ -38017,7 +38375,8 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_
 		enum direction effective_direction = DIR_ZERO;
 		bool has_effective_direction = false;
 		if (cfg != NULL) {
-			if (cfg->direction_is_coastal_wave) {
+			bool uses_coastal_wave_direction = (cfg->type == TAT_COASTAL_WAVE) || cfg->direction_is_coastal_wave;
+			if (uses_coastal_wave_direction) {
 				if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &effective_direction))
 					return;
 				has_effective_direction = true;

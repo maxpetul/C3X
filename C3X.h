@@ -955,7 +955,40 @@ struct natural_wonder_candidate_list {
 
 enum tile_animation_type {
 	TAT_TERRAIN = 0,
-	TAT_RESOURCE
+	TAT_RESOURCE,
+	TAT_PCX,
+	TAT_COASTAL_WAVE
+};
+
+#define TILE_ANIM_PCX_FILE_UNKNOWN (-1)
+enum tile_animation_pcx_file {
+	TAPF_TERRAINBUILDINGS = 0,
+	TAPF_WATERFALLS,
+	TAPF_FLOODPLAINS,
+	TAPF_DELTARIVERS,
+	TAPF_MTNRIVERS,
+	TAPF_IRRIGATION_DESETT,
+	TAPF_IRRIGATION_PLAINS,
+	TAPF_IRRIGATION,
+	TAPF_IRRIGATION_TUNDRA,
+	TAPF_VOLCANOS,
+	TAPF_VOLCANOS_FORESTS,
+	TAPF_VOLCANOS_JUNGLES,
+	TAPF_VOLCANOS_SNOW,
+	TAPF_GRASSLAND_FORESTS,
+	TAPF_PLAINS_FORESTS,
+	TAPF_TUNDRA_FORESTS,
+	TAPF_LMFORESTS,
+	TAPF_MOUNTAINS,
+	TAPF_MOUNTAIN_FORESTS,
+	TAPF_MOUNTAIN_JUNGLES,
+	TAPF_MOUNTAINS_SNOW,
+	TAPF_XHILLS,
+	TAPF_HILL_FORESTS,
+	TAPF_HILL_JUNGLE,
+	TAPF_LMHILLS,
+	TAPF_ROADS,
+	TAPF_RAILROADS
 };
 
 #define MAX_TILE_ANIMATION_CONFIGS 128
@@ -975,6 +1008,8 @@ struct tile_animation_config {
 	enum SquareTypes terrain_type;
 	bool terrain_is_land;
 	int resource_id;
+	int pcx_file_id;
+	int pcx_index;
 	enum direction direction;
 	bool direction_is_coastal_wave;
 	int x_offset;
@@ -1331,8 +1366,11 @@ struct parsed_tile_animation_definition {
 	char * name;
 	char * ini_path;
 	char * resource_type;
+	char * pcx_file;
 	enum tile_animation_type type;
 	enum SquareTypes terrain_type;
+	int pcx_file_id;
+	int pcx_index;
 	bool terrain_is_land;
 	enum direction direction;
 	bool direction_is_coastal_wave;
@@ -1347,6 +1385,8 @@ struct parsed_tile_animation_definition {
 	bool has_ini_path;
 	bool has_type;
 	bool has_resource_type;
+	bool has_pcx_file;
+	bool has_pcx_index;
 	bool has_terrain_type;
 	bool has_direction;
 	bool has_x_offset;
@@ -2321,6 +2361,13 @@ struct district_button_image_set {
 	int tile_animation_selected_map_width;
 	int tile_animation_selected_map_height;
 	bool tile_animation_selected_valid;
+	struct table tile_animation_pcx_sprite_lookup;
+	struct table tile_animation_pcx_rule_key_to_index;
+	int tile_animation_pcx_rule_key_count;
+	unsigned int tile_animation_pcx_rule_masks[MAX_TILE_ANIMATION_CONFIGS][(MAX_TILE_ANIMATION_CONFIGS + 31) / 32];
+	unsigned int tile_animation_pcx_word_mask[(MAX_TILE_ANIMATION_CONFIGS + 31) / 32];
+	unsigned int tile_animation_pcx_active_word_mask[(MAX_TILE_ANIMATION_CONFIGS + 31) / 32];
+	bool tile_animation_has_pcx_rules;
 
 	struct ai_candidate_bridge_or_canal_entry * ai_candidate_bridge_or_canals;
 	int ai_candidate_bridge_or_canals_count;
