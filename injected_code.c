@@ -37341,24 +37341,24 @@ tile_matches_terrain_or_land (Tile * tile, enum SquareTypes terrain_type, bool i
 bool
 get_tile_animation_coastal_wave_direction (int tile_x, int tile_y, enum direction * out_dir)
 {
-	bool nw_is_water = tile_is_water (tile_x - 1, tile_y - 1);
-	bool ne_is_water = tile_is_water (tile_x + 1, tile_y - 1);
-	bool se_is_water = tile_is_water (tile_x + 1, tile_y + 1);
-	bool sw_is_water = tile_is_water (tile_x - 1, tile_y + 1);
+	bool nw_is_land = ! tile_is_water (tile_x - 1, tile_y - 1);
+	bool ne_is_land = ! tile_is_water (tile_x + 1, tile_y - 1);
+	bool se_is_land = ! tile_is_water (tile_x + 1, tile_y + 1);
+	bool sw_is_land = ! tile_is_water (tile_x - 1, tile_y + 1);
 
-	if (! nw_is_water && se_is_water) {
+	if (nw_is_land && ! se_is_land && ! ne_is_land && ! sw_is_land) {
 		*out_dir = DIR_NW;
 		return true;
 	}
-	if (! ne_is_water && sw_is_water) {
+	if (ne_is_land && ! sw_is_land && ! se_is_land && !nw_is_land) {
 		*out_dir = DIR_NE;
 		return true;
 	}
-	if (! sw_is_water && nw_is_water) {
+	if (sw_is_land && ! ne_is_land && ! se_is_land && ! nw_is_land) {
 		*out_dir = DIR_SW;
 		return true;
 	}
-	if (! se_is_water && ne_is_water) {
+	if (se_is_land && ! nw_is_land && ! ne_is_land && ! sw_is_land) {
 		*out_dir = DIR_SE;
 		return true;
 	}
@@ -38353,7 +38353,7 @@ void __fastcall
 patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_x, int tile_y, bool randomize_start_frame)
 {
 	if (is->current_config.enable_custom_animations && is_custom_tile_animation_effect (effect_id)) {
-		if (Tile_has_city (this))
+		if (Tile_has_city (this) || get_district_instance (this) != NULL)
 			return;
 		struct tile_animation_config * cfg = get_tile_animation_for_effect (effect_id);
 		enum direction effective_direction = DIR_ZERO;
