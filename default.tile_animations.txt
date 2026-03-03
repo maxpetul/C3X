@@ -75,6 +75,13 @@ type          = resource
 resource_type = Whales
 
 #Animation
+name          = Deer
+ini_path      = Deer\Deer.INI
+type          = resource
+resource_type = Game
+frame_time_seconds = 0.13
+
+#Animation
 name          = Cattle
 ini_path      = UnitC3XDistricts\MilkCow\MilkCow.INI
 type          = resource
@@ -89,9 +96,9 @@ type          = resource
 resource_type = Horses
 direction     = southeast
 
-;;#Animation
-;;name          = Fish
-;;ini_path      = Fish\Fish.INI
-;;type          = resource
-;;resource_type = Fish
-;;frame_time_seconds = 0.12
+#Animation
+name          = Fish
+ini_path      = Fish\Fish.INI
+type          = resource
+resource_type = Fish
+frame_time_seconds = 0.12
