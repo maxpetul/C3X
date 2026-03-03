@@ -37507,9 +37507,7 @@ rebuild_tile_animation_rule_match_cache ()
 	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
 	free_tile_animation_selected_matrix ();
 	is->tile_animation_selected_mask_matrix = calloc (tile_count * words_per_tile, sizeof *is->tile_animation_selected_mask_matrix);
-	is->tile_animation_selected_next_index = calloc (tile_count, sizeof *is->tile_animation_selected_next_index);
-	if ((is->tile_animation_selected_mask_matrix == NULL) ||
-	    (is->tile_animation_selected_next_index == NULL)) {
+	if (is->tile_animation_selected_mask_matrix == NULL) {
 		free_tile_animation_selected_matrix ();
 		return;
 	}
@@ -37547,8 +37545,6 @@ tile_animation_cache_needs_rebuild ()
 	if (! is->tile_animation_selected_valid)
 		return true;
 	if (is->tile_animation_selected_mask_matrix == NULL)
-		return true;
-	if (is->tile_animation_selected_next_index == NULL)
 		return true;
 	if (is->tile_animation_count <= 0)
 		return true;
@@ -38221,6 +38217,47 @@ load_tile_animation_configs ()
 	rebuild_tile_animation_rule_match_cache ();
 }
 
+int
+get_tile_animation_type_priority (enum tile_animation_type type)
+{
+	// Higher number = stronger winner preference.
+	// Keep this centralized so new animation types (district/natural wonder/etc.)
+	// can be assigned clearly without touching scheduler logic.
+	switch (type) {
+		case TAT_RESOURCE:     return 400;
+		case TAT_PCX:          return 300;
+		case TAT_TERRAIN:      return 200;
+		case TAT_COASTAL_WAVE: return 100;
+		default:               return 0;
+	}
+}
+
+int
+pick_tile_animation_winner_for_tile (unsigned int * tile_mask)
+{
+	if ((tile_mask == NULL) || (is->tile_animation_count <= 0))
+		return -1;
+
+	int winner = -1;
+	int winner_priority = -1;
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		if ((tile_mask[i / 32] & (1u << (i % 32))) == 0)
+			continue;
+
+		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+		if ((cfg == NULL) || (! cfg->in_use))
+			continue;
+
+		int priority = get_tile_animation_type_priority (cfg->type);
+		// Deterministic tie-break: lower config index wins for same priority.
+		if ((winner < 0) || (priority > winner_priority) || ((priority == winner_priority) && (i < winner))) {
+			winner = i;
+			winner_priority = priority;
+		}
+	}
+	return winner;
+}
+
 void
 tile_animation_scheduler_tick ()
 {
@@ -38242,8 +38279,7 @@ tile_animation_scheduler_tick ()
 	if (tile_animation_cache_needs_rebuild ())
 		rebuild_tile_animation_rule_match_cache ();
 	if (! is->tile_animation_selected_valid ||
-	    (is->tile_animation_selected_mask_matrix == NULL) ||
-	    (is->tile_animation_selected_next_index == NULL))
+	    (is->tile_animation_selected_mask_matrix == NULL))
 		return;
 
 	Map * map = &p_bic_data->Map;
@@ -38261,17 +38297,7 @@ tile_animation_scheduler_tick ()
 		if ((tile == NULL) || (tile == p_null_tile))
 			continue;
 
-		int i = -1;
-		int first_candidate = (int)is->tile_animation_selected_next_index[tile_index];
-		if ((first_candidate < 0) || (first_candidate >= is->tile_animation_count))
-			first_candidate = 0;
-		for (int n = 0; n < is->tile_animation_count; n++) {
-			int candidate = (first_candidate + n) % is->tile_animation_count;
-			if ((tile_mask[candidate / 32] & (1u << (candidate % 32))) != 0) {
-				i = candidate;
-				break;
-			}
-		}
+		int i = pick_tile_animation_winner_for_tile (tile_mask);
 		if ((i < 0) || (i >= is->tile_animation_count))
 			continue;
 
@@ -38283,7 +38309,6 @@ tile_animation_scheduler_tick ()
 		// so don't key this check off effect_id.
 		if (tile->Body.active_tile_effect != NULL)
 			continue;
-		is->tile_animation_selected_next_index[tile_index] = (byte)((i + 1) % is->tile_animation_count);
 		patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true);
 	}
 }
