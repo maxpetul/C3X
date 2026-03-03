@@ -66,8 +66,7 @@
 #Animation
 name         = Wave
 ini_path     = Wave\Wave.INI
-type         = terrain
-terrain_type = coast
+type         = coastal-wave
 
 #Animation
 name          = Whales

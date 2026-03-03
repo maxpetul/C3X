@@ -34469,7 +34469,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -37339,42 +37339,26 @@ tile_matches_terrain_or_land (Tile * tile, enum SquareTypes terrain_type, bool i
 }
 
 bool
-tile_animation_neighbor_is_land_in_direction (int tile_x, int tile_y, enum direction dir)
-{
-	int dx = 0, dy = 0;
-	if (! direction_to_offset (dir, &dx, &dy))
-		return false;
-
-	int nx = tile_x + dx;
-	int ny = tile_y + dy;
-	wrap_tile_coords (&p_bic_data->Map, &nx, &ny);
-	Tile * n = tile_at (nx, ny);
-	if ((n == NULL) || (n == p_null_tile))
-		return false;
-	return ! n->vtable->m35_Check_Is_Water (n);
-}
-
-bool
 get_tile_animation_coastal_wave_direction (int tile_x, int tile_y, enum direction * out_dir)
 {
-	bool has_land_nw = tile_animation_neighbor_is_land_in_direction (tile_x, tile_y, DIR_NW);
-	bool has_land_ne = tile_animation_neighbor_is_land_in_direction (tile_x, tile_y, DIR_NE);
-	bool has_land_sw = tile_animation_neighbor_is_land_in_direction (tile_x, tile_y, DIR_SW);
-	bool has_land_se = tile_animation_neighbor_is_land_in_direction (tile_x, tile_y, DIR_SE);
+	bool nw_is_water = tile_is_water (tile_x - 1, tile_y - 1);
+	bool ne_is_water = tile_is_water (tile_x + 1, tile_y - 1);
+	bool se_is_water = tile_is_water (tile_x + 1, tile_y + 1);
+	bool sw_is_water = tile_is_water (tile_x - 1, tile_y + 1);
 
-	if (has_land_nw && ! has_land_se) {
+	if (! nw_is_water && se_is_water) {
 		*out_dir = DIR_NW;
 		return true;
 	}
-	if (has_land_ne && ! has_land_sw) {
+	if (! ne_is_water && sw_is_water) {
 		*out_dir = DIR_NE;
 		return true;
 	}
-	if (has_land_sw && ! has_land_ne) {
+	if (! sw_is_water && nw_is_water) {
 		*out_dir = DIR_SW;
 		return true;
 	}
-	if (has_land_se && ! has_land_nw) {
+	if (! se_is_water && ne_is_water) {
 		*out_dir = DIR_SE;
 		return true;
 	}
