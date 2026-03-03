@@ -38309,7 +38309,7 @@ tile_animation_scheduler_tick ()
 		// so don't key this check off effect_id.
 		if (tile->Body.active_tile_effect != NULL)
 			continue;
-		//patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true);
+		patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true);
 	}
 }
 
@@ -38375,7 +38375,6 @@ patch_Units_Image_Data_load_animated_effect (Units_Image_Data * this, int edx, F
 	if (anim->Animation_Info->anim_frame_time_seconds != NULL)
 		anim->Animation_Info->anim_frame_time_seconds[AT_ATTACK1] = frame_time_seconds;
 }
-/*
 void __fastcall
 patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_x, int tile_y, bool randomize_start_frame)
 {
@@ -38424,6 +38423,6 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_
 	}
 	Tile_spawn_animated_effect (this, __, effect_id, tile_x, tile_y, randomize_start_frame);
 }
-*/
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

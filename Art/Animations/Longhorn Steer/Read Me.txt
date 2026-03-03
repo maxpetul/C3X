@@ -1,0 +1,28 @@
+Unit: Longhorn Steer by Vuldacon February 16, 2014
+Added an Attack and Victory plus additional and adjusted sounds February 20, 2014
+
+Programs Used: Poser 6, Jasc Paint Shop Pro 9, Pedit palette editor, 
+                         Steph's Storyboard Creator and Moenirs Flicster.
+
+This Unit does not have Civ Specific Colors. 
+
+Included Files: 
+Civilopedia LonghornSteerLarge.pcx, LonghornSteerSmall.pcx, LonghornSteer_units_32.pcx
+Alternate and Extra Images. 
+Adjusted .ini file,
+Animations (flcs): LonghornSteerDefault, LonghornSteerRun, LonghornSteerFortify, LonghornAttack,
+LonghornSteerFidget and LonghornSteerDeath, LonghornVictory.
+Sounds: LonghornRun.wav, LonghornFortify.wav, LongjornAttack.wav, LonghornFidget.wav, 
+LonghornDeath.wav, LonghornVictory.wav and LonghornCaptured.wav.  
+Remade the Default Flc to use Offsets so the Unit is seen on the Bottom Right Game Unit Window Box Better.
+
+I Made this Unit specifically for the MOD "The Old West", a work in progress by Balthasar and Me. 
+If anyone has a game where the Longhorn Steer can also find a home, you are most welcome to add it :) 
+
+Credits: Firaxis for the Civ III Game, Moenir for Flicster, Steph for his   
+            Storyboard Builder (SBB) and Bertram Simon for Pedit palette editor.
+
+Enjoy...
+
+Cheers,
+Vuldacon
