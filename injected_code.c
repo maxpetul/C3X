@@ -37239,9 +37239,13 @@ clear_tile_animation_pcx_matches_in_cache ()
 		return;
 	if (! is->tile_animation_selected_valid || (is->tile_animation_selected_mask_matrix == NULL))
 		return;
-	int tile_count = is->tile_animation_selected_tile_count;
+	int tile_count = p_bic_data->Map.TileCount;
 	if (tile_count <= 0)
 		return;
+	if (is->tile_animation_selected_tile_count <= 0)
+		return;
+	if (tile_count > is->tile_animation_selected_tile_count)
+		tile_count = is->tile_animation_selected_tile_count;
 
 	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
 	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
@@ -37279,7 +37283,7 @@ register_tile_animation_pcx_draw_for_current_tile (Sprite * sprite)
 		return;
 
 	int tile_index = tile_coords_to_index (&p_bic_data->Map, is->current_render_tile_x, is->current_render_tile_y);
-	if (tile_index < 0)
+	if ((tile_index < 0) || (tile_index >= is->tile_animation_selected_tile_count))
 		return;
 
 	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
@@ -37487,8 +37491,6 @@ free_tile_animation_selected_matrix ()
 	is->tile_animation_selected_next_index = NULL;
 	is->tile_animation_selected_tile_count = 0;
 	is->tile_animation_selected_animation_count = 0;
-	is->tile_animation_selected_map_width = 0;
-	is->tile_animation_selected_map_height = 0;
 	is->tile_animation_selected_valid = false;
 }
 
@@ -37496,8 +37498,6 @@ void
 rebuild_tile_animation_rule_match_cache ()
 {
 	Map * map = &p_bic_data->Map;
-	int width = map->Width;
-	int height = map->Height;
 	int tile_count = map->TileCount;
 	if ((tile_count <= 0) || (is->tile_animation_count <= 0)) {
 		free_tile_animation_selected_matrix ();
@@ -37505,23 +37505,13 @@ rebuild_tile_animation_rule_match_cache ()
 	}
 
 	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
-	bool need_new_buffer =
-		(is->tile_animation_selected_mask_matrix == NULL) ||
-		(is->tile_animation_selected_next_index == NULL) ||
-		(is->tile_animation_selected_tile_count != tile_count);
-	if (need_new_buffer) {
+	free_tile_animation_selected_matrix ();
+	is->tile_animation_selected_mask_matrix = calloc (tile_count * words_per_tile, sizeof *is->tile_animation_selected_mask_matrix);
+	is->tile_animation_selected_next_index = calloc (tile_count, sizeof *is->tile_animation_selected_next_index);
+	if ((is->tile_animation_selected_mask_matrix == NULL) ||
+	    (is->tile_animation_selected_next_index == NULL)) {
 		free_tile_animation_selected_matrix ();
-		is->tile_animation_selected_mask_matrix = calloc (tile_count * words_per_tile, sizeof *is->tile_animation_selected_mask_matrix);
-		is->tile_animation_selected_next_index = calloc (tile_count, sizeof *is->tile_animation_selected_next_index);
-		if ((is->tile_animation_selected_mask_matrix == NULL) ||
-		    (is->tile_animation_selected_next_index == NULL)) {
-			free_tile_animation_selected_matrix ();
-			return;
-		}
-		is->tile_animation_selected_tile_count = tile_count;
-	} else {
-		memset (is->tile_animation_selected_mask_matrix, 0, tile_count * words_per_tile * sizeof *is->tile_animation_selected_mask_matrix);
-		memset (is->tile_animation_selected_next_index, 0, tile_count * sizeof *is->tile_animation_selected_next_index);
+		return;
 	}
 
 	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
@@ -37546,9 +37536,8 @@ rebuild_tile_animation_rule_match_cache ()
 			}
 	}
 
+	is->tile_animation_selected_tile_count = tile_count;
 	is->tile_animation_selected_animation_count = is->tile_animation_count;
-	is->tile_animation_selected_map_width = width;
-	is->tile_animation_selected_map_height = height;
 	is->tile_animation_selected_valid = true;
 }
 
@@ -37566,9 +37555,6 @@ tile_animation_cache_needs_rebuild ()
 	if (is->tile_animation_selected_tile_count != p_bic_data->Map.TileCount)
 		return true;
 	if (is->tile_animation_selected_animation_count != is->tile_animation_count)
-		return true;
-	if ((is->tile_animation_selected_map_width != p_bic_data->Map.Width) ||
-	    (is->tile_animation_selected_map_height != p_bic_data->Map.Height))
 		return true;
 	return false;
 }
@@ -37594,6 +37580,7 @@ tile_animation_rule_matches_tile (struct tile_animation_config const * cfg, Tile
 		int tile_index = tile_coords_to_index (&p_bic_data->Map, tile_x, tile_y);
 		int animation_index = cfg - &is->tile_animation_configs[0];
 			if ((tile_index >= 0) &&
+			    (tile_index < is->tile_animation_selected_tile_count) &&
 			    (animation_index >= 0) &&
 			    (animation_index < is->tile_animation_count)) {
 				int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
@@ -38239,6 +38226,11 @@ tile_animation_scheduler_tick ()
 {
 	if (! is->current_config.enable_custom_animations)
 		return;
+	// Trade_Net recompute_resources temporarily increases Map.TileCount to include synthetic
+	// resource tiles. Custom animation selection buffers are sized for real map tiles, so
+	// running the scheduler in that window can overrun those buffers.
+	if (is->saved_tile_count >= 0)
+		return;
 	if (is_online_game ())
 		return;
 	if ((p_main_screen_form == NULL) || p_main_screen_form->is_now_loading_game)
@@ -38255,8 +38247,13 @@ tile_animation_scheduler_tick ()
 		return;
 
 	Map * map = &p_bic_data->Map;
+	int tile_count = map->TileCount;
+	if (tile_count <= 0)
+		return;
+	if (tile_count != is->tile_animation_selected_tile_count)
+		return;
 	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
-	for (int tile_index = 0; tile_index < map->TileCount; tile_index++) {
+	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
 		unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
 		int tile_x, tile_y;
 		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
@@ -38344,9 +38341,14 @@ patch_Units_Image_Data_load_animated_effect (Units_Image_Data * this, int edx, F
 	asset_path[(sizeof asset_path) - 1] = '\0';
 
 	Units_Image_Data_load_animation (this, __, asset_path, anim, 0, -1, 1, true);
+	if ((anim == NULL) || (anim->Animation_Info == NULL)) {
+		Units_Image_Data_load_animated_effect (this, __, anim, effect_id);
+		return;
+	}
 
 	float frame_time_seconds = cfg->has_frame_time_seconds ? cfg->frame_time_seconds : 0.15f;
-	anim->Animation_Info->anim_frame_time_seconds[AT_ATTACK1] = frame_time_seconds;
+	if (anim->Animation_Info->anim_frame_time_seconds != NULL)
+		anim->Animation_Info->anim_frame_time_seconds[AT_ATTACK1] = frame_time_seconds;
 }
 
 void __fastcall

@@ -2358,8 +2358,6 @@ struct district_button_image_set {
 	byte * tile_animation_selected_next_index;
 	int tile_animation_selected_tile_count;
 	int tile_animation_selected_animation_count;
-	int tile_animation_selected_map_width;
-	int tile_animation_selected_map_height;
 	bool tile_animation_selected_valid;
 	struct table tile_animation_pcx_sprite_lookup;
 	struct table tile_animation_pcx_rule_key_to_index;
