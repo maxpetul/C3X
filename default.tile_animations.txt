@@ -1,7 +1,7 @@
 [======================================================================= NOTE =======================================================================]
 [Instead of editing this file, changes to the settings should be placed in either the scenario or user config files. The scenario config file must   ]
-[be named scenario.tile_animations.txt and must be located in your scenario search folder. Of course it only applies if you are using a scenario.   ]
-[The user config file must be named user.tile_animations.txt and located in the C3X folder, which is the folder where this file is. When creating   ]
+[be named scenario.tile_animations.txt and must be located in your scenario search folder. Of course it only applies if you are using a scenario.    ]
+[The user config file must be named user.tile_animations.txt and located in the C3X folder, which is the folder where this file is. When creating    ]
 [scenario or user configs, note that all tile animations defined here will be removed and only your scenario or user-defined animations will be used ]
 [====================================================================================================================================================]
 
@@ -55,13 +55,10 @@
   ;                                 <terrain_or_land>:<direction>
   ;                               Direction values: northeast, east, southeast, south, southwest, west, northwest, north
   ;                               Example: tundra:northwest, desert:southwest
-  ;  - direction                : Text. Optional animation facing override.
-  ;                               Valid values: northeast, east, southeast, south, southwest, west, northwest, north
-  ;                               If omitted, vanilla/default facing is used.
+  ;  - direction                : Text. Optional animation facing override. Valid values: northeast, east, southeast, south, southwest, west, northwest, north 
   ;  - x_offset                 : Integer. Optional horizontal pixel offset after centering (positive moves right).
   ;  - y_offset                 : Integer. Optional vertical pixel offset after centering (positive moves down).
-  ;  - frame_time_seconds       : Float. Optional playback frame time for AT_ATTACK1.
-  ;                               Lower values animate faster. (default: 0.15)
+  ;  - frame_time_seconds       : Float. Optional playback frame time. Lower values animate faster. (default: 0.15)
   ;  - show_in_day_night_hours  : Comma-delimited numbers [0..23]. Optional allowed day/night cycle hours.
   ;  - show_in_seasons          : Comma-delimited seasons. Optional allowed seasons: spring, summer, fall, winter.
 ]
@@ -71,7 +68,6 @@ name         = Wave
 ini_path     = Wave\Wave.INI
 type         = terrain
 terrain_type = coast
-adjacent_to  = land:northwest
 
 #Animation
 name          = Whales
