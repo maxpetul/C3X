@@ -10929,15 +10929,14 @@ parse_natural_wonder_animation_entry (struct string_slice const * value,
 		struct string_slice token = {.str = token_start, .len = strlen (token_start)};
 		token = trim_string_slice (&token, 0);
 		if (token.len > 0) {
-			char * sep_colon = strchr (token.str, ':');
-			char * sep_equals = strchr (token.str, '=');
 			char * sep = NULL;
-			if (sep_colon != NULL && sep_equals != NULL)
-				sep = (sep_colon < sep_equals) ? sep_colon : sep_equals;
-			else if (sep_colon != NULL)
-				sep = sep_colon;
-			else
-				sep = sep_equals;
+			for (int i = 0; i < token.len; i++) {
+				char ch = token.str[i];
+				if ((ch == ':') || (ch == '=')) {
+					sep = token.str + i;
+					break;
+				}
+			}
 
 			if (sep == NULL) {
 				ok = false;
@@ -34597,7 +34596,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	//*p_debug_mode_bits |= 0xC;
+	*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;

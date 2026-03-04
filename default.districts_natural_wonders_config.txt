@@ -28,7 +28,7 @@
   ;                            Format: ini:<relative ini path>; hours:<comma-delimited 0..23>; seasons:<comma-delimited season list>
   ;                            Subkeys also accept '=' instead of ':'. Seasons: summer, fall, winter, spring.
   ;                            Example:
-  ;                            animation = ini:NaturalWonders\AngelFalls.ini; hours:6,7,8,9,10,11,12,13,14,15,16,17; seasons=spring,summer,fall,winter
+  ;                            animation = ini:NaturalWonders\AngelFalls.INI; hours:6,7,8,9,10,11,12,13,14,15,16,17; seasons=spring,summer,fall,winter
 ]
 
 #Wonder
@@ -45,6 +45,7 @@ food_bonus      = 0
 gold_bonus      = 0
 shield_bonus    = 0
 happiness_bonus = 1
+animation       = ini:NaturalWonders\AngelFalls.INI; hours:6,7,8,9,10,11,12,13,14,15,16,17; seasons=spring,summer,fall,winter
 
 #Wonder
 name            = Yosemite
