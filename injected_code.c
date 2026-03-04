@@ -2266,11 +2266,8 @@ read_barbarian_activity_override (struct string_slice const * s, enum barbarian_
 }
 
 bool
-read_tile_animation_direction_value (struct string_slice const * s, enum direction * out_dir, bool * out_is_coastal_wave)
+read_tile_animation_direction_value (struct string_slice const * s, enum direction * out_dir)
 {
-	if (out_is_coastal_wave != NULL)
-		*out_is_coastal_wave = false;
-
 	return read_direction_value (s, out_dir);
 }
 
@@ -34469,7 +34466,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -37470,8 +37467,7 @@ tile_animation_rule_matches_tile_base (struct tile_animation_config const * cfg,
 			return false;
 	}
 
-	bool uses_coastal_wave_direction = (cfg->type == TAT_COASTAL_WAVE) || cfg->direction_is_coastal_wave;
-	if (uses_coastal_wave_direction) {
+	if (cfg->type == TAT_COASTAL_WAVE) {
 		enum direction dir = DIR_ZERO;
 		if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &dir))
 			return false;
@@ -37561,8 +37557,7 @@ tile_animation_rule_matches_tile (struct tile_animation_config const * cfg, Tile
 	if ((cfg == NULL) || (! cfg->in_use) || (tile == NULL) || (tile == p_null_tile))
 		return false;
 
-	bool uses_coastal_wave_direction = (cfg->type == TAT_COASTAL_WAVE) || cfg->direction_is_coastal_wave;
-	if (uses_coastal_wave_direction) {
+	if (cfg->type == TAT_COASTAL_WAVE) {
 		enum direction dir = DIR_ZERO;
 		if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &dir))
 			return false;
@@ -37841,7 +37836,6 @@ add_tile_animation_from_definition (struct parsed_tile_animation_definition * de
 	cfg.pcx_file_id = def->pcx_file_id;
 	cfg.pcx_index = def->pcx_index;
 	cfg.direction = def->direction;
-	cfg.direction_is_coastal_wave = (def->type == TAT_COASTAL_WAVE) || def->direction_is_coastal_wave;
 	cfg.x_offset = def->x_offset;
 	cfg.y_offset = def->y_offset;
 	cfg.frame_time_seconds = def->frame_time_seconds;
@@ -38024,10 +38018,8 @@ handle_tile_animation_definition_key (struct parsed_tile_animation_definition * 
 		}
 	} else if (slice_matches_str (key, "direction")) {
 		enum direction dir;
-		bool is_coastal_wave = false;
-		if (read_tile_animation_direction_value (value, &dir, &is_coastal_wave)) {
+		if (read_tile_animation_direction_value (value, &dir)) {
 			def->direction = dir;
-			def->direction_is_coastal_wave = is_coastal_wave;
 			def->has_direction = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized direction)");
@@ -38385,8 +38377,7 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effe
 		enum direction effective_direction = DIR_ZERO;
 		bool has_effective_direction = false;
 		if (cfg != NULL) {
-			bool uses_coastal_wave_direction = (cfg->type == TAT_COASTAL_WAVE) || cfg->direction_is_coastal_wave;
-			if (uses_coastal_wave_direction) {
+			if (cfg->type == TAT_COASTAL_WAVE) {
 				if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &effective_direction))
 					return;
 				has_effective_direction = true;

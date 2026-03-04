@@ -80,7 +80,7 @@ ini_path      = Deer\Deer.INI
 type          = resource
 resource_type = Game
 direction     = southwest
-frame_time_seconds = 0.13
+frame_time_seconds = 0.14
 
 #Animation
 name          = Cattle

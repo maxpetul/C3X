@@ -1011,7 +1011,6 @@ struct tile_animation_config {
 	int pcx_file_id;
 	int pcx_index;
 	enum direction direction;
-	bool direction_is_coastal_wave;
 	int x_offset;
 	int y_offset;
 	float frame_time_seconds;
@@ -1373,7 +1372,6 @@ struct parsed_tile_animation_definition {
 	int pcx_index;
 	bool terrain_is_land;
 	enum direction direction;
-	bool direction_is_coastal_wave;
 	int x_offset;
 	int y_offset;
 	float frame_time_seconds;
