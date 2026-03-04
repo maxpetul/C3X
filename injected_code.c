@@ -220,7 +220,7 @@ bool __fastcall patch_City_has_resource (City * this, int edx, int resource_id);
 bool __fastcall patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, bool param_2);
 char __fastcall patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing);
 void __fastcall patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7);
-void __fastcall patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_x, int tile_y, bool randomize_start_frame);
+void __fastcall patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effect, int tile_x, int tile_y, bool randomize_start_frame, enum direction dummy_dir);
 bool can_build_district_on_tile (Tile * tile, int district_id, int civ_id);
 bool city_can_build_district (City * city, int district_id);
 bool leader_can_build_district (Leader * leader, int district_id);
@@ -38309,7 +38309,7 @@ tile_animation_scheduler_tick ()
 		// so don't key this check off effect_id.
 		if (tile->Body.active_tile_effect != NULL)
 			continue;
-		patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true);
+		patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true, DIR_SW);
 	}
 }
 
@@ -38376,12 +38376,12 @@ patch_Units_Image_Data_load_animated_effect (Units_Image_Data * this, int edx, F
 		anim->Animation_Info->anim_frame_time_seconds[AT_ATTACK1] = frame_time_seconds;
 }
 void __fastcall
-patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_x, int tile_y, bool randomize_start_frame)
+patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effect, int tile_x, int tile_y, bool randomize_start_frame, enum direction dummy_dir)
 {
-	if (is->current_config.enable_custom_animations && is_custom_tile_animation_effect (effect_id)) {
+	if (is->current_config.enable_custom_animations && is_custom_tile_animation_effect (effect)) {
 		if (Tile_has_city (this) || get_district_instance (this) != NULL)
 			return;
-		struct tile_animation_config * cfg = get_tile_animation_for_effect (effect_id);
+		struct tile_animation_config * cfg = get_tile_animation_for_effect (effect);
 		enum direction effective_direction = DIR_ZERO;
 		bool has_effective_direction = false;
 		if (cfg != NULL) {
@@ -38397,9 +38397,9 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_
 		}
 		int prev_override = is->tile_animation_spawn_effect_override;
 		bool had_override = is->tile_animation_spawn_effect_override_active;
-		is->tile_animation_spawn_effect_override = effect_id;
+		is->tile_animation_spawn_effect_override = effect;
 		is->tile_animation_spawn_effect_override_active = true;
-		Tile_spawn_animated_effect (this, __, AE_Disorder, tile_x, tile_y, randomize_start_frame);
+		Tile_spawn_animated_effect (this, __, AE_Disorder, tile_x, tile_y, randomize_start_frame, dummy_dir);
 
 		// Optional per-effect direction and pixel offsets after vanilla centers the animation on the tile.
 		// Positive X moves right, positive Y moves down.
@@ -38421,7 +38421,7 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_
 		is->tile_animation_spawn_effect_override_active = had_override;
 		return;
 	}
-	Tile_spawn_animated_effect (this, __, effect_id, tile_x, tile_y, randomize_start_frame);
+	Tile_spawn_animated_effect (this, __, effect, tile_x, tile_y, randomize_start_frame, dummy_dir);
 }
 
 // TCC requires a main function be defined even though it's never used.
