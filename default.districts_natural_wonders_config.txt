@@ -25,10 +25,11 @@
   ;  - impassible            : 0 or 1. If 1, completed natural wonder tile is impassible to units. (default: 0)
   ;  - impassible_to_wheeled : 0 or 1. If 1, completed natural wonder tile is impassible to wheeled units unless connected by road. (default: 0)
   ;  - animation             : Text. Optional custom animation entry; may be repeated multiple times per wonder (up to 8).
-  ;                            Format: ini:<relative ini path>; hours:<comma-delimited 0..23>; seasons:<comma-delimited season list>
-  ;                            Subkeys also accept '=' instead of ':'. Seasons: summer, fall, winter, spring.
+  ;                            Format: ini=<relative ini path>; hours=<comma-delimited 0..23>; seasons=<comma-delimited season list>; direction=<dir>; frame_time_seconds=<float>; offsets=<x,y>
+  ;                            Subkeys also accept ':' instead of '='. Seasons: summer, fall, winter, spring.
+  ;                            Directions: northeast, east, southeast, south, southwest, west, northwest, north.
   ;                            Example:
-  ;                            animation = ini:NaturalWonders\AngelFalls.INI; hours:6,7,8,9,10,11,12,13,14,15,16,17; seasons=spring,summer,fall,winter
+  ;                            animation = ini=NaturalWonders\AngelFalls.ini; hours=1,2,3 seasons=spring,summer; direction=south; frame_time_seconds=0.12; offsets=0,-10
 ]
 
 #Wonder
@@ -45,7 +46,7 @@ food_bonus      = 0
 gold_bonus      = 0
 shield_bonus    = 0
 happiness_bonus = 1
-animation       = ini:NaturalWonders\AngelFalls.INI; hours:6,7,8,9,10,11,12,13,14,15,16,17; seasons=spring,summer,fall,winter
+animation       = ini=NaturalWonders\AngelFalls.INI; hours=6,7,8,9,10,11,12,13,14,15,16,17; seasons=spring,summer,fall,winter; offsets=0,-10; direction=southwest; frame_time_seconds=0.13
 
 #Wonder
 name            = Yosemite

@@ -926,6 +926,13 @@ struct natural_wonder_animation_config {
 	char const * ini_path;
 	unsigned int day_night_hour_mask; // bits 0..23
 	unsigned int season_mask; // bits 0..3
+	enum direction direction;
+	float frame_time_seconds;
+	int x_offset;
+	int y_offset;
+	bool has_direction;
+	bool has_frame_time_seconds;
+	bool has_offsets;
 };
 
 struct natural_wonder_district_config {

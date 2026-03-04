@@ -10829,10 +10829,17 @@ add_natural_wonder_from_definition (struct parsed_natural_wonder_definition * de
 			free (name_copy);
 			return false;
 		}
-		new_cfg.animations[i].ini_path = ini_copy;
-		new_cfg.animations[i].day_night_hour_mask = src_anim->day_night_hour_mask;
-		new_cfg.animations[i].season_mask = src_anim->season_mask;
-	}
+			new_cfg.animations[i].ini_path = ini_copy;
+			new_cfg.animations[i].day_night_hour_mask = src_anim->day_night_hour_mask;
+			new_cfg.animations[i].season_mask = src_anim->season_mask;
+			new_cfg.animations[i].direction = src_anim->direction;
+			new_cfg.animations[i].has_direction = src_anim->has_direction;
+			new_cfg.animations[i].frame_time_seconds = src_anim->frame_time_seconds;
+			new_cfg.animations[i].has_frame_time_seconds = src_anim->has_frame_time_seconds;
+			new_cfg.animations[i].x_offset = src_anim->x_offset;
+			new_cfg.animations[i].y_offset = src_anim->y_offset;
+			new_cfg.animations[i].has_offsets = src_anim->has_offsets;
+		}
 	new_cfg.culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
 	new_cfg.science_bonus = def->has_science_bonus ? def->science_bonus : 0;
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
@@ -10959,15 +10966,52 @@ parse_natural_wonder_animation_entry (struct string_slice const * value,
 					ok = parse_tile_animation_hour_list (&v, &mask);
 					if (ok)
 						out_cfg->day_night_hour_mask = mask;
-				} else if (slice_matches_str (&k, "seasons")) {
-					unsigned int mask = 0;
-					ok = parse_tile_animation_season_list (&v, &mask);
-					if (ok)
-						out_cfg->season_mask = mask;
-				} else
-					ok = false;
+					} else if (slice_matches_str (&k, "seasons")) {
+						unsigned int mask = 0;
+						ok = parse_tile_animation_season_list (&v, &mask);
+						if (ok)
+							out_cfg->season_mask = mask;
+					} else if (slice_matches_str (&k, "direction")) {
+						enum direction dir = DIR_ZERO;
+						ok = read_direction_value (&v, &dir);
+						if (ok) {
+							out_cfg->direction = dir;
+							out_cfg->has_direction = true;
+						}
+					} else if (slice_matches_str (&k, "frame_time_seconds")) {
+						float frame_time_seconds = 0.0f;
+						ok = read_float (&v, &frame_time_seconds);
+						if (ok) {
+							out_cfg->frame_time_seconds = frame_time_seconds;
+							out_cfg->has_frame_time_seconds = true;
+						}
+					} else if (slice_matches_str (&k, "offsets")) {
+						char * offsets_text = extract_slice (&v);
+						if (offsets_text == NULL)
+							ok = false;
+						else {
+							char * off_cursor = offsets_text;
+							int x = 0, y = 0;
+							ok = parse_int (&off_cursor, &x) &&
+								skip_horiz_space (&off_cursor) &&
+								(*off_cursor == ',');
+							if (ok) {
+								off_cursor++;
+								ok = parse_int (&off_cursor, &y) &&
+									skip_horiz_space (&off_cursor) &&
+									(*off_cursor == '\0');
+							}
+							if (ok) {
+								out_cfg->x_offset = x;
+								out_cfg->y_offset = y;
+								out_cfg->has_offsets = true;
+							}
+							free (offsets_text);
+						}
+					} else
+						ok = false;
+				}
 			}
-		}
 
 		if (saved == ';')
 			cursor++;
@@ -34596,7 +34640,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -38351,11 +38395,25 @@ add_natural_wonder_tile_animation_configs ()
 				is->tile_animation_count--;
 				continue;
 			}
-			cfg->day_night_hour_mask = anim->day_night_hour_mask;
-			cfg->season_mask = anim->season_mask;
-			cfg->effect_id = is->tile_animation_effect_base + dest;
-			cfg->in_use = true;
-		}
+				cfg->day_night_hour_mask = anim->day_night_hour_mask;
+				cfg->season_mask = anim->season_mask;
+				if (anim->has_direction) {
+					cfg->direction = anim->direction;
+					cfg->has_direction = true;
+				}
+				if (anim->has_frame_time_seconds) {
+					cfg->frame_time_seconds = anim->frame_time_seconds;
+					cfg->has_frame_time_seconds = true;
+				}
+				if (anim->has_offsets) {
+					cfg->x_offset = anim->x_offset;
+					cfg->y_offset = anim->y_offset;
+					cfg->has_x_offset = true;
+					cfg->has_y_offset = true;
+				}
+				cfg->effect_id = is->tile_animation_effect_base + dest;
+				cfg->in_use = true;
+			}
 	}
 	refresh_tile_animation_pcx_rule_mask ();
 }
