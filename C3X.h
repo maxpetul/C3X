@@ -922,6 +922,12 @@ enum district_overlay_mask_bits {
 	DOM_AIRFIELD    = 1u << 10
 };
 
+struct natural_wonder_animation_config {
+	char const * ini_path;
+	unsigned int day_night_hour_mask; // bits 0..23
+	unsigned int season_mask; // bits 0..3
+};
+
 struct natural_wonder_district_config {
 	char const * name;
 	char const * img_path;
@@ -940,6 +946,8 @@ struct natural_wonder_district_config {
 	bool impassible;
 	bool impassible_to_wheeled;
 	bool is_dynamic;
+	struct natural_wonder_animation_config animations[8];
+	int animation_count;
 };
 
 struct natural_wonder_candidate {
@@ -956,6 +964,7 @@ struct natural_wonder_candidate_list {
 enum tile_animation_type {
 	TAT_TERRAIN = 0,
 	TAT_RESOURCE,
+	TAT_NATURAL_WONDER,
 	TAT_PCX,
 	TAT_COASTAL_WAVE
 };
@@ -1008,6 +1017,7 @@ struct tile_animation_config {
 	enum SquareTypes terrain_type;
 	bool terrain_is_land;
 	int resource_id;
+	int natural_wonder_id;
 	int pcx_file_id;
 	int pcx_index;
 	enum direction direction;
@@ -1344,6 +1354,8 @@ struct parsed_natural_wonder_definition {
 	int happiness_bonus;
 	bool impassible;
 	bool impassible_to_wheeled;
+	struct natural_wonder_animation_config animations[8];
+	int animation_count;
 	bool has_name;
 	bool has_img_path;
 	bool has_img_row;
@@ -1368,6 +1380,7 @@ struct parsed_tile_animation_definition {
 	char * pcx_file;
 	enum tile_animation_type type;
 	enum SquareTypes terrain_type;
+	int natural_wonder_id;
 	int pcx_file_id;
 	int pcx_index;
 	bool terrain_is_land;

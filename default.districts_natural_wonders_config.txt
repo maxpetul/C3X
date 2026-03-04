@@ -24,6 +24,11 @@
   ;  - happiness_bonus       : Number. Happiness bonus when worked.
   ;  - impassible            : 0 or 1. If 1, completed natural wonder tile is impassible to units. (default: 0)
   ;  - impassible_to_wheeled : 0 or 1. If 1, completed natural wonder tile is impassible to wheeled units unless connected by road. (default: 0)
+  ;  - animation             : Text. Optional custom animation entry; may be repeated multiple times per wonder (up to 8).
+  ;                            Format: ini:<relative ini path>; hours:<comma-delimited 0..23>; seasons:<comma-delimited season list>
+  ;                            Subkeys also accept '=' instead of ':'. Seasons: summer, fall, winter, spring.
+  ;                            Example:
+  ;                            animation = ini:NaturalWonders\AngelFalls.ini; hours:6,7,8,9,10,11,12,13,14,15,16,17; seasons=spring,summer,fall,winter
 ]
 
 #Wonder

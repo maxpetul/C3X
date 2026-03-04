@@ -251,7 +251,7 @@ void load_tile_animation_configs ();
 bool tile_has_matching_resource_animation_for_draw (Tile * tile, int tile_x, int tile_y);
 void tile_animation_scheduler_tick ();
 void rebuild_tile_animation_rule_match_cache ();
-void __fastcall patch_Tile_spawn_animated_effect (Tile * this, int edx, int effect_id, int tile_x, int tile_y, bool randomize_start_frame);
+void __fastcall patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effect, int tile_x, int tile_y, bool randomize_start_frame, enum direction dummy_dir);
 void reset_tile_animation_runtime_state ();
 bool tile_animation_matches_time_filters (struct tile_animation_config const * cfg);
 bool tile_animation_cache_needs_rebuild ();
@@ -259,6 +259,8 @@ void clear_tile_animation_pcx_matches_in_cache ();
 void register_tile_animation_pcx_draw_for_current_tile (Sprite * sprite);
 void rebuild_tile_animation_pcx_sprite_lookup ();
 void refresh_tile_animation_pcx_active_mask ();
+bool parse_tile_animation_hour_list (struct string_slice const * value, unsigned int * out_mask);
+bool parse_tile_animation_season_list (struct string_slice const * value, unsigned int * out_mask);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -7466,6 +7468,13 @@ free_dynamic_natural_wonder_config (struct natural_wonder_district_config * cfg)
 		free ((void *)cfg->img_path);
 		cfg->img_path = NULL;
 	}
+	for (int i = 0; i < cfg->animation_count; i++) {
+		if (cfg->animations[i].ini_path != NULL) {
+			free ((void *)cfg->animations[i].ini_path);
+			cfg->animations[i].ini_path = NULL;
+		}
+	}
+	cfg->animation_count = 0;
 
 	memset (cfg, 0, sizeof *cfg);
 	cfg->adjacent_to = (enum SquareTypes)SQ_INVALID;
@@ -10747,6 +10756,14 @@ init_parsed_natural_wonder_definition (struct parsed_natural_wonder_definition *
 void
 free_parsed_natural_wonder_definition (struct parsed_natural_wonder_definition * def)
 {
+	for (int i = 0; i < def->animation_count; i++) {
+		if (def->animations[i].ini_path != NULL) {
+			free ((void *)def->animations[i].ini_path);
+			def->animations[i].ini_path = NULL;
+		}
+	}
+	def->animation_count = 0;
+
 	if (def->name != NULL) {
 		free (def->name);
 		def->name = NULL;
@@ -10795,6 +10812,27 @@ add_natural_wonder_from_definition (struct parsed_natural_wonder_definition * de
 	new_cfg.terrain_type = def->terrain_type;
 	new_cfg.adjacent_to = def->adjacent_to;
 	new_cfg.adjacency_dir = def->adjacency_dir;
+	new_cfg.animation_count = def->animation_count;
+	if (new_cfg.animation_count > ARRAY_LEN (new_cfg.animations))
+		new_cfg.animation_count = ARRAY_LEN (new_cfg.animations);
+	for (int i = 0; i < new_cfg.animation_count; i++) {
+		struct natural_wonder_animation_config const * src_anim = &def->animations[i];
+		char * ini_copy = NULL;
+		if (src_anim->ini_path != NULL)
+			ini_copy = strdup (src_anim->ini_path);
+		if ((src_anim->ini_path != NULL) && (ini_copy == NULL)) {
+			for (int j = 0; j < i; j++) {
+				if (new_cfg.animations[j].ini_path != NULL)
+					free ((void *)new_cfg.animations[j].ini_path);
+			}
+			free (img_copy);
+			free (name_copy);
+			return false;
+		}
+		new_cfg.animations[i].ini_path = ini_copy;
+		new_cfg.animations[i].day_night_hour_mask = src_anim->day_night_hour_mask;
+		new_cfg.animations[i].season_mask = src_anim->season_mask;
+	}
 	new_cfg.culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
 	new_cfg.science_bonus = def->has_science_bonus ? def->science_bonus : 0;
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
@@ -10863,6 +10901,88 @@ finalize_parsed_natural_wonder_definition (struct parsed_natural_wonder_definiti
 		add_natural_wonder_from_definition (def, section_start_line);
 
 	free_parsed_natural_wonder_definition (def);
+}
+
+bool
+parse_natural_wonder_animation_entry (struct string_slice const * value,
+				      struct natural_wonder_animation_config * out_cfg)
+{
+	if ((value == NULL) || (out_cfg == NULL))
+		return false;
+
+	memset (out_cfg, 0, sizeof *out_cfg);
+	struct string_slice trimmed_value = trim_string_slice (value, 1);
+	char * text = extract_slice (&trimmed_value);
+	if (text == NULL)
+		return false;
+
+	bool ok = true;
+	bool has_ini = false;
+	char * cursor = text;
+	while (ok && (*cursor != '\0')) {
+		char * token_start = cursor;
+		while ((*cursor != '\0') && (*cursor != ';'))
+			cursor++;
+		char saved = *cursor;
+		*cursor = '\0';
+
+		struct string_slice token = {.str = token_start, .len = strlen (token_start)};
+		token = trim_string_slice (&token, 0);
+		if (token.len > 0) {
+			char * sep_colon = strchr (token.str, ':');
+			char * sep_equals = strchr (token.str, '=');
+			char * sep = NULL;
+			if (sep_colon != NULL && sep_equals != NULL)
+				sep = (sep_colon < sep_equals) ? sep_colon : sep_equals;
+			else if (sep_colon != NULL)
+				sep = sep_colon;
+			else
+				sep = sep_equals;
+
+			if (sep == NULL) {
+				ok = false;
+			} else {
+				struct string_slice k = {.str = token.str, .len = sep - token.str};
+				struct string_slice v = {.str = sep + 1, .len = strlen (sep + 1)};
+				k = trim_string_slice (&k, 0);
+				v = trim_string_slice (&v, 0);
+				if (slice_matches_str (&k, "ini")) {
+					if (out_cfg->ini_path != NULL) {
+						free ((void *)out_cfg->ini_path);
+						out_cfg->ini_path = NULL;
+					}
+					out_cfg->ini_path = extract_slice (&v);
+					has_ini = (out_cfg->ini_path != NULL) && (out_cfg->ini_path[0] != '\0');
+					if (! has_ini)
+						ok = false;
+				} else if (slice_matches_str (&k, "hours")) {
+					unsigned int mask = 0;
+					ok = parse_tile_animation_hour_list (&v, &mask);
+					if (ok)
+						out_cfg->day_night_hour_mask = mask;
+				} else if (slice_matches_str (&k, "seasons")) {
+					unsigned int mask = 0;
+					ok = parse_tile_animation_season_list (&v, &mask);
+					if (ok)
+						out_cfg->season_mask = mask;
+				} else
+					ok = false;
+			}
+		}
+
+		if (saved == ';')
+			cursor++;
+	}
+
+	free (text);
+	if ((! ok) || (! has_ini)) {
+		if (out_cfg->ini_path != NULL) {
+			free ((void *)out_cfg->ini_path);
+			out_cfg->ini_path = NULL;
+		}
+		return false;
+	}
+	return true;
 }
 
 void
@@ -11053,6 +11173,17 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 		} else {
 			def->has_impassible_to_wheeled = false;
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "animation")) {
+		if (def->animation_count >= ARRAY_LEN (def->animations))
+			add_key_parse_error (parse_errors, line_number, key, value, "(too many animations for one wonder)");
+		else {
+			struct natural_wonder_animation_config anim = {0};
+			if (parse_natural_wonder_animation_entry (value, &anim))
+				def->animations[def->animation_count++] = anim;
+			else
+				add_key_parse_error (parse_errors, line_number, key, value, "(expected \"ini:<path>; hours:<0..23 list>; seasons:<season list>\")");
 		}
 
 	} else
@@ -37445,6 +37576,13 @@ tile_animation_rule_matches_tile_base (struct tile_animation_config const * cfg,
 		int resource_id = tile->vtable->m39_Get_Resource_Type (tile);
 		if (resource_id != cfg->resource_id)
 			return false;
+	} else if (cfg->type == TAT_NATURAL_WONDER) {
+		struct district_instance * inst = get_district_instance (tile);
+		if ((inst == NULL) || (inst->district_id != NATURAL_WONDER_DISTRICT_ID))
+			return false;
+		if ((cfg->natural_wonder_id >= 0) &&
+		    (inst->natural_wonder_info.natural_wonder_id != cfg->natural_wonder_id))
+			return false;
 	} else if (cfg->type == TAT_TERRAIN) {
 		if (! tile_matches_terrain_or_land (tile, cfg->terrain_type, cfg->terrain_is_land))
 			return false;
@@ -37632,6 +37770,7 @@ init_parsed_tile_animation_definition (struct parsed_tile_animation_definition *
 	memset (def, 0, sizeof *def);
 	def->type = TAT_TERRAIN;
 	def->terrain_type = SQ_Grassland;
+	def->natural_wonder_id = -1;
 	def->pcx_file_id = TILE_ANIM_PCX_FILE_UNKNOWN;
 	def->pcx_index = -1;
 }
@@ -37833,6 +37972,7 @@ add_tile_animation_from_definition (struct parsed_tile_animation_definition * de
 	cfg.type = def->type;
 	cfg.terrain_type = def->terrain_type;
 	cfg.terrain_is_land = def->terrain_is_land;
+	cfg.natural_wonder_id = def->natural_wonder_id;
 	cfg.pcx_file_id = def->pcx_file_id;
 	cfg.pcx_index = def->pcx_index;
 	cfg.direction = def->direction;
@@ -38188,6 +38328,40 @@ load_tile_animation_config_file (char const * file_path, int path_is_relative_to
 }
 
 void
+add_natural_wonder_tile_animation_configs ()
+{
+	if (! is->current_config.enable_natural_wonders)
+		return;
+
+	for (int wonder_id = 0; wonder_id < is->natural_wonder_count; wonder_id++) {
+		struct natural_wonder_district_config const * nw = &is->natural_wonder_configs[wonder_id];
+		for (int i = 0; i < nw->animation_count; i++) {
+			struct natural_wonder_animation_config const * anim = &nw->animations[i];
+			if ((anim->ini_path == NULL) || (anim->ini_path[0] == '\0'))
+				continue;
+			if (is->tile_animation_count >= MAX_TILE_ANIMATION_CONFIGS)
+				return;
+
+			int dest = is->tile_animation_count++;
+			struct tile_animation_config * cfg = &is->tile_animation_configs[dest];
+			memset (cfg, 0, sizeof *cfg);
+			cfg->type = TAT_NATURAL_WONDER;
+			cfg->natural_wonder_id = wonder_id;
+			cfg->ini_path = strdup (anim->ini_path);
+			if (cfg->ini_path == NULL) {
+				is->tile_animation_count--;
+				continue;
+			}
+			cfg->day_night_hour_mask = anim->day_night_hour_mask;
+			cfg->season_mask = anim->season_mask;
+			cfg->effect_id = is->tile_animation_effect_base + dest;
+			cfg->in_use = true;
+		}
+	}
+	refresh_tile_animation_pcx_rule_mask ();
+}
+
+void
 load_tile_animation_configs ()
 {
 	if (! is->current_config.enable_custom_animations) {
@@ -38204,6 +38378,7 @@ load_tile_animation_configs ()
 	char * scenario_path = BIC_get_asset_path (p_bic_data, __, scenario_filename, false);
 	if ((scenario_path != NULL) && (0 != strcmp (scenario_filename, scenario_path)))
 		load_tile_animation_config_file (scenario_path, 0, 0, 1);
+	add_natural_wonder_tile_animation_configs ();
 
 	rebuild_tile_animation_pcx_sprite_lookup ();
 	rebuild_tile_animation_rule_match_cache ();
@@ -38217,6 +38392,7 @@ get_tile_animation_type_priority (enum tile_animation_type type)
 	// can be assigned clearly without touching scheduler logic.
 	switch (type) {
 		case TAT_RESOURCE:     return 400;
+		case TAT_NATURAL_WONDER: return 350;
 		case TAT_PCX:          return 300;
 		case TAT_TERRAIN:      return 200;
 		case TAT_COASTAL_WAVE: return 100;
@@ -38371,9 +38547,17 @@ void __fastcall
 patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effect, int tile_x, int tile_y, bool randomize_start_frame, enum direction dummy_dir)
 {
 	if (is->current_config.enable_custom_animations && is_custom_tile_animation_effect (effect)) {
-		if (Tile_has_city (this) || get_district_instance (this) != NULL)
-			return;
 		struct tile_animation_config * cfg = get_tile_animation_for_effect (effect);
+		struct district_instance * inst = get_district_instance (this);
+		if (Tile_has_city (this))
+			return;
+		if (inst != NULL) {
+			bool allow_natural_wonder_tile = (cfg != NULL) && (cfg->type == TAT_NATURAL_WONDER) &&
+				(inst->district_id == NATURAL_WONDER_DISTRICT_ID) &&
+				((cfg->natural_wonder_id < 0) || (inst->natural_wonder_info.natural_wonder_id == cfg->natural_wonder_id));
+			if (! allow_natural_wonder_tile)
+				return;
+		}
 		enum direction effective_direction = DIR_ZERO;
 		bool has_effective_direction = false;
 		if (cfg != NULL) {
