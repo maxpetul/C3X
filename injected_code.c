@@ -28234,6 +28234,18 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 		}
 	}
 
+	if (is->current_config.enable_custom_animations) {
+		FOR_TILES_AROUND (tai, 21, this->Body.X, this->Body.Y) {
+			if (tile_has_matching_resource_animation_for_draw (tai.tile, tai.tile_x, tai.tile_y)) {
+				// We have to call the draw method directly since the game doesn't necessarily fully redraw newly revealed tiles in all cases.
+				// This avoids situations where a newly revealed tile shows both the static resource overlay and the animated one on top of it
+				// during a turn.
+				p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+				break;
+			}
+		}
+	}
+
 	is->temporarily_disallow_lethal_zoc = false;
 	is->moving_unit_to_adjacent_tile = false;
 	is->move_spend_override_unit = NULL;
@@ -34675,20 +34687,11 @@ patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int vi
 		tile = tile_at (is->viewing_tile_info_x, is->viewing_tile_info_y);
 
 	bool suppress_static_resource = false;
-	bool tile_visible_to_civ = false;
-	if ((visible_to_civ_id >= 0) && (visible_to_civ_id < 32))
-		tile_visible_to_civ = patch_Leader_is_tile_visible (&leaders[visible_to_civ_id], __, tile_x, tile_y);
-
-	// Only replace static resource art with animation when the tile is currently visible to a civ.
-	// If it's not visible, keep vanilla/static resource draw behavior.
-	if ((tile != NULL) && (tile != p_null_tile) && tile_visible_to_civ)
+	if (is->current_config.enable_custom_animations &&
+	    ((*p_debug_mode_bits & 0xC) == 0) &&
+	    (tile != NULL) && (tile != p_null_tile) &&
+	    patch_Leader_is_tile_visible (&leaders[visible_to_civ_id], __, tile_x, tile_y))
 		suppress_static_resource = tile_has_matching_resource_animation_for_draw (tile, tile_x, tile_y);
-
-	if (! is->current_config.enable_districts) {
-		if (! suppress_static_resource)
-			Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
-		return;
-	}
 
 	if ((tile == NULL) || (tile == p_null_tile)) {
 		if (! suppress_static_resource)
@@ -34696,20 +34699,22 @@ patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int vi
 		return;
 	}
 
-	struct district_instance * inst = is->current_render_tile_district;
-	if (is->tile_info_open)
-		inst = get_district_instance (tile);
-	if (inst == NULL) {
-		if (! suppress_static_resource)
-			Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
-		return;
+	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
+		struct district_instance * inst = is->current_render_tile_district;
+		if (is->tile_info_open)
+			inst = get_district_instance (tile);
+		if (inst == NULL) {
+			if (! suppress_static_resource)
+				Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+			return;
+		}
+
+		// Resources that should be drawn below district are already drawn, skip in that case
+		if (is->district_configs[inst->district_id].draw_over_resources) 
+			return;
+
+		draw_district_generated_resource_on_tile (this, tile, inst, tile_x, tile_y, map_renderer, pixel_x, pixel_y, visible_to_civ_id);
 	}
-
-	// Resources that should be drawn below district are already drawn, skip in that case
-	if (is->district_configs[inst->district_id].draw_over_resources) 
-		return;
-
-	draw_district_generated_resource_on_tile (this, tile, inst, tile_x, tile_y, map_renderer, pixel_x, pixel_y, visible_to_civ_id);
 }
 
 void __fastcall
@@ -38592,7 +38597,8 @@ get_tile_animation_for_effect (int effect_id)
 void __stdcall
 patch_on_timer_0x9F6500 (void)
 {
-	if (is->current_config.enable_custom_animations)
+	if (is->current_config.enable_custom_animations &&
+	    ((*p_debug_mode_bits & 0xC) == 0))
 		tile_animation_scheduler_tick ();
 	on_timer_0x9F6500 ();
 }
