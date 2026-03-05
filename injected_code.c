@@ -38506,7 +38506,7 @@ pick_tile_animation_winner_for_tile (unsigned int * tile_mask)
 		if (cfg->day_night_hour_mask != 0)
 			score += 1;
 
-		// Deterministic tie-break: lower config index wins for same score.
+		// Deterministic tie-break: higher config index wins for same score.
 		if ((winner < 0) || (score > winner_score) || ((score == winner_score) && (i > winner))) {
 			winner = i;
 			winner_score = score;
