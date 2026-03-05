@@ -259,6 +259,7 @@ void clear_tile_animation_pcx_matches_in_cache ();
 void register_tile_animation_pcx_draw_for_current_tile (Sprite * sprite);
 void rebuild_tile_animation_pcx_sprite_lookup ();
 void refresh_tile_animation_pcx_active_mask ();
+int pick_tile_animation_winner_for_tile (unsigned int * tile_mask);
 bool parse_tile_animation_hour_list (struct string_slice const * value, unsigned int * out_mask);
 bool parse_tile_animation_season_list (struct string_slice const * value, unsigned int * out_mask);
 
@@ -37397,6 +37398,8 @@ clear_tile_animation_pcx_matches_in_cache ()
 		return;
 	if (! is->tile_animation_selected_valid || (is->tile_animation_selected_mask_matrix == NULL))
 		return;
+	if ((is->tile_animation_selected_next_index == NULL) || (is->tile_animation_selected_tile_indices == NULL))
+		return;
 	int tile_count = p_bic_data->Map.TileCount;
 	if (tile_count <= 0)
 		return;
@@ -37406,6 +37409,7 @@ clear_tile_animation_pcx_matches_in_cache ()
 		tile_count = is->tile_animation_selected_tile_count;
 
 	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	is->tile_animation_selected_match_count = 0;
 	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
 		unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
 		for (int w = 0; w < words_per_tile; w++) {
@@ -37413,6 +37417,13 @@ clear_tile_animation_pcx_matches_in_cache ()
 			if (clear_mask != 0)
 				tile_mask[w] &= ~clear_mask;
 		}
+
+		int winner = pick_tile_animation_winner_for_tile (tile_mask);
+		if ((winner >= 0) && (winner < is->tile_animation_count)) {
+			is->tile_animation_selected_next_index[tile_index] = winner;
+			is->tile_animation_selected_tile_indices[is->tile_animation_selected_match_count++] = tile_index;
+		} else
+			is->tile_animation_selected_next_index[tile_index] = 0xFF;
 	}
 }
 
@@ -37446,6 +37457,7 @@ register_tile_animation_pcx_draw_for_current_tile (Sprite * sprite)
 
 	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
 	unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
+	byte prev_winner = is->tile_animation_selected_next_index[tile_index];
 	int key_index = -1;
 	// Exact file+index match.
 	if (itable_look_up (&is->tile_animation_pcx_rule_key_to_index, packed, &key_index) &&
@@ -37466,6 +37478,15 @@ register_tile_animation_pcx_draw_for_current_tile (Sprite * sprite)
 				tile_mask[w] |= is->tile_animation_pcx_rule_masks[key_index][w] & is->tile_animation_pcx_active_word_mask[w];
 		}
 	}
+
+	int winner = pick_tile_animation_winner_for_tile (tile_mask);
+	if ((winner >= 0) && (winner < is->tile_animation_count)) {
+		is->tile_animation_selected_next_index[tile_index] = winner;
+		if ((prev_winner == 0xFF) && (is->tile_animation_selected_tile_indices != NULL) &&
+		    (is->tile_animation_selected_match_count < is->tile_animation_selected_tile_count))
+			is->tile_animation_selected_tile_indices[is->tile_animation_selected_match_count++] = tile_index;
+	} else
+		is->tile_animation_selected_next_index[tile_index] = 0xFF;
 }
 
 bool
@@ -37651,8 +37672,12 @@ free_tile_animation_selected_matrix ()
 		free (is->tile_animation_selected_mask_matrix);
 	if (is->tile_animation_selected_next_index != NULL)
 		free (is->tile_animation_selected_next_index);
+	if (is->tile_animation_selected_tile_indices != NULL)
+		free (is->tile_animation_selected_tile_indices);
 	is->tile_animation_selected_mask_matrix = NULL;
 	is->tile_animation_selected_next_index = NULL;
+	is->tile_animation_selected_tile_indices = NULL;
+	is->tile_animation_selected_match_count = 0;
 	is->tile_animation_selected_tile_count = 0;
 	is->tile_animation_selected_animation_count = 0;
 	is->tile_animation_selected_valid = false;
@@ -37671,10 +37696,16 @@ rebuild_tile_animation_rule_match_cache ()
 	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
 	free_tile_animation_selected_matrix ();
 	is->tile_animation_selected_mask_matrix = calloc (tile_count * words_per_tile, sizeof *is->tile_animation_selected_mask_matrix);
-	if (is->tile_animation_selected_mask_matrix == NULL) {
+	is->tile_animation_selected_next_index = malloc (tile_count * sizeof *is->tile_animation_selected_next_index);
+	is->tile_animation_selected_tile_indices = malloc (tile_count * sizeof *is->tile_animation_selected_tile_indices);
+	if ((is->tile_animation_selected_mask_matrix == NULL) ||
+	    (is->tile_animation_selected_next_index == NULL) ||
+	    (is->tile_animation_selected_tile_indices == NULL)) {
 		free_tile_animation_selected_matrix ();
 		return;
 	}
+	memset (is->tile_animation_selected_next_index, 0xFF, tile_count * sizeof *is->tile_animation_selected_next_index);
+	is->tile_animation_selected_match_count = 0;
 
 	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
 		int tile_x, tile_y;
@@ -37694,8 +37725,14 @@ rebuild_tile_animation_rule_match_cache ()
 				if (! matches)
 					continue;
 
-				tile_mask[i / 32] |= 1u << (i % 32);
-			}
+					tile_mask[i / 32] |= 1u << (i % 32);
+				}
+
+		int winner = pick_tile_animation_winner_for_tile (tile_mask);
+		if ((winner >= 0) && (winner < is->tile_animation_count)) {
+			is->tile_animation_selected_next_index[tile_index] = winner;
+			is->tile_animation_selected_tile_indices[is->tile_animation_selected_match_count++] = tile_index;
+		}
 	}
 
 	is->tile_animation_selected_tile_count = tile_count;
@@ -37709,6 +37746,10 @@ tile_animation_cache_needs_rebuild ()
 	if (! is->tile_animation_selected_valid)
 		return true;
 	if (is->tile_animation_selected_mask_matrix == NULL)
+		return true;
+	if (is->tile_animation_selected_next_index == NULL)
+		return true;
+	if (is->tile_animation_selected_tile_indices == NULL)
 		return true;
 	if (is->tile_animation_count <= 0)
 		return true;
@@ -38530,36 +38571,35 @@ tile_animation_scheduler_tick ()
 	// running the scheduler in that window can overrun those buffers.
 	if (is->saved_tile_count >= 0)
 		return;
-	if (is_online_game ())
-		return;
 	if ((p_main_screen_form == NULL) || p_main_screen_form->is_now_loading_game)
 		return;
-
 	if (is->tile_animation_count <= 0)
 		return;
 
 	if (tile_animation_cache_needs_rebuild ())
 		rebuild_tile_animation_rule_match_cache ();
 	if (! is->tile_animation_selected_valid ||
-	    (is->tile_animation_selected_mask_matrix == NULL))
+	    (is->tile_animation_selected_mask_matrix == NULL) ||
+	    (is->tile_animation_selected_next_index == NULL) ||
+	    (is->tile_animation_selected_tile_indices == NULL))
 		return;
 
 	Map * map = &p_bic_data->Map;
 	int tile_count = map->TileCount;
-	if (tile_count <= 0)
-		return;
 	if (tile_count != is->tile_animation_selected_tile_count)
 		return;
-	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
-	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
-		unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
+
+	for (int n = 0; n < is->tile_animation_selected_match_count; n++) {
+		int tile_index = is->tile_animation_selected_tile_indices[n];
+		if ((tile_index < 0) || (tile_index >= tile_count))
+			continue;
 		int tile_x, tile_y;
 		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile == NULL) || (tile == p_null_tile))
 			continue;
 
-		int i = pick_tile_animation_winner_for_tile (tile_mask);
+		int i = is->tile_animation_selected_next_index[tile_index];
 		if ((i < 0) || (i >= is->tile_animation_count))
 			continue;
 

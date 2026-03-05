@@ -2367,16 +2367,26 @@ struct district_button_image_set {
 
 	// Natural Wonder labels: table mapping natural wonder name strings to their IDs, count of defined natural wonders,
 	struct table natural_wonder_name_to_id;
+	
+	// Tile animation definitions and effect ID mapping.
 	struct tile_animation_config tile_animation_configs[MAX_TILE_ANIMATION_CONFIGS];
 	int tile_animation_count;
 	int tile_animation_effect_base;
 	int tile_animation_spawn_effect_override;
 	bool tile_animation_spawn_effect_override_active;
+
+	// Core per-tile selection cache (required for rule matching lookups).
 	unsigned int * tile_animation_selected_mask_matrix;
-	byte * tile_animation_selected_next_index;
 	int tile_animation_selected_tile_count;
 	int tile_animation_selected_animation_count;
 	bool tile_animation_selected_valid;
+
+	// Optional scheduler optimization cache.
+	byte * tile_animation_selected_next_index; // Cached winner animation index per tile, 0xFF = none.
+	int * tile_animation_selected_tile_indices; // Tile indices currently having a cached winner.
+	int tile_animation_selected_match_count;
+
+	// PCX-driven animation rule lookups and active masks.
 	struct table tile_animation_pcx_sprite_lookup;
 	struct table tile_animation_pcx_rule_key_to_index;
 	int tile_animation_pcx_rule_key_count;
