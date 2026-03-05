@@ -37309,34 +37309,16 @@ read_tile_animation_pcx_file (struct string_slice const * s, int * out_id)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
 	int id = TILE_ANIM_PCX_FILE_UNKNOWN;
-
-	if (slice_matches_str (&trimmed, "TerrainBuildings.PCX"))       id = TAPF_TERRAINBUILDINGS;
-	else if (slice_matches_str (&trimmed, "waterfalls.pcx"))        id = TAPF_WATERFALLS;
+	if (slice_matches_str (&trimmed, "deltaRivers.pcx"))            id = TAPF_DELTARIVERS;
 	else if (slice_matches_str (&trimmed, "floodplains.pcx"))       id = TAPF_FLOODPLAINS;
-	else if (slice_matches_str (&trimmed, "deltaRivers.pcx"))       id = TAPF_DELTARIVERS;
-	else if (slice_matches_str (&trimmed, "mtnRivers.pcx"))         id = TAPF_MTNRIVERS;
-	else if (slice_matches_str (&trimmed, "irrigation DESETT.pcx")) id = TAPF_IRRIGATION_DESETT;
-	else if (slice_matches_str (&trimmed, "irrigation PLAINS.pcx")) id = TAPF_IRRIGATION_PLAINS;
-	else if (slice_matches_str (&trimmed, "irrigation.pcx"))        id = TAPF_IRRIGATION;
-	else if (slice_matches_str (&trimmed, "irrigation TUNDRA.pcx")) id = TAPF_IRRIGATION_TUNDRA;
-	else if (slice_matches_str (&trimmed, "Volcanos.pcx"))          id = TAPF_VOLCANOS;
-	else if (slice_matches_str (&trimmed, "Volcanos forests.pcx"))  id = TAPF_VOLCANOS_FORESTS;
-	else if (slice_matches_str (&trimmed, "Volcanos jungles.pcx"))  id = TAPF_VOLCANOS_JUNGLES;
-	else if (slice_matches_str (&trimmed, "Volcanos-snow.pcx"))     id = TAPF_VOLCANOS_SNOW;
-	else if (slice_matches_str (&trimmed, "grassland forests.pcx")) id = TAPF_GRASSLAND_FORESTS;
-	else if (slice_matches_str (&trimmed, "plains forests.pcx"))    id = TAPF_PLAINS_FORESTS;
-	else if (slice_matches_str (&trimmed, "tundra forests.pcx"))    id = TAPF_TUNDRA_FORESTS;
-	else if (slice_matches_str (&trimmed, "LMForests.pcx"))         id = TAPF_LMFORESTS;
-	else if (slice_matches_str (&trimmed, "Mountains.pcx"))         id = TAPF_MOUNTAINS;
-	else if (slice_matches_str (&trimmed, "mountain forests.pcx"))  id = TAPF_MOUNTAIN_FORESTS;
-	else if (slice_matches_str (&trimmed, "mountain jungles.pcx"))  id = TAPF_MOUNTAIN_JUNGLES;
-	else if (slice_matches_str (&trimmed, "Mountains-snow.pcx"))    id = TAPF_MOUNTAINS_SNOW;
-	else if (slice_matches_str (&trimmed, "xhills.pcx"))            id = TAPF_XHILLS;
-	else if (slice_matches_str (&trimmed, "hill forests.pcx"))      id = TAPF_HILL_FORESTS;
-	else if (slice_matches_str (&trimmed, "hill jungle.pcx"))       id = TAPF_HILL_JUNGLE;
 	else if (slice_matches_str (&trimmed, "LMHills.pcx"))           id = TAPF_LMHILLS;
-	else if (slice_matches_str (&trimmed, "roads.pcx"))             id = TAPF_ROADS;
-	else if (slice_matches_str (&trimmed, "railroads.pcx"))         id = TAPF_RAILROADS;
+	else if (slice_matches_str (&trimmed, "Mountains.pcx"))         id = TAPF_MOUNTAINS;
+	else if (slice_matches_str (&trimmed, "Mountains-snow.pcx"))    id = TAPF_MOUNTAINS_SNOW;
+	else if (slice_matches_str (&trimmed, "mtnRivers.pcx"))         id = TAPF_MTNRIVERS;
+	else if (slice_matches_str (&trimmed, "Volcanos.pcx"))          id = TAPF_VOLCANOS;
+	else if (slice_matches_str (&trimmed, "Volcanos-snow.pcx"))     id = TAPF_VOLCANOS_SNOW;
+	else if (slice_matches_str (&trimmed, "waterfalls.pcx"))        id = TAPF_WATERFALLS;
+	else if (slice_matches_str (&trimmed, "xhills.pcx"))            id = TAPF_XHILLS;
 
 	if (id == TILE_ANIM_PCX_FILE_UNKNOWN)
 		return false;
@@ -37847,17 +37829,62 @@ parse_tile_animation_hour_list (struct string_slice const * value, unsigned int 
 		if (*cursor == '\0')
 			break;
 
-		int hour = 0;
-		if (! parse_int (&cursor, &hour) || (hour < 0) || (hour > 23)) {
+		if ((*cursor < '0') || (*cursor > '9')) {
 			free (text);
 			return false;
 		}
-		mask |= (1u << hour);
+		int start_hour = 0;
+		while ((*cursor >= '0') && (*cursor <= '9')) {
+			start_hour = start_hour * 10 + (*cursor - '0');
+			cursor++;
+		}
+		if ((start_hour < 0) || (start_hour > 23)) {
+			free (text);
+			return false;
+		}
+
+		int end_hour = start_hour;
+		bool has_range = false;
+		while ((*cursor == ' ') || (*cursor == '\t'))
+			cursor++;
+		if (*cursor == '-') {
+			has_range = true;
+			cursor++;
+			while ((*cursor == ' ') || (*cursor == '\t'))
+				cursor++;
+			if ((*cursor < '0') || (*cursor > '9')) {
+				free (text);
+				return false;
+			}
+			end_hour = 0;
+			while ((*cursor >= '0') && (*cursor <= '9')) {
+				end_hour = end_hour * 10 + (*cursor - '0');
+				cursor++;
+			}
+			if ((end_hour < 0) || (end_hour > 23)) {
+				free (text);
+				return false;
+			}
+		}
+		if (! has_range || (end_hour >= start_hour)) {
+			for (int hour = start_hour; hour <= end_hour; hour++)
+				mask |= (1u << hour);
+		} else {
+			// Wraparound range, e.g. 18-5 => 18..23 plus 0..5.
+			for (int hour = start_hour; hour <= 23; hour++)
+				mask |= (1u << hour);
+			for (int hour = 0; hour <= end_hour; hour++)
+				mask |= (1u << hour);
+		}
 
 		while ((*cursor == ' ') || (*cursor == '\t'))
 			cursor++;
 		if (*cursor == ',')
 			cursor++;
+		else if (*cursor != '\0') {
+			free (text);
+			return false;
+		}
 	}
 
 	free (text);

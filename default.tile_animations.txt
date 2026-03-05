@@ -16,33 +16,16 @@
   ;                               - coastal-wave: animation appears on coast tiles and auto-computes its facing from diagonal coastline shape.
   ;  - resource_type            : Text. Resource name. Required if type = resource.
   ;  - pcx_file                 : Text. Required if type = pcx. Use the exact Civ3 Art\Terrain filename. Supported values:
-  ;                                 TerrainBuildings.PCX
-  ;                                 waterfalls.pcx
-  ;                                 floodplains.pcx
   ;                                 deltaRivers.pcx
-  ;                                 mtnRivers.pcx
-  ;                                 irrigation DESETT.pcx
-  ;                                 irrigation PLAINS.pcx
-  ;                                 irrigation.pcx
-  ;                                 irrigation TUNDRA.pcx
-  ;                                 Volcanos.pcx
-  ;                                 Volcanos forests.pcx
-  ;                                 Volcanos jungles.pcx
-  ;                                 Volcanos-snow.pcx
-  ;                                 grassland forests.pcx
-  ;                                 plains forests.pcx
-  ;                                 tundra forests.pcx
-  ;                                 LMForests.pcx
-  ;                                 Mountains.pcx
-  ;                                 mountain forests.pcx
-  ;                                 mountain jungles.pcx
-  ;                                 Mountains-snow.pcx
-  ;                                 xhills.pcx
-  ;                                 hill forests.pcx
-  ;                                 hill jungle.pcx
+  ;                                 floodplains.pcx
   ;                                 LMHills.pcx
-  ;                                 roads.pcx
-  ;                                 railroads.pcx
+  ;                                 Mountains.pcx
+  ;                                 Mountains-snow.pcx
+  ;                                 mtnRivers.pcx
+  ;                                 Volcanos.pcx
+  ;                                 Volcanos-snow.pcx
+  ;                                 waterfalls.pcx
+  ;                                 xhills.pcx
   ;  - pcx_index                : Integer. Required if type = pcx. Sprite index inside that PCX sheet.
   ;  - terrain_type             : Text. Required if type = terrain.
   ;                               Valid values: desert, plains, grassland, jungle, tundra, floodplain, swamp, hills, mountains,
@@ -59,7 +42,8 @@
   ;  - x_offset                 : Integer. Optional horizontal pixel offset after centering (positive moves right).
   ;  - y_offset                 : Integer. Optional vertical pixel offset after centering (positive moves down).
   ;  - frame_time_seconds       : Float. Optional playback frame time. Lower values animate faster. (default: 0.15)
-  ;  - show_in_day_night_hours  : Comma-delimited numbers [0..23]. Optional allowed day/night cycle hours.
+  ;  - show_in_day_night_hours  : Comma-delimited numbers [0..23] and/or inclusive ranges like 6-17.
+  ;                               Optional allowed day/night cycle hours. Example: 0-5,19-23
   ;  - show_in_seasons          : Comma-delimited seasons. Optional allowed seasons: spring, summer, fall, winter.
 ]
 
