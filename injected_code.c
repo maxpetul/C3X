@@ -38475,12 +38475,12 @@ get_tile_animation_type_priority (enum tile_animation_type type)
 	// Keep this centralized so new animation types (district/natural wonder/etc.)
 	// can be assigned clearly without touching scheduler logic.
 	switch (type) {
-		case TAT_RESOURCE:     return 400;
-		case TAT_NATURAL_WONDER: return 350;
-		case TAT_PCX:          return 300;
-		case TAT_TERRAIN:      return 200;
-		case TAT_COASTAL_WAVE: return 100;
-		default:               return 0;
+		case TAT_RESOURCE:       return 50;
+		case TAT_NATURAL_WONDER: return 40;
+		case TAT_PCX:            return 30;
+		case TAT_TERRAIN:        return 20;
+		case TAT_COASTAL_WAVE:   return 10;
+		default:                 return 0;
 	}
 }
 
@@ -38491,7 +38491,7 @@ pick_tile_animation_winner_for_tile (unsigned int * tile_mask)
 		return -1;
 
 	int winner = -1;
-	int winner_priority = -1;
+	int winner_score = -1;
 	for (int i = 0; i < is->tile_animation_count; i++) {
 		if ((tile_mask[i / 32] & (1u << (i % 32))) == 0)
 			continue;
@@ -38500,11 +38500,16 @@ pick_tile_animation_winner_for_tile (unsigned int * tile_mask)
 		if ((cfg == NULL) || (! cfg->in_use))
 			continue;
 
-		int priority = get_tile_animation_type_priority (cfg->type);
-		// Deterministic tie-break: lower config index wins for same priority.
-		if ((winner < 0) || (priority > winner_priority) || ((priority == winner_priority) && (i < winner))) {
+		int score = get_tile_animation_type_priority (cfg->type);
+		if (cfg->season_mask != 0)
+			score += 1;
+		if (cfg->day_night_hour_mask != 0)
+			score += 1;
+
+		// Deterministic tie-break: lower config index wins for same score.
+		if ((winner < 0) || (score > winner_score) || ((score == winner_score) && (i > winner))) {
 			winner = i;
-			winner_priority = priority;
+			winner_score = score;
 		}
 	}
 	return winner;

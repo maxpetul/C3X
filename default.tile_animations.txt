@@ -26,7 +26,7 @@
   ;                                 Volcanos-snow.pcx
   ;                                 waterfalls.pcx
   ;                                 xhills.pcx
-  ;  - pcx_index                : Integer. Required if type = pcx. Sprite index inside that PCX sheet.
+  ;  - pcx_index                : Integer. Required if type = pcx. Zero-indexed sprite number inside a PCX sheet. So first-row first-column entry is "0", etc.
   ;  - terrain_type             : Text. Required if type = terrain.
   ;                               Valid values: desert, plains, grassland, jungle, tundra, floodplain, swamp, hills, mountains,
   ;                                             forest, volcano, snow-forest, snow-mountains, snow-volcano, coast, sea, ocean, land
@@ -45,6 +45,14 @@
   ;  - show_in_day_night_hours  : Comma-delimited numbers [0..23] and/or inclusive ranges like 6-17.
   ;                               Optional allowed day/night cycle hours. Example: 0-5,19-23
   ;  - show_in_seasons          : Comma-delimited seasons. Optional allowed seasons: spring, summer, fall, winter.
+  ;
+  ;  Note: A given tile can have multiple potential animations, depending on the configuration and whether a tile
+  ;        has certain resources, the time of day, season, and so on. Determining which to show is done by scoring 
+  ;        system with the following rules:
+  ;  
+  ;        1. Resource > Natural Wonder > PCX > Terrain > Coastal Wave
+  ;        2. If two candidate animations are tied, the one with seasons and/or day-night hours specified takes precedence.
+  ;        3. If still tied, whichever animation appears last takes precedence.
 ]
 
 #Animation
