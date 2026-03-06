@@ -777,6 +777,7 @@ struct district_config {
 	bool is_dynamic;
 	bool align_to_coast;
 	bool draw_over_resources;
+	bool subsumes_tile_resource;
 	bool allow_irrigation_from;
 	bool auto_add_road;
 	bool auto_add_railroad;
@@ -1074,6 +1075,7 @@ struct parsed_district_definition {
 	enum district_type type;
 	bool align_to_coast;
 	bool draw_over_resources;
+	bool subsumes_tile_resource;
 	bool allow_irrigation_from;
 	bool auto_add_road;
 	bool auto_add_railroad;
@@ -1131,6 +1133,7 @@ struct parsed_district_definition {
 	bool has_type;
 	bool has_align_to_coast;
 	bool has_draw_over_resources;
+	bool has_subsumes_tile_resource;
 	bool has_custom_width;
 	bool has_custom_height;
 	bool has_x_offset;
