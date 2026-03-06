@@ -6268,6 +6268,8 @@ city_has_river_district (City * city, int district_id)
 	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		if (wai.district_inst->district_id != district_id)
 			continue;
+		if (! district_tile_bonus_applies_to_city (wai.tile, district_id, city))
+			continue;
 		if (wai.tile->vtable->m37_Get_River_Code (wai.tile) != 0)
 			return true;
 	}
@@ -13274,8 +13276,7 @@ patch_Map_calc_food_yield_at (Map * this, int edx, int tile_x, int tile_y, int t
 	if ((tile != NULL) && (tile != p_null_tile)) {
 		struct district_instance * inst = get_district_instance (tile);
 		if (inst != NULL &&
-		    district_is_complete (tile, inst->district_id) &&
-		    district_tile_should_be_unworkable (inst->district_id)) {
+		    district_is_complete (tile, inst->district_id)) {
 			return 0;
 		}
 	}
@@ -13293,8 +13294,7 @@ patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int
 	if ((tile != NULL) && (tile != p_null_tile)) {
 		struct district_instance * inst = get_district_instance (tile);
 		if (inst != NULL &&
-		    district_is_complete (tile, inst->district_id) &&
-		    district_tile_should_be_unworkable (inst->district_id)) {
+		    district_is_complete (tile, inst->district_id)) {
 			return 0;
 		}
 	}
@@ -14300,7 +14300,11 @@ city_has_required_district (City * city, int district_id)
 	if ((city == NULL) || (district_id < 0) || (district_id >= is->district_count))
 		return false;
 
-	if (get_completed_district_tile_for_city (city, district_id, NULL, NULL) != NULL) {
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		if (wai.district_inst->district_id != district_id)
+			continue;
+		if (! district_tile_bonus_applies_to_city (wai.tile, district_id, city))
+			continue;
 		clear_city_district_request (city, district_id);
 		return true;
 	}
@@ -24199,6 +24203,9 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 	} else if (! is->current_config.cities_with_mutual_district_receive_buildings)
 		return;
 
+	if (! is_wonder && district_uses_tile_improvement_rules (required_district_id))
+		return;
+
 	// If a Wonder, we know the specific tile it is at, so determine which other cities have that in work radius.
 	if (is_wonder) {
 		Tile * tile = tile_at (tile_x, tile_y);
@@ -24295,6 +24302,8 @@ grant_existing_district_buildings_to_city (City * city)
 
 		struct district_instance * inst = wai.district_inst;
 		int district_id = inst->district_id;
+		if (district_uses_tile_improvement_rules (district_id))
+			continue;
 
 		struct district_infos * info = &is->district_infos[district_id];
 		if (info->dependent_building_count <= 0)
@@ -24687,6 +24696,8 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 				for (int i = 0; i < prereq_list->count; i++) {
 					int district_id = prereq_list->district_ids[i];
 					if (district_id < 0)
+						continue;
+					if (! is_wonder && district_uses_tile_improvement_rules (district_id))
 						continue;
 					copy_building_with_cities_in_radius (this, improv_id, district_id, x, y);
 				}
@@ -28632,29 +28643,32 @@ patch_City_calc_tile_yield_while_gathering (City * this, int edx, YieldKind kind
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
 			struct district_instance * inst = get_district_instance (tile);
-			if ((inst != NULL) &&
-			    district_is_complete (tile, inst->district_id) &&
-			    district_uses_tile_improvement_rules (inst->district_id) &&
-			    (tile->Body.CityAreaID == this->Body.ID)) {
-				struct district_config * cfg = &is->district_configs[inst->district_id];
-				int food_bonus = 0;
-				int shield_bonus = 0;
-				int gold_bonus = 0;
-				get_effective_district_yields (inst, cfg, &food_bonus, &shield_bonus, &gold_bonus, NULL, NULL, NULL);
-				if ((cfg->generated_resource_id >= 0) &&
-				    (cfg->generated_resource_flags & MF_YIELDS) &&
-				    district_can_generate_resource (this->Body.CivID, cfg)) {
-					Resource_Type * res = &p_bic_data->ResourceTypes[cfg->generated_resource_id];
-					food_bonus += res->Food;
-					shield_bonus += res->Shield;
-					gold_bonus += res->Commerce;
+			if ((inst != NULL) && district_is_complete (tile, inst->district_id)) {
+				bool tile_improvement_rules = district_uses_tile_improvement_rules (inst->district_id);
+				bool city_gets_tile = tile_improvement_rules && (tile->Body.CityAreaID == this->Body.ID);
+				if (tile_improvement_rules && city_gets_tile) {
+					struct district_config * cfg = &is->district_configs[inst->district_id];
+					int food_bonus = 0;
+					int shield_bonus = 0;
+					int gold_bonus = 0;
+					get_effective_district_yields (inst, cfg, &food_bonus, &shield_bonus, &gold_bonus, NULL, NULL, NULL);
+					if ((cfg->generated_resource_id >= 0) &&
+					    (cfg->generated_resource_flags & MF_YIELDS) &&
+					    district_can_generate_resource (this->Body.CivID, cfg)) {
+						Resource_Type * res = &p_bic_data->ResourceTypes[cfg->generated_resource_id];
+						food_bonus += res->Food;
+						shield_bonus += res->Shield;
+						gold_bonus += res->Commerce;
+					}
+					if (kind == YK_FOOD)
+						tr = food_bonus;
+					else if (kind == YK_SHIELDS)
+						tr = shield_bonus;
+					else if (kind == YK_COMMERCE)
+						tr = gold_bonus;
+				} else {
+					tr = 0;
 				}
-				if (kind == YK_FOOD)
-					tr += food_bonus;
-				else if (kind == YK_SHIELDS)
-					tr += shield_bonus;
-				else if (kind == YK_COMMERCE)
-					tr += gold_bonus;
 			}
 		}
 	}
@@ -31823,6 +31837,9 @@ draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, in
 void __fastcall
 patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 {
+	Tile * district_tiles_hidden_from_vanilla[256];
+	int district_tiles_hidden_count = 0;
+
 	// If we're zoomed in and the city work radius is at least 4 then it's likely we'll end up drawing things outside of the city screen's usual
 	// map area. Set the clip area to the map area so none of those draws are visible.
 	bool changed_clip_area = false;
@@ -31835,6 +31852,23 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 		recompute_city_yields_with_districts (this->CurrentCity);
 	}
 
+	// Hide vanilla per-tile yield icons on completed district tiles; district icons are drawn below.
+	if ((this->CurrentCity != NULL) &&
+	    (is->current_config.enable_districts || is->current_config.enable_natural_wonders)) {
+		int city_id = this->CurrentCity->Body.ID;
+		FOR_DISTRICTS_AROUND (wai, this->CurrentCity->Body.X, this->CurrentCity->Body.Y, true) {
+			struct district_instance * inst = wai.district_inst;
+			if ((inst == NULL) || ! district_is_complete (wai.tile, inst->district_id))
+				continue;
+			if (wai.tile->Body.CityAreaID != city_id)
+				continue;
+			if (district_tiles_hidden_count < ARRAY_LEN (district_tiles_hidden_from_vanilla)) {
+				district_tiles_hidden_from_vanilla[district_tiles_hidden_count++] = wai.tile;
+				wai.tile->Body.CityAreaID = -1;
+			}
+		}
+	}
+
 	is->do_not_draw_already_worked_tile_img = false;
 	City_Form_draw_yields_on_worked_tiles (this);
 
@@ -31845,6 +31879,15 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 	if (p_bic_data->is_zoomed_out) {
 		is->do_not_draw_already_worked_tile_img = true;
 		City_Form_draw_yields_on_worked_tiles (this);
+	}
+
+	if (this->CurrentCity != NULL) {
+		int city_id = this->CurrentCity->Body.ID;
+		for (int i = 0; i < district_tiles_hidden_count; i++) {
+			Tile * tile = district_tiles_hidden_from_vanilla[i];
+			if ((tile != NULL) && (tile != p_null_tile))
+				tile->Body.CityAreaID = city_id;
+		}
 	}
 
 	// Draw district bonuses on district tiles
@@ -31946,6 +31989,9 @@ skip_district_yields:
 bool __fastcall
 patch_City_Form_draw_highlighted_yields (City_Form * this, int edx, int tile_x, int tile_y, int neighbor_index)
 {
+	Tile * hidden_district_tile = NULL;
+	short hidden_district_city_area_id = -1;
+
 	// Make sure we don't draw outside the map area
 	bool changed_clip_area = false;
 	if ((is->current_config.city_work_radius >= 4) && ! p_bic_data->is_zoomed_out) {
@@ -31953,7 +31999,25 @@ patch_City_Form_draw_highlighted_yields (City_Form * this, int edx, int tile_x, 
 		changed_clip_area = true;
 	}
 
+	if ((this->CurrentCity != NULL) &&
+	    (is->current_config.enable_districts || is->current_config.enable_natural_wonders)) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (tile);
+			if ((inst != NULL) &&
+			    district_is_complete (tile, inst->district_id) &&
+			    (tile->Body.CityAreaID == this->CurrentCity->Body.ID)) {
+				hidden_district_tile = tile;
+				hidden_district_city_area_id = tile->Body.CityAreaID;
+				tile->Body.CityAreaID = -1;
+			}
+		}
+	}
+
 	bool tr = City_Form_draw_highlighted_yields (this, __, tile_x, tile_y, neighbor_index);
+
+	if (hidden_district_tile != NULL)
+		hidden_district_tile->Body.CityAreaID = hidden_district_city_area_id;
 
 	if (changed_clip_area)
 		clear_clip_area (this);
@@ -33077,6 +33141,16 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
     if ((center == NULL) || (center == p_null_tile)) return false;
     int owner_id = center->Territory_OwnerID;
     if (owner_id <= 0) return false;
+
+	if (district_uses_tile_improvement_rules (district_id)) {
+		int city_id = center->Body.CityAreaID;
+		if (city_id < 0)
+			return false;
+		City * city = get_city_ptr (city_id);
+		if ((city == NULL) || ! city_radius_contains_tile (city, tile_x, tile_y))
+			return false;
+		return has_active_building (city, i_improv);
+	}
 
 	FOR_CITIES_AROUND (wai, tile_x, tile_y) {
 		if (has_active_building (wai.city, i_improv))
