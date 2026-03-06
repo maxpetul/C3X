@@ -18789,18 +18789,31 @@ set_up_district_buttons (Main_GUI * this)
 
 		if (is->district_configs[dc].command == -1)
 			continue;
-		if ((dc == BRIDGE_DISTRICT_ID) && ! is->current_config.enable_bridge_districts)
-			continue;
+
+		bool already_building = false;
+		FOR_UNITS_ON (uti, tile) {
+			Unit * unit = uti.unit;
+			if (unit != NULL && is_worker(unit) && existing_inst != NULL && existing_inst->district_id == dc) {
+				// If there's a worker on the tile and it's building this district, 
+				// show the button so more workers can contribute. This works around an
+				// issue where a specific district requiring irrigation no longer 
+				// is buildable by other workers because initial construction removes the 
+				// required irrigation overlay upon construction start 
+				already_building = true;
+				break;
+			}
+		}
 
 		if (existing_district_id == dc && district_completed) continue;
 		if ((existing_district_id >= 0) && (existing_district_id != dc) && (! district_completed)) continue;
 
-		if (! can_build_district_on_tile (tile, dc, selected_unit->Body.CivID))
+		if (! can_build_district_on_tile (tile, dc, selected_unit->Body.CivID) && ! already_building)
 			continue;
 
 		// This district should be shown
 		active_districts[active_count++] = dc;
 	}
+
 
 	if (active_count == 0)
 		return;
