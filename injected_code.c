@@ -28119,6 +28119,16 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 	is->move_spend_override_unit = NULL;
 	is->move_spend_override_value = 0;
 
+	bool redraw_after_move = false;
+	if (is->current_config.enable_custom_animations) {
+		FOR_TILES_AROUND (tai, 21, this->Body.X, this->Body.Y) {
+			if (tile_has_matching_resource_animation_for_draw (tai.tile, tai.tile_x, tai.tile_y)) {
+				redraw_after_move = true;
+				break;
+			}
+		}
+	}
+
 	bool const allow_worker_coast = is->current_config.enable_districts && is->current_config.workers_can_enter_coast && is_worker (this);
 	bool const allow_bridge_walk = is->current_config.enable_districts &&
 		is->current_config.enable_bridge_districts &&
@@ -28238,14 +28248,17 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 	if (is->current_config.enable_custom_animations) {
 		FOR_TILES_AROUND (tai, 21, this->Body.X, this->Body.Y) {
 			if (tile_has_matching_resource_animation_for_draw (tai.tile, tai.tile_x, tai.tile_y)) {
-				// We have to call the draw method directly since the game doesn't necessarily fully redraw newly revealed tiles in all cases.
-				// This avoids situations where a newly revealed tile shows both the static resource overlay and the animated one on top of it
-				// during a turn.
-				p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+				redraw_after_move = true;
 				break;
 			}
 		}
 	}
+
+	// We have to call the draw method directly since the game doesn't necessarily fully redraw newly (un)revealed 
+	// tiles in all cases. This avoids situations where a newly revealed tile shows both the static resource overlay 
+	// and the animated one on top of it during a turn.
+	if (redraw_after_move)
+		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 
 	is->temporarily_disallow_lethal_zoc = false;
 	is->moving_unit_to_adjacent_tile = false;
@@ -34653,7 +34666,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	//*p_debug_mode_bits |= 0xC;
+	*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
