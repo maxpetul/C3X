@@ -249,6 +249,7 @@ char * copy_trimmed_string_or_null (struct string_slice const * slice, int remov
 bool city_has_resource_r (City * city, int resource_id, int max_generated_resource_id);
 void load_tile_animation_configs ();
 bool tile_has_matching_resource_animation_for_draw (Tile * tile, int tile_x, int tile_y);
+bool tile_has_matching_resource_animation_for_draw_with_resource (Tile * tile, int tile_x, int tile_y, int resource_id, int * out_effect_id);
 void tile_animation_scheduler_tick ();
 void rebuild_tile_animation_rule_match_cache ();
 void __fastcall patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effect, int tile_x, int tile_y, bool randomize_start_frame, enum direction dummy_dir);
@@ -262,6 +263,7 @@ void refresh_tile_animation_pcx_active_mask ();
 int pick_tile_animation_winner_for_tile (unsigned int * tile_mask);
 bool parse_tile_animation_hour_list (struct string_slice const * value, unsigned int * out_mask);
 bool parse_tile_animation_season_list (struct string_slice const * value, unsigned int * out_mask);
+struct tile_animation_config * get_tile_animation_for_effect (int effect_id);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -34344,6 +34346,23 @@ void
 draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, struct district_instance * inst, 
 	int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int visible_to_civ_id)
 {
+	int draw_tile_x = tile_x;
+	int draw_tile_y = tile_y;
+	if (is->tile_info_open) {
+		draw_tile_x = is->viewing_tile_info_x;
+		draw_tile_y = is->viewing_tile_info_y;
+	}
+
+	int anim_civ_id = visible_to_civ_id;
+	if (((anim_civ_id < 0) || (anim_civ_id >= 32)) && (p_main_screen_form != NULL))
+		anim_civ_id = p_main_screen_form->Player_CivID;
+
+	bool tile_visible_for_animation = false;
+	if (is->current_config.enable_custom_animations &&
+	    ((*p_debug_mode_bits & 0xC) == 0) &&
+	    (anim_civ_id >= 0) && (anim_civ_id < 32))
+		tile_visible_for_animation = patch_Leader_is_tile_visible (&leaders[anim_civ_id], __, draw_tile_x, draw_tile_y);
+
 	int base_resource = Tile_get_resource_visible_to (tile, __, visible_to_civ_id);
 	int district_resource = -1;
 
@@ -34390,8 +34409,41 @@ draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, stru
 		return;
 	}
 
+	int district_resource_effect_id = -1;
+	bool suppress_district_resource_static =
+		tile_visible_for_animation &&
+		tile_has_matching_resource_animation_for_draw_with_resource (tile, draw_tile_x, draw_tile_y,
+		                                                             district_resource, &district_resource_effect_id);
+
 	if (base_resource >= 0) {
 		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, left_x, pixel_y);
+	}
+
+	if (suppress_district_resource_static) {
+		if ((district_resource_effect_id >= 0) && (tile->Body.active_tile_effect == NULL)) {
+			struct tile_animation_config * cfg = get_tile_animation_for_effect (district_resource_effect_id);
+			bool restore_cfg = false;
+			int saved_x_offset = 0;
+			bool saved_has_x_offset = false;
+
+			// Match static split-resource placement: generated resource is shifted to the right
+			// when a native resource is also drawn on the same tile.
+			if ((cfg != NULL) && (base_resource >= 0)) {
+				restore_cfg = true;
+				saved_x_offset = cfg->x_offset;
+				saved_has_x_offset = cfg->has_x_offset;
+				cfg->x_offset = saved_x_offset + (offset >> 1);
+				cfg->has_x_offset = true;
+			}
+
+			patch_Tile_spawn_animated_effect (tile, __, district_resource_effect_id, draw_tile_x, draw_tile_y, true, DIR_SW);
+
+			if (restore_cfg) {
+				cfg->x_offset = saved_x_offset;
+				cfg->has_x_offset = saved_has_x_offset;
+			}
+		}
+		return;
 	}
 
 	int tile_height   = tile_width >> 1;
@@ -34666,7 +34718,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -34697,15 +34749,34 @@ void __fastcall
 patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
 	Tile * tile = is->current_render_tile;
+	int draw_tile_x = tile_x;
+	int draw_tile_y = tile_y;
 	if (is->tile_info_open)
 		tile = tile_at (is->viewing_tile_info_x, is->viewing_tile_info_y);
+	if (is->tile_info_open) {
+		draw_tile_x = is->viewing_tile_info_x;
+		draw_tile_y = is->viewing_tile_info_y;
+	}
 
 	bool suppress_static_resource = false;
+	int resource_animation_effect_id = -1;
+	int anim_civ_id = visible_to_civ_id;
+	if (((anim_civ_id < 0) || (anim_civ_id >= 32)) && (p_main_screen_form != NULL))
+		anim_civ_id = p_main_screen_form->Player_CivID;
+	bool tile_visible_for_animation = false;
 	if (is->current_config.enable_custom_animations &&
 	    ((*p_debug_mode_bits & 0xC) == 0) &&
 	    (tile != NULL) && (tile != p_null_tile) &&
-	    patch_Leader_is_tile_visible (&leaders[visible_to_civ_id], __, tile_x, tile_y))
-		suppress_static_resource = tile_has_matching_resource_animation_for_draw (tile, tile_x, tile_y);
+	    (anim_civ_id >= 0) && (anim_civ_id < 32))
+		tile_visible_for_animation = patch_Leader_is_tile_visible (&leaders[anim_civ_id], __, draw_tile_x, draw_tile_y);
+
+	if (tile_visible_for_animation) {
+		int visible_resource_id = Tile_get_resource_visible_to (tile, __, anim_civ_id);
+		suppress_static_resource = tile_has_matching_resource_animation_for_draw_with_resource (tile, draw_tile_x, draw_tile_y,
+		                                                                                         visible_resource_id, &resource_animation_effect_id);
+		if (suppress_static_resource && (resource_animation_effect_id >= 0) && (tile->Body.active_tile_effect == NULL))
+			patch_Tile_spawn_animated_effect (tile, __, resource_animation_effect_id, draw_tile_x, draw_tile_y, true, DIR_SW);
+	}
 
 	if ((tile == NULL) || (tile == p_null_tile)) {
 		if (! suppress_static_resource)
@@ -37812,15 +37883,58 @@ tile_animation_rule_matches_tile (struct tile_animation_config const * cfg, Tile
 bool
 tile_has_matching_resource_animation_for_draw (Tile * tile, int tile_x, int tile_y)
 {
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	int resource_id = tile->vtable->m39_Get_Resource_Type (tile);
+	return tile_has_matching_resource_animation_for_draw_with_resource (tile, tile_x, tile_y, resource_id, NULL);
+}
+
+bool
+tile_has_matching_resource_animation_for_draw_with_resource (Tile * tile, int tile_x, int tile_y, int resource_id, int * out_effect_id)
+{
+	if (out_effect_id != NULL)
+		*out_effect_id = -1;
+
 	if (! is->current_config.enable_custom_animations)
 		return false;
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	if ((resource_id < 0) || (resource_id >= p_bic_data->ResourceTypeCount))
+		return false;
+	if (Tile_has_city (tile))
+		return false;
 
+	int matched_animation_index = -1;
 	for (int i = 0; i < is->tile_animation_count; i++) {
 		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
-		if ((cfg->type == TAT_RESOURCE) && tile_animation_rule_matches_tile (cfg, tile, tile_x, tile_y, true))
-			return true;
+		if ((cfg == NULL) || (! cfg->in_use))
+			continue;
+		if ((cfg->type != TAT_RESOURCE) || (cfg->resource_id != resource_id))
+			continue;
+		if (! tile_animation_matches_time_filters (cfg))
+			continue;
+
+		bool adjacent_ok = true;
+		if (cfg->adjacent_to_count > 0) {
+			adjacent_ok = false;
+			for (int k = 0; k < cfg->adjacent_to_count; k++)
+				if (tile_animation_adjacent_requirement_matches (&cfg->adjacent_to[k], tile_x, tile_y)) {
+					adjacent_ok = true;
+					break;
+				}
+		}
+		if (! adjacent_ok)
+			continue;
+
+		if (matched_animation_index < i)
+			matched_animation_index = i;
 	}
-	return false;
+
+	if (matched_animation_index < 0)
+		return false;
+	if (out_effect_id != NULL)
+		*out_effect_id = is->tile_animation_configs[matched_animation_index].effect_id;
+	return true;
 }
 
 void
@@ -38703,7 +38817,8 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effe
 			bool allow_natural_wonder_tile = (cfg != NULL) && (cfg->type == TAT_NATURAL_WONDER) &&
 				(inst->district_id == NATURAL_WONDER_DISTRICT_ID) &&
 				((cfg->natural_wonder_id < 0) || (inst->natural_wonder_info.natural_wonder_id == cfg->natural_wonder_id));
-			if (! allow_natural_wonder_tile)
+			bool allow_resource_on_district_tile = (cfg != NULL) && (cfg->type == TAT_RESOURCE);
+			if (! allow_natural_wonder_tile && ! allow_resource_on_district_tile)
 				return;
 		}
 		enum direction effective_direction = DIR_ZERO;
