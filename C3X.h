@@ -780,6 +780,7 @@ struct district_config {
 	bool allow_irrigation_from;
 	bool auto_add_road;
 	bool auto_add_railroad;
+	bool consumes_worker;
 	int custom_width;
 	int custom_height;
 	int x_offset;
@@ -1076,6 +1077,7 @@ struct parsed_district_definition {
 	bool allow_irrigation_from;
 	bool auto_add_road;
 	bool auto_add_railroad;
+	bool consumes_worker;
 	bool impassible;
 	bool impassible_to_wheeled;
 	int custom_width;
@@ -1176,6 +1178,7 @@ struct parsed_district_definition {
 	bool has_allow_irrigation_from;
 	bool has_auto_add_road;
 	bool has_auto_add_railroad;
+	bool has_consumes_worker;
 	bool has_impassible;
 	bool has_impassible_to_wheeled;
 };

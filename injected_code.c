@@ -6374,6 +6374,24 @@ district_is_complete(Tile * tile, int district_id)
 			set_tile_unworkable_for_all_cities (tile, tile_x, tile_y);
 		int territory_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
 
+		if (cfg->consumes_worker) {
+			Unit * worker_to_consume = NULL;
+			FOR_UNITS_ON (uti, tile) {
+				Unit * unit = uti.unit;
+				if ((unit != NULL) && is_worker (unit)) {
+					worker_to_consume = unit;
+					break;
+				}
+			}
+			if (worker_to_consume != NULL) {
+				char worker_ss[200];
+				snprintf (worker_ss, sizeof worker_ss, "District %d completed at tile (%d,%d), consuming worker %d\n",
+					  district_id, tile_x, tile_y, worker_to_consume->Body.ID);
+				(*p_OutputDebugStringA) (worker_ss);
+				patch_Unit_despawn (worker_to_consume, __, 0, true, false, 0, 0, 0, 0);
+			}
+		}
+
 		if (cfg->auto_add_road) {
 			bool has_road = tile->vtable->m25_Check_Roads (tile, __, 0) != 0;
 			if (! has_road)
@@ -8541,6 +8559,8 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->auto_add_road = def->auto_add_road;
 	if (def->has_auto_add_railroad)
 		cfg->auto_add_railroad = def->auto_add_railroad;
+	if (def->has_consumes_worker)
+		cfg->consumes_worker = def->consumes_worker;
 	if (def->has_custom_width)
 		cfg->custom_width = def->custom_width;
 	if (def->has_custom_height)
@@ -8853,6 +8873,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.allow_irrigation_from = def->has_allow_irrigation_from ? def->allow_irrigation_from : false;
 	new_cfg.auto_add_road = def->has_auto_add_road ? def->auto_add_road : false;
 	new_cfg.auto_add_railroad = def->has_auto_add_railroad ? def->auto_add_railroad : false;
+	new_cfg.consumes_worker = def->has_consumes_worker ? def->consumes_worker : false;
 	new_cfg.custom_width = def->has_custom_width ? def->custom_width : 0;
 	new_cfg.custom_height = def->has_custom_height ? def->custom_height : 0;
 	new_cfg.x_offset = def->has_x_offset ? def->x_offset : 0;
@@ -9541,6 +9562,15 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		if (read_int (&val_slice, &ival)) {
 			def->auto_add_railroad = (ival != 0);
 			def->has_auto_add_railroad = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "consumes_worker")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->consumes_worker = (ival != 0);
+			def->has_consumes_worker = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
