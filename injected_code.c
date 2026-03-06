@@ -231,6 +231,9 @@ struct district_instance * get_district_instance (Tile * tile);
 struct named_tile_entry * get_named_tile_entry (Tile * tile);
 bool city_has_required_district (City * city, int district_id);
 bool district_is_complete (Tile * tile, int district_id);
+bool district_uses_tile_improvement_rules (int district_id);
+bool district_tile_bonus_applies_to_city (Tile * tile, int district_id, City * city);
+bool district_tile_should_be_unworkable (int district_id);
 bool city_requires_district_for_improvement (City * city, int improv_id, int * out_district_id);
 void clear_city_district_request (City * city, int district_id);
 void set_tile_unworkable_for_all_cities (Tile * tile, int tile_x, int tile_y);
@@ -553,7 +556,9 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 			if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 				// Check if the tile itself is a completed district (includes natural wonders)
 				struct district_instance * inst = get_district_instance (tile);
-				if (inst != NULL && district_is_complete (tile, inst->district_id))
+				if ((inst != NULL) &&
+				    district_is_complete (tile, inst->district_id) &&
+				    district_tile_should_be_unworkable (inst->district_id))
 					return false;
 
 				// Check if the tile is covered by a distribution hub
@@ -6363,7 +6368,8 @@ district_is_complete(Tile * tile, int district_id)
 
 	int tile_x, tile_y;
 	if (district_instance_get_coords (inst, tile, &tile_x, &tile_y)) {
-		set_tile_unworkable_for_all_cities (tile, tile_x, tile_y);
+		if (district_tile_should_be_unworkable (district_id))
+			set_tile_unworkable_for_all_cities (tile, tile_x, tile_y);
 		int territory_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
 
 		if (cfg->auto_add_road) {
@@ -7623,6 +7629,7 @@ init_parsed_district_definition (struct parsed_district_definition * def)
 	def->defense_bonus_percent = 0;
 	def->render_strategy = DRS_BY_COUNT;
 	def->ai_build_strategy = DABS_DISTRICT;
+	def->type = DT_DISTRICT;
 	def->buildable_square_types_mask = district_default_buildable_mask ();
 	def->buildable_adjacent_to_square_types_mask = 0;
 	def->buildable_without_removal_mask = 0;
@@ -8520,6 +8527,8 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->render_strategy = def->render_strategy;
 	if (def->has_ai_build_strategy)
 		cfg->ai_build_strategy = def->ai_build_strategy;
+	if (def->has_type)
+		cfg->type = def->type;
 	if (def->has_align_to_coast)
 		cfg->align_to_coast = def->align_to_coast;
 	if (def->has_draw_over_resources)
@@ -8836,6 +8845,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.vary_img_by_culture = def->has_vary_img_by_culture ? def->vary_img_by_culture : false;
 	new_cfg.render_strategy = def->has_render_strategy ? def->render_strategy : DRS_BY_COUNT;
 	new_cfg.ai_build_strategy = def->has_ai_build_strategy ? def->ai_build_strategy : DABS_DISTRICT;
+	new_cfg.type = def->has_type ? def->type : DT_DISTRICT;
 	new_cfg.align_to_coast = def->has_align_to_coast ? def->align_to_coast : false;
 	new_cfg.draw_over_resources = def->has_draw_over_resources ? def->draw_over_resources : false;
 	new_cfg.allow_irrigation_from = def->has_allow_irrigation_from ? def->allow_irrigation_from : false;
@@ -9464,6 +9474,24 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->has_ai_build_strategy = true;
 		} else {
 			def->has_ai_build_strategy = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected \"district\" or \"tile-improvement\")");
+		}
+		if (strategy != NULL)
+			free (strategy);
+
+	} else if (slice_matches_str (key, "type")) {
+		char * strategy = copy_trimmed_string_or_null (value, 1);
+		if (strategy == NULL) {
+			def->has_type = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
+		} else if (strcmp (strategy, "district") == 0) {
+			def->type = DT_DISTRICT;
+			def->has_type = true;
+		} else if (strcmp (strategy, "tile-improvement") == 0) {
+			def->type = DT_TILE_IMPROVEMENT;
+			def->has_type = true;
+		} else {
+			def->has_type = false;
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected \"district\" or \"tile-improvement\")");
 		}
 		if (strategy != NULL)
@@ -12161,7 +12189,8 @@ finalize_scenario_district_entry (struct scenario_district_entry * entry,
 					if (success) {
 						if (district_id != NATURAL_WONDER_DISTRICT_ID && !tile->vtable->m18_Check_Mines (tile, __, 0))
 							tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, map_x, map_y);
-						set_tile_unworkable_for_all_cities (tile, map_x, map_y);
+						if (district_tile_should_be_unworkable (district_id))
+							set_tile_unworkable_for_all_cities (tile, map_x, map_y);
 					}
 				}
 			}
@@ -13138,6 +13167,32 @@ district_generates_resource_for_civ (Tile * tile, struct district_instance * ins
 	return district_resource_prereqs_met_r (tile, tile_x, tile_y, inst->district_id, dc->generated_resource_id - 1);
 }
 
+bool
+district_uses_tile_improvement_rules (int district_id)
+{
+	if ((district_id < 0) || (district_id >= is->district_count))
+		return false;
+	return is->district_configs[district_id].type == DT_TILE_IMPROVEMENT;
+}
+
+bool
+district_tile_bonus_applies_to_city (Tile * tile, int district_id, City * city)
+{
+	if (city == NULL)
+		return false;
+	if (! district_uses_tile_improvement_rules (district_id))
+		return true;
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	return tile->Body.CityAreaID == city->Body.ID;
+}
+
+bool
+district_tile_should_be_unworkable (int district_id)
+{
+	return ! district_uses_tile_improvement_rules (district_id);
+}
+
 void
 calculate_city_center_district_bonus (City * city, int * out_food, int * out_shields, int * out_gold)
 {
@@ -13165,6 +13220,8 @@ calculate_city_center_district_bonus (City * city, int * out_food, int * out_shi
 
 		struct district_instance * inst = wai.district_inst;
 		int district_id = inst->district_id;
+		if (district_uses_tile_improvement_rules (district_id))
+			continue;
 
 		if (is->current_config.enable_neighborhood_districts &&
 		    (district_id == NEIGHBORHOOD_DISTRICT_ID)) {
@@ -13216,7 +13273,9 @@ patch_Map_calc_food_yield_at (Map * this, int edx, int tile_x, int tile_y, int t
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile != NULL) && (tile != p_null_tile)) {
 		struct district_instance * inst = get_district_instance (tile);
-		if (inst != NULL && district_is_complete (tile, inst->district_id)) {
+		if (inst != NULL &&
+		    district_is_complete (tile, inst->district_id) &&
+		    district_tile_should_be_unworkable (inst->district_id)) {
 			return 0;
 		}
 	}
@@ -13233,7 +13292,9 @@ patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile != NULL) && (tile != p_null_tile)) {
 		struct district_instance * inst = get_district_instance (tile);
-		if (inst != NULL && district_is_complete (tile, inst->district_id)) {
+		if (inst != NULL &&
+		    district_is_complete (tile, inst->district_id) &&
+		    district_tile_should_be_unworkable (inst->district_id)) {
 			return 0;
 		}
 	}
@@ -14462,6 +14523,8 @@ calculate_district_culture_science_bonuses (City * city, int * culture_bonus, in
 		Tile * tile = wai.tile;
 		struct district_instance * inst = wai.district_inst;
 		int district_id = inst->district_id;
+		if (! district_tile_bonus_applies_to_city (tile, district_id, city))
+			continue;
 
 		struct district_config const * cfg = &is->district_configs[district_id];
 		int district_culture_bonus = 0;
@@ -14505,6 +14568,8 @@ calculate_district_happiness_bonus (City * city, int * happiness_bonus)
 
 		struct district_instance * inst = wai.district_inst;
 		int district_id = inst->district_id;
+		if (! district_tile_bonus_applies_to_city (wai.tile, district_id, city))
+			continue;
 		struct district_config const * cfg = &is->district_configs[district_id];
 
 		bool is_neighborhood = district_id == NEIGHBORHOOD_DISTRICT_ID;
@@ -20484,6 +20549,8 @@ patch_City_Form_draw (City_Form * this)
 		Tile * tile = wai.tile;
 		struct district_instance * inst = wai.district_inst;
 		int district_id = inst->district_id;
+		if (! district_tile_bonus_applies_to_city (tile, district_id, city))
+			continue;
 
 		struct district_config const * cfg = &is->district_configs[district_id];
 		int gold_bonus = 0;
@@ -24377,7 +24444,8 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 					inst->state = DS_COMPLETED;
 					if (! tile->vtable->m18_Check_Mines (tile, __, 0))
 						tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
-					set_tile_unworkable_for_all_cities (tile, x, y);
+					if (district_tile_should_be_unworkable (GREAT_WALL_DISTRICT_ID))
+						set_tile_unworkable_for_all_cities (tile, x, y);
 				}
 				continue;
 			}
@@ -24449,7 +24517,8 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 			inst->state = DS_COMPLETED;
 			if (! tile->vtable->m18_Check_Mines (tile, __, 0))
 				tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
-			set_tile_unworkable_for_all_cities (tile, x, y);
+			if (district_tile_should_be_unworkable (GREAT_WALL_DISTRICT_ID))
+				set_tile_unworkable_for_all_cities (tile, x, y);
 	}
 
 	is->great_wall_auto_build = GWABS_DONE;
@@ -26836,7 +26905,9 @@ count_workable_tiles_for_city (City * city)
 			continue;
 
 		struct district_instance * inst = get_district_instance (tile);
-		if ((inst != NULL) && district_is_complete (tile, inst->district_id))
+		if ((inst != NULL) &&
+		    district_is_complete (tile, inst->district_id) &&
+		    district_tile_should_be_unworkable (inst->district_id))
 			continue;
 
 		workable++;
@@ -28554,6 +28625,37 @@ patch_City_calc_tile_yield_while_gathering (City * this, int edx, YieldKind kind
 			if      (kind == YK_FOOD)     tr += bonus_food;
 			else if (kind == YK_SHIELDS)  tr += bonus_shields;
 			else if (kind == YK_COMMERCE) tr += bonus_gold;
+		}
+	}
+
+	if (is->current_config.enable_districts) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (tile);
+			if ((inst != NULL) &&
+			    district_is_complete (tile, inst->district_id) &&
+			    district_uses_tile_improvement_rules (inst->district_id) &&
+			    (tile->Body.CityAreaID == this->Body.ID)) {
+				struct district_config * cfg = &is->district_configs[inst->district_id];
+				int food_bonus = 0;
+				int shield_bonus = 0;
+				int gold_bonus = 0;
+				get_effective_district_yields (inst, cfg, &food_bonus, &shield_bonus, &gold_bonus, NULL, NULL, NULL);
+				if ((cfg->generated_resource_id >= 0) &&
+				    (cfg->generated_resource_flags & MF_YIELDS) &&
+				    district_can_generate_resource (this->Body.CivID, cfg)) {
+					Resource_Type * res = &p_bic_data->ResourceTypes[cfg->generated_resource_id];
+					food_bonus += res->Food;
+					shield_bonus += res->Shield;
+					gold_bonus += res->Commerce;
+				}
+				if (kind == YK_FOOD)
+					tr += food_bonus;
+				else if (kind == YK_SHIELDS)
+					tr += shield_bonus;
+				else if (kind == YK_COMMERCE)
+					tr += gold_bonus;
+			}
 		}
 	}
 
@@ -30276,7 +30378,8 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 										if (info_city == NULL)
 											inst->wonder_info.city_id = -1;
 										inst->wonder_info.wonder_index = wonder_index;
-										set_tile_unworkable_for_all_cities (tile, x, y);
+										if (district_tile_should_be_unworkable (district_id))
+											set_tile_unworkable_for_all_cities (tile, x, y);
 									}
 								}
 							}
@@ -31491,6 +31594,9 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 
 	if (district_id < 0 || district_id >= is->district_count)
 		return;
+	if ((city_form->CurrentCity != NULL) &&
+	    (! district_tile_bonus_applies_to_city (tile, district_id, city_form->CurrentCity)))
+		return;
 
 	// Get district configuration
 	struct district_config * config = &is->district_configs[district_id];
@@ -31783,6 +31889,8 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 				continue;
 
 			if (!is_natural_wonder && (!is->current_config.enable_districts))
+				continue;
+			if (! district_tile_bonus_applies_to_city (wai.tile, district_id, city))
 				continue;
 
 			// For neighborhood districts, check if population is high enough to utilize them
@@ -34658,6 +34766,8 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 	int standard_district_food = 0;
 	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		int district_id = wai.district_inst->district_id;
+		if (! district_tile_bonus_applies_to_city (wai.tile, district_id, city))
+			continue;
 		int food_bonus = 0;
 		get_effective_district_yields (wai.district_inst, &is->district_configs[district_id], &food_bonus, NULL, NULL, NULL, NULL, NULL);
 		standard_district_food += food_bonus;
