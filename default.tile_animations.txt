@@ -69,7 +69,7 @@ show_in_day_night_hours = 18-6
 
 #Animation
 name                    = Whales
-ini_path                = UnitC3XDistricts\Whale\Whale.INI
+ini_path                = Whale\Whale.INI
 type                    = resource
 resource_type           = Whales
 
@@ -84,7 +84,7 @@ show_in_day_night_hours = 7-17
 
 #Animation
 name                    = Deer_night
-ini_path                = Deer\Deer.INI
+ini_path                = Deer\Deer_night.INI
 type                    = resource
 resource_type           = Game
 direction               = southwest
@@ -93,16 +93,33 @@ show_in_day_night_hours = 18-6
 
 #Animation
 name                    = Cattle
-ini_path                = UnitC3XDistricts\MilkCow\MilkCow.INI
+ini_path                = MilkCow\MilkCow.INI
 type                    = resource
 resource_type           = Cattle
 direction               = southeast
-frame_time_seconds      = 0.15
+show_in_day_night_hours = 7-17
+
+#Animation
+name                    = Cattle_night
+ini_path                = MilkCow\MilkCow_night.INI
+type                    = resource
+resource_type           = Cattle
+direction               = southeast
+show_in_day_night_hours = 18-6
 
 #Animation
 name                    = Horses
-ini_path                = UnitC3XDistricts\Horse_Painted\HorsePainted.INI
+ini_path                = HorsePainted\HorsePainted.INI
 type                    = resource
 resource_type           = Horses
 direction               = southeast
+show_in_day_night_hours = 7-17
+
+#Animation
+name                    = Horses_night
+ini_path                = HorsePainted\HorsePainted_night.INI
+type                    = resource
+resource_type           = Horses
+direction               = southeast
+show_in_day_night_hours = 18-6
 
