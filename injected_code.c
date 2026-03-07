@@ -3076,19 +3076,12 @@ natural_wonder_tile_is_clear (Tile * tile, int tile_x, int tile_y)
 }
 
 bool
-natural_wonder_exists_within_distance (int tile_x, int tile_y, int min_distance)
+district_exists_within_distance (int tile_x, int tile_y, int district_id, int civ_id, int min_distance)
 {
-	if (min_distance <= 0)
+	if ((district_id < 0) || (district_id >= is->district_count) || (min_distance < 0))
 		return false;
 
-	Tile * here = tile_at (tile_x, tile_y);
-	if ((here != NULL) && (here != p_null_tile)) {
-		struct district_instance * inst = get_district_instance (here);
-		if ((inst != NULL) && (inst->district_id == NATURAL_WONDER_DISTRICT_ID))
-			return true;
-	}
-
-	for (int dist = 1; dist <= min_distance; dist++) {
+	for (int dist = 0; dist <= min_distance; dist++) {
 		struct vertex {
 			int x, y;
 		} vertices[4] = {
@@ -3099,21 +3092,24 @@ natural_wonder_exists_within_distance (int tile_x, int tile_y, int min_distance)
 		};
 
 		int edge_dirs[4] = {3, 5, 7, 1};
+		int edge_len = (dist == 0) ? 1 : 2 * dist;
 
 		for (int vert = 0; vert < 4; vert++) {
 			wrap_tile_coords (&p_bic_data->Map, &vertices[vert].x, &vertices[vert].y);
 			int dx, dy;
 			neighbor_index_to_diff (edge_dirs[vert], &dx, &dy);
-			for (int j = 0; j < 2*dist; j++) {
-				int cx = vertices[vert].x + j * dx,
-				    cy = vertices[vert].y + j * dy;
+			for (int j = 0; j < edge_len; j++) {
+				int cx = vertices[vert].x + j * dx;
+				int cy = vertices[vert].y + j * dy;
 				wrap_tile_coords (&p_bic_data->Map, &cx, &cy);
 
 				Tile * tile = tile_at (cx, cy);
 				if ((tile == NULL) || (tile == p_null_tile))
 					continue;
+				if ((civ_id >= 0) && (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id))
+					continue;
 				struct district_instance * inst = get_district_instance (tile);
-				if ((inst != NULL) && (inst->district_id == NATURAL_WONDER_DISTRICT_ID))
+				if ((inst != NULL) && (inst->district_id == district_id))
 					return true;
 			}
 		}
@@ -11554,9 +11550,7 @@ place_natural_wonders_on_map (void)
 				continue;
 
 			if (! natural_wonder_tile_is_clear (tile, x, y)) continue;
-
-			if (natural_wonder_exists_within_distance (x, y, minimum_separation))
-				continue;
+			if (district_exists_within_distance (x, y, NATURAL_WONDER_DISTRICT_ID, -1, minimum_separation)) continue;
 
 			for (int ni = 0; ni < wonder_count; ni++) {
 				if (already_placed[ni])
@@ -11620,7 +11614,7 @@ place_natural_wonders_on_map (void)
 			if (get_district_instance (tile) != NULL) continue;
 			if (! natural_wonder_tile_is_clear (tile, cand->x, cand->y)) continue;
 			if (! natural_wonder_terrain_matches (&is->natural_wonder_configs[ni], tile, cand->x, cand->y)) continue;
-			if (natural_wonder_exists_within_distance (cand->x, cand->y, minimum_separation)) continue;
+			if (district_exists_within_distance (cand->x, cand->y, NATURAL_WONDER_DISTRICT_ID, -1, minimum_separation)) continue;
 
 			int min_dist_sq = natural_wonder_min_distance_sq (cand->x, cand->y, placements, placement_count);
 			if (min_dist_sq == INT_MAX) {
@@ -12798,10 +12792,8 @@ can_build_district_on_tile (Tile * tile, int district_id, int civ_id)
 		return false;
 	
 	if (! cfg->allow_multiple) {
-		FOR_DISTRICTS_AROUND (wai, tile_x, tile_y, false) {
-			if (wai.district_inst->district_id == district_id)
-				return false;
-		}
+		if (district_exists_within_distance (tile_x, tile_y, district_id, civ_id, is->current_config.city_work_radius))
+			return false;
 	}
 
 	return true;
