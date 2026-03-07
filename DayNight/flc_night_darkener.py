@@ -14,6 +14,7 @@ Key behavior:
 """
 
 import argparse
+import hashlib
 import struct
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence, Set, Tuple
@@ -91,12 +92,14 @@ class Civ3Tail:
 class FlcDecoded:
     w: int
     h: int
+    file_frames: int
     speed_ms: int
     creator: int
     civ3: Civ3Tail
     palette: List[int]
     anim_frames: List[bytes]
     include_ring_frame: bool
+    direction_uniques: List[int]
 
 
 def parse_civ3_tail(hdr: bytes, w: int, h: int, frame_count: int) -> Civ3Tail:
@@ -201,10 +204,14 @@ def decode_delta_fli(payload: bytes, frame: bytearray, w: int, h: int) -> None:
             n = s8(payload[p])
             p += 1
             if n >= 0:
-                run = min(n, w - x, len(payload) - p)
-                frame[row_off + x:row_off + x + run] = payload[p:p + run]
-                p += run
-                x += run
+                cnt = n
+                avail = min(cnt, len(payload) - p)
+                write = min(avail, max(0, w - x))
+                if write > 0:
+                    frame[row_off + x:row_off + x + write] = payload[p:p + write]
+                    x += write
+                p += avail
+                x += max(0, cnt - write)
             else:
                 if p >= len(payload):
                     break
@@ -250,10 +257,13 @@ def decode_delta_flc(payload: bytes, frame: bytearray, w: int, h: int) -> None:
             p += 1
             if n >= 0:
                 cnt = n * 2
-                run = min(cnt, w - x, len(payload) - p)
-                frame[row_off + x:row_off + x + run] = payload[p:p + run]
-                p += run
-                x += run
+                avail = min(cnt, len(payload) - p)
+                write = min(avail, max(0, w - x))
+                if write > 0:
+                    frame[row_off + x:row_off + x + write] = payload[p:p + write]
+                    x += write
+                p += avail
+                x += max(0, cnt - write)
             else:
                 if p + 2 > len(payload):
                     break
@@ -290,8 +300,7 @@ def decode_flc(path: str) -> FlcDecoded:
     frame = bytearray(w * h)
 
     decoded_all: List[bytes] = []
-    frame_chunk_count = 0
-
+    frame_is_brun: List[bool] = []
     off = 128
     while off + 6 <= len(data):
         csize = u32(data, off)
@@ -299,10 +308,10 @@ def decode_flc(path: str) -> FlcDecoded:
         if csize < 6 or off + csize > len(data):
             break
         if ctype == CHUNK_FRAME and csize >= 16:
-            frame_chunk_count += 1
             nsub = u16(data, off + 6)
             sub_off = off + 16
             frame_end = off + csize
+            has_brun = False
             for _ in range(nsub):
                 if sub_off + 6 > frame_end:
                     break
@@ -315,6 +324,7 @@ def decode_flc(path: str) -> FlcDecoded:
                 if stype == CHUNK_COLOR_256:
                     decode_color_256(payload, pal)
                 elif stype == CHUNK_BYTE_RUN:
+                    has_brun = True
                     frame = bytearray(decode_byte_run(payload, w, h))
                 elif stype == CHUNK_FLI_COPY:
                     need = w * h
@@ -329,29 +339,139 @@ def decode_flc(path: str) -> FlcDecoded:
                 sub_off += ssize
 
             decoded_all.append(bytes(frame))
+            frame_is_brun.append(has_brun)
         off += csize
 
     civ3 = parse_civ3_tail(data[:128], w, h, max(1, file_frames))
-    expected_anim = max(1, civ3.num_anims * civ3.anim_length)
+    expected_anim = max(1, int(file_frames))
 
-    if len(decoded_all) >= expected_anim + 1:
+    # Prefer Civ3 multi-direction layout: per direction => keyframe + anim_length frames.
+    extracted = False
+    anim_frames: List[bytes]
+    include_ring = False
+    if civ3.num_anims > 0 and civ3.anim_length > 0 and civ3.num_anims * civ3.anim_length == expected_anim:
+        per_dir = civ3.anim_length
+        dirs = civ3.num_anims
+        needed = dirs * (per_dir + 1)
+        if len(decoded_all) >= needed:
+            temp: List[bytes] = []
+            ok = True
+            for d in range(dirs):
+                k = d * (per_dir + 1)
+                if not frame_is_brun[k]:
+                    ok = False
+                    break
+                a0 = k + 1
+                a1 = a0 + per_dir
+                if a1 > len(decoded_all):
+                    ok = False
+                    break
+                temp.extend(decoded_all[a0:a1])
+            if ok and len(temp) == expected_anim:
+                anim_frames = temp
+                include_ring = len(decoded_all) > needed
+                extracted = True
+
+    if not extracted and len(decoded_all) >= expected_anim + 1:
+        # Single keyframe layout: one leading BYTE_RUN keyframe, then animated frames.
         anim_frames = decoded_all[1:1 + expected_anim]
         include_ring = len(decoded_all) > (1 + expected_anim)
+    elif len(decoded_all) >= expected_anim:
+        anim_frames = decoded_all[:expected_anim]
+        include_ring = len(decoded_all) > expected_anim
     else:
-        anim_frames = decoded_all[:expected_anim] if decoded_all else [bytes(frame)]
+        anim_frames = decoded_all[:] if decoded_all else [bytes(frame)]
         include_ring = False
 
-    civ3.anim_length = len(anim_frames)
+    if civ3.num_anims <= 0:
+        civ3.num_anims = 1
+    if expected_anim % civ3.num_anims == 0:
+        civ3.anim_length = expected_anim // civ3.num_anims
+    else:
+        civ3.num_anims = 1
+        civ3.anim_length = expected_anim
+    direction_uniques: List[int] = []
+    if civ3.num_anims > 0 and len(anim_frames) >= civ3.num_anims and len(anim_frames) % civ3.num_anims == 0:
+        per_dir = len(anim_frames) // civ3.num_anims
+        for d in range(civ3.num_anims):
+            seg = anim_frames[d * per_dir:(d + 1) * per_dir]
+            direction_uniques.append(len(set(seg)))
+
     return FlcDecoded(
         w=w,
         h=h,
+        file_frames=expected_anim,
         speed_ms=speed_ms,
         creator=creator if creator else CIV3_CREATOR_DEFAULT,
         civ3=civ3,
         palette=pal,
         anim_frames=anim_frames,
         include_ring_frame=include_ring,
+        direction_uniques=direction_uniques,
     )
+
+
+def iter_color_chunk_payload_spans(data: bytes) -> List[Tuple[int, int]]:
+    spans: List[Tuple[int, int]] = []
+    off = 128
+    n = len(data)
+    while off + 6 <= n:
+        csize = u32(data, off)
+        ctype = u16(data, off + 4)
+        if csize < 6 or off + csize > n:
+            break
+        if ctype == CHUNK_FRAME and csize >= 16:
+            frame_end = off + csize
+            nsub = u16(data, off + 6)
+            so = off + 16
+            for _ in range(nsub):
+                if so + 6 > frame_end:
+                    break
+                ssize = u32(data, so)
+                stype = u16(data, so + 4)
+                if ssize < 6 or so + ssize > frame_end:
+                    break
+                if stype == CHUNK_COLOR_256:
+                    spans.append((so + 6, so + ssize))
+                so += ssize
+        off += csize
+    return spans
+
+
+def patch_color_256_payload(payload: bytearray, new_pal: Sequence[int]) -> None:
+    if len(payload) < 2:
+        return
+    packets = u16(payload, 0)
+    p = 2
+    idx = 0
+    for _ in range(packets):
+        if p + 2 > len(payload):
+            break
+        skip = payload[p]
+        count = payload[p + 1]
+        p += 2
+        idx += skip
+        cnt = 256 if count == 0 else count
+        for _ in range(cnt):
+            if p + 3 > len(payload) or idx >= 256:
+                break
+            payload[p + 0] = new_pal[3 * idx + 0]
+            payload[p + 1] = new_pal[3 * idx + 1]
+            payload[p + 2] = new_pal[3 * idx + 2]
+            p += 3
+            idx += 1
+
+
+def patch_flc_palette_only(inp: str, out: str, new_pal: Sequence[int]) -> int:
+    data = bytearray(open(inp, "rb").read())
+    spans = iter_color_chunk_payload_spans(data)
+    for a, b in spans:
+        payload = bytearray(data[a:b])
+        patch_color_256_payload(payload, new_pal)
+        data[a:b] = payload
+    with open(out, "wb") as f:
+        f.write(data)
+    return len(spans)
 
 
 def parse_ranges(spec: str) -> Set[int]:
@@ -473,7 +593,8 @@ def make_byte_run_payload(pix: bytes, w: int, h: int) -> bytes:
     out = bytearray()
     for y in range(h):
         row = pix[y * w:(y + 1) * w]
-        out.append(0)
+        # Civ3FlcEdit writes this as 0xCD and ignores it on read.
+        out.append(0xCD)
         x = 0
         while x < w:
             run = 1
@@ -538,25 +659,57 @@ def write_flc(path: str, decoded: FlcDecoded, palette: Sequence[int]) -> None:
         raise SystemExit("No animation frames decoded from input FLC.")
 
     civ = decoded.civ3
-    civ.anim_length = len(frames)
+    target_frames = max(1, decoded.file_frames)
+    if len(frames) > target_frames:
+        frames = frames[:target_frames]
+    elif len(frames) < target_frames:
+        raise SystemExit(
+            f"Decoded only {len(frames)} animation frames, but header expects {target_frames}. "
+            "Refusing to pad/repeat frames."
+        )
+
+    if civ.num_anims <= 0:
+        civ.num_anims = 1
+    if target_frames % civ.num_anims == 0:
+        civ.anim_length = target_frames // civ.num_anims
+    else:
+        civ.num_anims = 1
+        civ.anim_length = target_frames
     civ_tail = civ.pack_40_bytes()
 
     chunks: List[bytes] = []
-    key_sub = [
-        make_subchunk(CHUNK_BYTE_RUN, make_byte_run_payload(frames[0], w, h)),
-        make_subchunk(CHUNK_COLOR_256, make_color_256_payload(bytes(palette))),
-    ]
-    chunks.append(make_frame_chunk(key_sub))
+    anim_len = max(1, civ.anim_length)
+    dir_count = max(1, civ.num_anims)
 
-    for fr in frames:
-        chunks.append(make_frame_chunk([make_subchunk(CHUNK_FLI_COPY, fr)]))
+    if dir_count * anim_len != len(frames):
+        dir_count = 1
+        anim_len = len(frames)
+        civ.num_anims = 1
+        civ.anim_length = anim_len
+        civ_tail = civ.pack_40_bytes()
+
+    for d in range(dir_count):
+        base = d * anim_len
+        key_fr = frames[base]
+        if d == 0:
+            key_sub = [
+                make_subchunk(CHUNK_BYTE_RUN, make_byte_run_payload(key_fr, w, h)),
+                make_subchunk(CHUNK_COLOR_256, make_color_256_payload(bytes(palette))),
+            ]
+        else:
+            key_sub = [make_subchunk(CHUNK_BYTE_RUN, make_byte_run_payload(key_fr, w, h))]
+        chunks.append(make_frame_chunk(key_sub))
+
+        for i in range(anim_len):
+            fr = frames[base + i]
+            chunks.append(make_frame_chunk([make_subchunk(CHUNK_FLI_COPY, fr)]))
 
     if decoded.include_ring_frame:
         chunks.append(make_frame_chunk([make_subchunk(CHUNK_BYTE_RUN, make_byte_run_payload(frames[0], w, h))]))
 
     body = b"".join(chunks)
     total = 128 + len(body)
-    frame_count = civ.num_anims * civ.anim_length
+    frame_count = target_frames
 
     header = build_flc_header_128(
         total_file_size=total,
@@ -639,8 +792,15 @@ def main() -> None:
         noon_window_soft=args.noon_window_soft,
     )
 
-    write_flc(args.out, dec, new_pal)
-    print(f"Input frames: {len(dec.anim_frames)}")
+    patched_chunks = patch_flc_palette_only(args.inp, args.out, new_pal)
+    frame_hashes = [hashlib.md5(fr).hexdigest() for fr in dec.anim_frames]
+    unique_frames = len(set(frame_hashes))
+    print(f"Input header frames: {dec.file_frames}")
+    print(f"Output animation frames: {dec.file_frames}")
+    print(f"Unique decoded animation frames: {unique_frames}")
+    if dec.direction_uniques:
+        print(f"Per-direction unique decoded frames: {dec.direction_uniques}")
+    print(f"Patched COLOR_256 chunks: {patched_chunks}")
     print(f"Used palette indices in animation: {len(used)}")
     print(f"Changed used indices: {changed}")
     print(f"Wrote: {args.out}")
