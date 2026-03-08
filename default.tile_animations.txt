@@ -30,6 +30,7 @@
   ;  - terrain_types            : Comma-delimited terrain types. Required if type = terrain.
   ;                               Valid values: desert, plains, grassland, jungle, tundra, floodplain, swamp, hills, mountains,
   ;                                             forest, volcano, snow-forest, snow-mountains, snow-volcano, coast, sea, ocean, land
+  ;                               Singular/plural forms are both accepted (for example, volcano/volcanoes).
   ;                               "land" means any non-water tile.
   ;  - adjacent_to              : Text. Optional adjacency requirements.
   ;                               Comma-delimited values using:
@@ -54,6 +55,7 @@
   ;        2. If two candidate animations are tied, the one with seasons and/or day-night hours specified takes precedence.
   ;        3. If still tied, whichever animation appears last takes precedence.
 ]
+
 #Animation
 name                    = Wave
 ini_path                = Terrain\Wave\Wave.INI
@@ -70,10 +72,9 @@ show_in_day_night_hours = 18-6
 name                    = Snow
 ini_path                = Terrain\Snow\Snow.INI
 type                    = terrain
-terrain_types           = mountains
+terrain_types           = mountains, snow-mountains, volcanoes, snow-volcanoes
 show_in_seasons         = winter
 show_in_day_night_hours = 7-17
-frame_time_seconds      = 0.15
 
 #Animation
 name                    = Whales
@@ -133,3 +134,14 @@ resource_type           = Horses
 direction               = southeast
 show_in_day_night_hours = 18-6
 
+===Example PCX animation of river segment===
+;#Animation
+;name                    = DeltaRivers_12
+;ini_path                = Terrain\DeltaRivers\DeltaRivers_12.INI
+;type                    = pcx
+;pcx_file                = deltaRivers.pcx
+;pcx_index               = 12
+;y_offset                = 12
+;x_offset                = -65
+;show_in_day_night_hours = 7-17
+;frame_time_seconds      = 0.15

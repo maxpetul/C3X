@@ -1964,7 +1964,7 @@ read_tile_terrain_type_value (struct string_slice const * s, enum SquareTypes * 
 		{"swamp",          SQ_Swamp},
 		{"swamps",         SQ_Swamp},
 		{"volcano",        SQ_Volcano},
-		{"volcanos",       SQ_Volcano},
+		{"volcanoes",      SQ_Volcano},
 		{"coast",          SQ_Coast},
 		{"coasts",         SQ_Coast},
 		{"sea",            SQ_Sea},
@@ -1974,7 +1974,7 @@ read_tile_terrain_type_value (struct string_slice const * s, enum SquareTypes * 
 		{"river",          SQ_RIVER},
 		{"rivers",         SQ_RIVER},
 		{"snow-volcano",   SQ_SNOW_VOLCANO},
-		{"snow-volcanos",  SQ_SNOW_VOLCANO},
+		{"snow-volcanoes", SQ_SNOW_VOLCANO},
 		{"snow-forest",    SQ_SNOW_FOREST},
 		{"snow-forests",   SQ_SNOW_FOREST},
 		{"snow-mountain",  SQ_SNOW_MOUNTAIN},
@@ -37607,11 +37607,17 @@ read_tile_animation_terrain_types (struct string_slice const * value,
 					free (text);
 					return false;
 				}
-				if ((terrain < 0) || (terrain >= 32)) {
-					free (text);
-					return false;
+				if (terrain == SQ_INVALID) {
+					mask |= all_square_types_mask ();
+					include_land = true;
+				} else {
+					unsigned int bit = square_type_mask_bit (terrain);
+					if (bit == 0) {
+						free (text);
+						return false;
+					}
+					mask |= bit;
 				}
-				mask |= 1u << terrain;
 			}
 		}
 
