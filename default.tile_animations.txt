@@ -26,7 +26,11 @@
   ;                                 Volcanos-snow.pcx
   ;                                 waterfalls.pcx
   ;                                 xhills.pcx
-  ;  - pcx_index                : Integer. Required if type = pcx. Zero-indexed sprite number inside a PCX sheet. So first-row first-column entry is "0", etc.
+  ;  - pcx_index                : Integer. Required if type = pcx.
+  ;                               These are zero-based, so the first image is index 0, second is 1, etc.
+  ;                               How to find index from visual order (top-left=0, then row-major):
+  ;                                 - default: pcx_index = visual_index
+  ;                                 - deltaRivers.pcx & mtnRivers.pcx: these are combined within the game and may take trial-and-error to find index.
   ;  - terrain_types            : Comma-delimited terrain types. Required if type = terrain.
   ;                               Valid values: desert, plains, grassland, jungle, tundra, floodplain, swamp, hills, mountains,
   ;                                             forest, volcano, snow-forest, snow-mountains, snow-volcano, coast, sea, ocean, land
@@ -134,7 +138,7 @@ resource_type           = Horses
 direction               = southeast
 show_in_day_night_hours = 18-6
 
-===Example PCX animation of river segment===
+;===Example PCX animation of river segment===
 ;#Animation
 ;name                    = DeltaRivers_12
 ;ini_path                = Terrain\DeltaRivers\DeltaRivers_12.INI
