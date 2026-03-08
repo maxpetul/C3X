@@ -27,7 +27,7 @@
   ;                                 waterfalls.pcx
   ;                                 xhills.pcx
   ;  - pcx_index                : Integer. Required if type = pcx. Zero-indexed sprite number inside a PCX sheet. So first-row first-column entry is "0", etc.
-  ;  - terrain_type             : Text. Required if type = terrain.
+  ;  - terrain_types            : Comma-delimited terrain types. Required if type = terrain.
   ;                               Valid values: desert, plains, grassland, jungle, tundra, floodplain, swamp, hills, mountains,
   ;                                             forest, volcano, snow-forest, snow-mountains, snow-volcano, coast, sea, ocean, land
   ;                               "land" means any non-water tile.
@@ -54,46 +54,56 @@
   ;        2. If two candidate animations are tied, the one with seasons and/or day-night hours specified takes precedence.
   ;        3. If still tied, whichever animation appears last takes precedence.
 ]
-
 #Animation
 name                    = Wave
-ini_path                = Wave\Wave.INI
+ini_path                = Terrain\Wave\Wave.INI
 type                    = coastal-wave
 show_in_day_night_hours = 7-17
 
 #Animation
 name                    = Wave_night
-ini_path                = Wave\Wave_night.INI
+ini_path                = Terrain\Wave\Wave_night.INI
 type                    = coastal-wave
 show_in_day_night_hours = 18-6
 
 #Animation
+name                    = Snow
+ini_path                = Terrain\Snow\Snow.INI
+type                    = terrain
+terrain_types           = mountains
+show_in_seasons         = winter
+show_in_day_night_hours = 7-17
+frame_time_seconds      = 0.15
+
+#Animation
 name                    = Whales
-ini_path                = Whale\Whale.INI
+ini_path                = Resources\Whale\Whale.INI
 type                    = resource
 resource_type           = Whales
 
 #Animation
 name                    = Deer
-ini_path                = Deer\Deer.INI
+ini_path                = Resources\Deer\Deer.INI
 type                    = resource
 resource_type           = Game
 direction               = southwest
+y_offset                = -10
 frame_time_seconds      = 0.14
 show_in_day_night_hours = 7-17
 
 #Animation
 name                    = Deer_night
-ini_path                = Deer\Deer_night.INI
+ini_path                = Resources\Deer\Deer_night.INI
 type                    = resource
 resource_type           = Game
 direction               = southwest
+y_offset                = -10
 frame_time_seconds      = 0.14
 show_in_day_night_hours = 18-6
 
 #Animation
 name                    = Cattle
-ini_path                = MilkCow\MilkCow.INI
+ini_path                = Resources\MilkCow\MilkCow.INI
 type                    = resource
 resource_type           = Cattle
 direction               = southeast
@@ -101,7 +111,7 @@ show_in_day_night_hours = 7-17
 
 #Animation
 name                    = Cattle_night
-ini_path                = MilkCow\MilkCow_night.INI
+ini_path                = Resources\MilkCow\MilkCow_night.INI
 type                    = resource
 resource_type           = Cattle
 direction               = southeast
@@ -109,7 +119,7 @@ show_in_day_night_hours = 18-6
 
 #Animation
 name                    = Horses
-ini_path                = HorsePainted\HorsePainted.INI
+ini_path                = Resources\HorsePainted\HorsePainted.INI
 type                    = resource
 resource_type           = Horses
 direction               = southeast
@@ -117,7 +127,7 @@ show_in_day_night_hours = 7-17
 
 #Animation
 name                    = Horses_night
-ini_path                = HorsePainted\HorsePainted_night.INI
+ini_path                = Resources\HorsePainted\HorsePainted_night.INI
 type                    = resource
 resource_type           = Horses
 direction               = southeast

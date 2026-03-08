@@ -56,6 +56,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--slot_w", type=int, required=True, help="Slot inner width (excluding border)")
     p.add_argument("--slot_h", type=int, required=True, help="Slot inner height (excluding border)")
     p.add_argument(
+        "--start_time",
+        type=float,
+        default=0.0,
+        help="Start time in seconds for extraction window (default: 0.0).",
+    )
+    p.add_argument(
+        "--end_time",
+        type=float,
+        default=None,
+        help="End time in seconds for extraction window (default: end of video).",
+    )
+    p.add_argument(
         "--out",
         required=True,
         help="Output file path (.pcx recommended for your workflow; png also supported). Must be a file, not a directory.",
@@ -67,6 +79,12 @@ def parse_args() -> argparse.Namespace:
         choices=["crop", "contain"],
         default="contain",
         help="How to adapt frames to slot aspect. crop=center-crop to fill; contain=scale to fit and pad (prevents cutoff).",
+    )
+    p.add_argument(
+        "--crop_anchor",
+        choices=["center", "top", "bottom"],
+        default="center",
+        help="Only used when --fit crop. Vertical crop anchor.",
     )
     p.add_argument(
         "--pad_color",
@@ -232,7 +250,7 @@ def apply_zoom_center(im: Image.Image, zoom: float, resample: int) -> Image.Imag
     return out
 
 
-def center_crop_to_aspect(im: Image.Image, target_w: int, target_h: int) -> Image.Image:
+def center_crop_to_aspect(im: Image.Image, target_w: int, target_h: int, crop_anchor: str) -> Image.Image:
     w, h = im.size
     target_aspect = target_w / target_h
     src_aspect = w / h
@@ -246,7 +264,12 @@ def center_crop_to_aspect(im: Image.Image, target_w: int, target_h: int) -> Imag
         return im.crop((left, 0, left + new_w, h))
     else:
         new_h = int(round(w / target_aspect))
-        top = (h - new_h) // 2
+        if crop_anchor == "top":
+            top = 0
+        elif crop_anchor == "bottom":
+            top = h - new_h
+        else:
+            top = (h - new_h) // 2
         return im.crop((0, top, w, top + new_h))
 
 
@@ -288,21 +311,21 @@ def get_duration_ms(cap: cv2.VideoCapture) -> float:
     return max(0.0, end_ms)
 
 
-def linspace_times(duration_ms: float, n: int, endpoint_mode: str, eps_ms: float) -> List[float]:
+def linspace_times(start_ms: float, end_ms: float, n: int, endpoint_mode: str, eps_ms: float) -> List[float]:
     if n <= 0:
         return []
-    if duration_ms <= 0:
-        return [0.0] * n
+    if end_ms <= start_ms:
+        return [float(start_ms)] * n
     if n == 1:
-        return [0.0]
+        return [float(start_ms)]
 
     if endpoint_mode == "exclude":
-        return [float(x) for x in np.linspace(0.0, float(duration_ms), n, endpoint=False)]
+        return [float(x) for x in np.linspace(float(start_ms), float(end_ms), n, endpoint=False)]
     if endpoint_mode == "include":
-        return [float(x) for x in np.linspace(0.0, float(duration_ms), n, endpoint=True)]
+        return [float(x) for x in np.linspace(float(start_ms), float(end_ms), n, endpoint=True)]
     if endpoint_mode == "clamp":
-        hi = max(0.0, float(duration_ms) - float(max(0.0, eps_ms)))
-        return [float(x) for x in np.linspace(0.0, hi, n, endpoint=True)]
+        hi = max(float(start_ms), float(end_ms) - float(max(0.0, eps_ms)))
+        return [float(x) for x in np.linspace(float(start_ms), hi, n, endpoint=True)]
     raise ValueError(endpoint_mode)
 
 
@@ -323,18 +346,21 @@ def read_frame_at_time_with_backoff(
 def sample_frames_by_time(
     cap: cv2.VideoCapture,
     cols: int,
+    start_ms: float,
+    end_ms: float,
     endpoint_mode: str,
     eps_ms: float,
     backoffs_ms: List[float],
     print_info: bool,
 ) -> List[np.ndarray]:
     duration_ms = get_duration_ms(cap)
-    times = linspace_times(duration_ms, cols, endpoint_mode=endpoint_mode, eps_ms=eps_ms)
+    times = linspace_times(start_ms, end_ms, cols, endpoint_mode=endpoint_mode, eps_ms=eps_ms)
 
     if print_info:
         fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
         frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0
         print(f"[video] fps={fps:.3f} frame_count={frame_count} duration_ms≈{duration_ms:.2f}")
+        print(f"[sample] selected window: {start_ms:.2f}ms .. {end_ms:.2f}ms")
         if times:
             print(f"[sample] time range: {times[0]:.2f}ms .. {times[-1]:.2f}ms (count={len(times)})")
 
@@ -364,6 +390,8 @@ def read_frame_at_index_with_backoff(
 def sample_frames_by_index(
     cap: cv2.VideoCapture,
     cols: int,
+    start_ms: float,
+    end_ms: float,
     print_info: bool,
     endpoint_mode: str,
     backoffs: List[int],
@@ -378,6 +406,8 @@ def sample_frames_by_index(
         return sample_frames_by_time(
             cap,
             cols=cols,
+            start_ms=start_ms,
+            end_ms=end_ms,
             endpoint_mode="exclude",
             eps_ms=1.0,
             backoffs_ms=[0.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0],
@@ -389,15 +419,24 @@ def sample_frames_by_index(
     hi = frame_count - 1
     if endpoint_mode == "exclude_last":
         hi = max(0, frame_count - 2)
+    lo = 0
+    if fps > 0.0:
+        lo = max(0, min(hi, int(math.ceil((float(start_ms) / 1000.0) * fps))))
+        hi = min(hi, int(math.floor((float(end_ms) / 1000.0) * fps)))
+        if lo > hi:
+            raise ValueError(
+                f"Selected time window has no readable frame indices: start_ms={start_ms:.2f}, end_ms={end_ms:.2f}"
+            )
 
     if cols == 1:
-        idxs = np.array([0], dtype=int)
+        idxs = np.array([lo], dtype=int)
     else:
-        idxs = np.linspace(0, hi, cols, endpoint=True).astype(int)
+        idxs = np.linspace(lo, hi, cols, endpoint=True).astype(int)
 
     if print_info:
         dur_str = f"{duration_ms:.2f}" if duration_ms == duration_ms else "unknown"
         print(f"[video] fps={fps:.3f} frame_count={frame_count} duration_ms≈{dur_str}")
+        print(f"[sample] selected window: {start_ms:.2f}ms .. {end_ms:.2f}ms")
         if len(idxs) > 0:
             print(f"[sample] frame index range: {int(idxs[0])} .. {int(idxs[-1])} (count={len(idxs)})")
             if endpoint_mode == "exclude_last":
@@ -619,6 +658,10 @@ def main() -> None:
         raise ValueError("--columns must be > 0")
     if args.zoom <= 0:
         raise ValueError("--zoom must be > 0")
+    if args.start_time < 0:
+        raise ValueError("--start_time must be >= 0")
+    if args.end_time is not None and args.end_time < 0:
+        raise ValueError("--end_time must be >= 0")
 
     validate_out_path(args.out)
 
@@ -629,11 +672,23 @@ def main() -> None:
     if not cap.isOpened():
         raise RuntimeError(f"Could not open video: {args.mp4}")
 
+    duration_ms = get_duration_ms(cap)
+    start_ms = float(args.start_time) * 1000.0
+    end_ms = duration_ms if args.end_time is None else float(args.end_time) * 1000.0
+    start_ms = max(0.0, min(start_ms, duration_ms))
+    end_ms = max(0.0, min(end_ms, duration_ms))
+    if end_ms < start_ms:
+        raise ValueError(
+            f"--end_time ({end_ms / 1000.0:.3f}s) must be >= --start_time ({start_ms / 1000.0:.3f}s)"
+        )
+
     try:
         if args.sample_by == "frame":
             raw_frames_np = sample_frames_by_index(
                 cap,
                 cols=args.columns,
+                start_ms=start_ms,
+                end_ms=end_ms,
                 print_info=bool(args.print_video_info),
                 endpoint_mode=args.frame_endpoint_mode,
                 backoffs=[int(x) for x in (args.frame_seek_backoff or [0])],
@@ -642,6 +697,8 @@ def main() -> None:
             raw_frames_np = sample_frames_by_time(
                 cap,
                 cols=args.columns,
+                start_ms=start_ms,
+                end_ms=end_ms,
                 endpoint_mode=args.time_endpoint_mode,
                 eps_ms=float(args.time_epsilon_ms),
                 backoffs_ms=[float(x) for x in (args.time_seek_backoff_ms or [0.0])],
@@ -676,7 +733,7 @@ def main() -> None:
         im = apply_zoom_center(im, zoom=float(args.zoom), resample=resample)
 
         if args.fit == "crop":
-            im = center_crop_to_aspect(im, args.slot_w, args.slot_h)
+            im = center_crop_to_aspect(im, args.slot_w, args.slot_h, args.crop_anchor)
             im = im.resize((args.slot_w, args.slot_h), resample=resample)
         else:
             # contain: NEVER crops; prevents “fish bottom cut off”

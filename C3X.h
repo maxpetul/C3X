@@ -1021,8 +1021,8 @@ struct tile_animation_config {
 	char const * name;
 	char const * ini_path;
 	enum tile_animation_type type;
-	enum SquareTypes terrain_type;
-	bool terrain_is_land;
+	unsigned int terrain_types_mask;
+	bool terrain_types_include_land;
 	int resource_id;
 	int natural_wonder_id;
 	int pcx_file_id;
@@ -1386,11 +1386,11 @@ struct parsed_tile_animation_definition {
 	char * resource_type;
 	char * pcx_file;
 	enum tile_animation_type type;
-	enum SquareTypes terrain_type;
+	unsigned int terrain_types_mask;
 	int natural_wonder_id;
 	int pcx_file_id;
 	int pcx_index;
-	bool terrain_is_land;
+	bool terrain_types_include_land;
 	enum direction direction;
 	int x_offset;
 	int y_offset;
@@ -1405,7 +1405,7 @@ struct parsed_tile_animation_definition {
 	bool has_resource_type;
 	bool has_pcx_file;
 	bool has_pcx_index;
-	bool has_terrain_type;
+	bool has_terrain_types;
 	bool has_direction;
 	bool has_x_offset;
 	bool has_y_offset;

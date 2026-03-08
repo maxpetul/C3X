@@ -37574,35 +37574,69 @@ register_tile_animation_pcx_draw_for_current_tile (Sprite * sprite)
 }
 
 bool
-read_tile_animation_terrain_type (struct string_slice const * s, enum SquareTypes * out_type, bool * out_is_land)
+read_tile_animation_terrain_types (struct string_slice const * value,
+				       unsigned int * out_mask,
+				       bool * out_include_land)
 {
-	struct string_slice trimmed = trim_string_slice (s, 1);
-	if (slice_matches_str (&trimmed, "land")) {
-		if (out_type != NULL)
-			*out_type = SQ_Grassland;
-		if (out_is_land != NULL)
-			*out_is_land = true;
-		return true;
+	char * text = extract_slice (value);
+	if (text == NULL)
+		return false;
+
+	unsigned int mask = 0;
+	bool include_land = false;
+	bool saw_token = false;
+	char * cursor = text;
+	while (*cursor != '\0') {
+		while ((*cursor == ' ') || (*cursor == '\t') || (*cursor == ','))
+			cursor++;
+		if (*cursor == '\0')
+			break;
+
+		char * token_start = cursor;
+		while ((*cursor != '\0') && (*cursor != ','))
+			cursor++;
+		struct string_slice token = { .str = token_start, .len = cursor - token_start };
+		token = trim_string_slice (&token, 1);
+		if (token.len > 0) {
+			saw_token = true;
+			if (slice_matches_str (&token, "land"))
+				include_land = true;
+			else {
+				enum SquareTypes terrain = SQ_INVALID;
+				if (! read_square_type_value (&token, &terrain)) {
+					free (text);
+					return false;
+				}
+				if ((terrain < 0) || (terrain >= 32)) {
+					free (text);
+					return false;
+				}
+				mask |= 1u << terrain;
+			}
+		}
+
+		if (*cursor == ',')
+			cursor++;
 	}
 
-	enum SquareTypes parsed;
-	if (! read_natural_wonder_terrain_type (&trimmed, &parsed))
+	free (text);
+	if (! saw_token)
 		return false;
-	if (out_type != NULL)
-		*out_type = parsed;
-	if (out_is_land != NULL)
-		*out_is_land = false;
+	if (out_mask != NULL)
+		*out_mask = mask;
+	if (out_include_land != NULL)
+		*out_include_land = include_land;
 	return true;
 }
 
 bool
-tile_matches_terrain_or_land (Tile * tile, enum SquareTypes terrain_type, bool is_land)
+tile_matches_terrain_types (Tile * tile, unsigned int terrain_types_mask, bool include_land)
 {
 	if ((tile == NULL) || (tile == p_null_tile))
 		return false;
-	if (is_land)
-		return ! tile->vtable->m35_Check_Is_Water (tile);
-	return tile_matches_square_type (tile, terrain_type);
+	if (include_land && ! tile->vtable->m35_Check_Is_Water (tile))
+		return true;
+	return tile_matches_square_type_mask (tile, terrain_types_mask);
 }
 
 bool
@@ -37719,7 +37753,7 @@ tile_animation_rule_matches_tile_base (struct tile_animation_config const * cfg,
 		    (inst->natural_wonder_info.natural_wonder_id != cfg->natural_wonder_id))
 			return false;
 	} else if (cfg->type == TAT_TERRAIN) {
-		if (! tile_matches_terrain_or_land (tile, cfg->terrain_type, cfg->terrain_is_land))
+		if (! tile_matches_terrain_types (tile, cfg->terrain_types_mask, cfg->terrain_types_include_land))
 			return false;
 	} else if (cfg->type == TAT_COASTAL_WAVE) {
 		if (! tile_matches_square_type (tile, SQ_Coast))
@@ -37967,7 +38001,7 @@ init_parsed_tile_animation_definition (struct parsed_tile_animation_definition *
 {
 	memset (def, 0, sizeof *def);
 	def->type = TAT_TERRAIN;
-	def->terrain_type = SQ_Grassland;
+	def->terrain_types_mask = square_type_mask_bit (SQ_Grassland);
 	def->natural_wonder_id = -1;
 	def->pcx_file_id = TILE_ANIM_PCX_FILE_UNKNOWN;
 	def->pcx_index = -1;
@@ -38213,8 +38247,8 @@ add_tile_animation_from_definition (struct parsed_tile_animation_definition * de
 	cfg.name = strdup (def->name);
 	cfg.ini_path = strdup (def->ini_path);
 	cfg.type = def->type;
-	cfg.terrain_type = def->terrain_type;
-	cfg.terrain_is_land = def->terrain_is_land;
+	cfg.terrain_types_mask = def->terrain_types_mask;
+	cfg.terrain_types_include_land = def->terrain_types_include_land;
 	cfg.natural_wonder_id = def->natural_wonder_id;
 	cfg.pcx_file_id = def->pcx_file_id;
 	cfg.pcx_index = def->pcx_index;
@@ -38303,10 +38337,10 @@ finalize_parsed_tile_animation_definition (struct parsed_tile_animation_definiti
 		struct error_line * e = add_error_line (parse_errors);
 		snprintf (e->text, sizeof e->text, "^  Line %d: pcx_index (value is required for type=pcx)", section_start_line);
 	}
-	if (def->type == TAT_TERRAIN && ! def->has_terrain_type) {
+	if (def->type == TAT_TERRAIN && ! def->has_terrain_types) {
 		ok = false;
 		struct error_line * e = add_error_line (parse_errors);
-		snprintf (e->text, sizeof e->text, "^  Line %d: terrain_type (value is required for type=terrain)", section_start_line);
+		snprintf (e->text, sizeof e->text, "^  Line %d: terrain_types (value is required for type=terrain)", section_start_line);
 	}
 	if (ok && ! add_tile_animation_from_definition (def)) {
 		struct error_line * e = add_error_line (parse_errors);
@@ -38388,16 +38422,16 @@ handle_tile_animation_definition_key (struct parsed_tile_animation_definition * 
 			def->has_pcx_index = false;
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer 0..4095)");
 		}
-	} else if (slice_matches_str (key, "terrain_type")) {
-		enum SquareTypes t;
-		bool is_land = false;
-		if (read_tile_animation_terrain_type (value, &t, &is_land)) {
-			def->terrain_type = t;
-			def->terrain_is_land = is_land;
-			def->has_terrain_type = true;
+	} else if (slice_matches_str (key, "terrain_types")) {
+		unsigned int terrain_types_mask = 0;
+		bool include_land = false;
+		if (read_tile_animation_terrain_types (value, &terrain_types_mask, &include_land)) {
+			def->terrain_types_mask = terrain_types_mask;
+			def->terrain_types_include_land = include_land;
+			def->has_terrain_types = true;
 		} else {
-			def->has_terrain_type = false;
-			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized terrain type)");
+			def->has_terrain_types = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized terrain type list)");
 		}
 	} else if (slice_matches_str (key, "direction")) {
 		enum direction dir;
