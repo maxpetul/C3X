@@ -14114,7 +14114,7 @@ append_improv_id_to_list (struct improv_id_list * list, int id)
 }
 
 unsigned __fastcall
-patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
+patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 {
 	int ret_addr = ((int *)&param_1)[-1];
 
@@ -14336,9 +14336,17 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		if (p_bic_data->Improvements[n].Combat_Defence != 0) append_improv_id_to_list (&is->combat_defense_improvs, n);
 	}
 
-	// Set up for limiting railroad movement, if enabled
+	// Set up for limiting railroad movement
 	if (is->current_config.limit_railroad_movement > 0) {
-		int base_rmr = p_bic_data->General.RoadsMovementRate;
+		// Bit 0x200 of field_484 indicates whether or not the last call to load_scenario loaded the General section of the BIQ. The game will
+		// skip loading of that section and many others when loading a game with the same standard scenario as the then-current one, common
+		// when loading an autosave.
+		bool loaded_general = (this->field_848 & 0x200) != 0;
+
+		// For the base RMR, use the saved rate if it's valid and we haven't loaded a new rate as part of the General section. Otherwise, use
+		// the rate from that section.
+		int base_rmr = (loaded_general || is->saved_road_movement_rate <= 0) ? p_bic_data->General.RoadsMovementRate : is->saved_road_movement_rate;
+
 		int g = gcd (base_rmr, is->current_config.limit_railroad_movement); // Scale down all MP costs by this common divisor to help against
 										    // overflow of 8-bit integers inside the pathfinder.
 		is->saved_road_movement_rate = base_rmr;
