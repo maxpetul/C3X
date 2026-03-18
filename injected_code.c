@@ -26342,7 +26342,9 @@ patch_City_can_trade_via_air (City * this)
 int __fastcall
 patch_City_get_building_defense_bonus (City * this)
 {
-	bool cancel_great_wall_boost = is->current_config.enable_districts && is->current_config.disable_great_wall_city_defense_bonus;
+	bool cancel_great_wall_boost = is->current_config.enable_districts &&
+		is->current_config.enable_great_wall_districts &&
+		is->current_config.disable_great_wall_city_defense_bonus;
 
 	if (is->current_config.optimize_improvement_loops) {
 		int tr = 0;
@@ -31415,10 +31417,9 @@ patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum Im
 int __fastcall
 patch_Leader_count_wonders_with_flag_ignore_great_wall (Leader * this, int edx, enum ImprovementTypeWonderFeatures flag, City * only_in_city)
 {
-	return patch_Leader_count_any_shared_wonders_with_flag (this, __, flag, only_in_city);
-
 	if (is->current_config.enable_districts &&
-	    is->current_config.disable_great_wall_city_defense_bonus &&
+		is->current_config.enable_great_wall_districts &&
+		is->current_config.disable_great_wall_city_defense_bonus &&
 		flag == ITW_Doubles_City_Defenses)
 		return 0;
 
