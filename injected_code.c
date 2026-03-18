@@ -3763,7 +3763,9 @@ tri_next (struct tile_rings_iter * tri)
 		}
 		int start_ni = workable_tile_counts[ring_no - 1];
 		int end_ni = workable_tile_counts[ring_no];
-		if ((tri->ni + 1) < end_ni)
+		if (tri->ni < start_ni)
+			tri->ni = start_ni;
+		else if ((tri->ni + 1) < end_ni)
 			tri->ni += 1;
 		else {
 			tri->r_idx += 1;
