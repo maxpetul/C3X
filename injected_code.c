@@ -14384,7 +14384,9 @@ reduce_city_population_due_to_lost_neighborhood (City * city)
 		removed++;
 	}
 
-	if ((removed > 0) && ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)) {
+	if ((removed > 0) &&
+	    ((*p_human_player_bits & (1 << city->Body.CivID)) != 0) &&
+	    (city->Body.CivID == p_main_screen_form->Player_CivID)) {
 		char msg[160];
 		snprintf (msg, sizeof msg, "%s %s %s", 
 			city->Body.CityName, 
@@ -14525,7 +14527,8 @@ remove_dependent_buildings_for_district (int district_id, int center_x, int cent
 
 		if ((removed_count > 0) &&
 		    is->current_config.show_message_when_building_lost_to_destroyed_district &&
-		    ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)) {
+		    ((*p_human_player_bits & (1 << city->Body.CivID)) != 0) &&
+		    (city->Body.CivID == p_main_screen_form->Player_CivID)) {
 			char msg[200];
 			char const * district_name = is->district_configs[district_id].name;
 			char const * building_name = (first_building_id >= 0) ? p_bic_data->Improvements[first_building_id].Name.S : "";
@@ -27584,7 +27587,8 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 				struct wonder_district_info * info = get_wonder_district_info (target_tile);
 				if (info != NULL && info->state == WDS_COMPLETED) {
 					// This tile has a completed wonder district and they can't be destroyed
-					if ((*p_human_player_bits & (1 << this->Body.CivID)) != 0) {
+					if (((*p_human_player_bits & (1 << this->Body.CivID)) != 0) &&
+					    (this->Body.CivID == p_main_screen_form->Player_CivID)) {
 						PopupForm * popup = get_popup_form ();
 						popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CANT_PILLAGE", -1, 0, 0, 0);
 						patch_show_popup (popup, __, 0, 0);
