@@ -19269,14 +19269,11 @@ bool __fastcall
 bool
 is_district_command (int unit_command_value)
 {
-	int district_id;
-	bool maybe_district_command = itable_look_up (&is->command_id_to_district_id, unit_command_value, &district_id);
-
-	// Natural wonder command IDs are -1 (unbuildable), which can be a false positive
-	if (district_id == NATURAL_WONDER_DISTRICT_ID)
+	int district_id = -1;
+	if (! itable_look_up (&is->command_id_to_district_id, unit_command_value, &district_id))
 		return false;
-	
-	return maybe_district_command;
+
+	return district_id != NATURAL_WONDER_DISTRICT_ID;
 }
 
 int __fastcall
