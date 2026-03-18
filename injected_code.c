@@ -24508,7 +24508,7 @@ patch_Main_Screen_Form_handle_right_click_on_tile (Main_Screen_Form * this, int 
 {
 	if (is->current_config.enable_named_tiles) {
 		Tile * tile = tile_at (tile_x, tile_y);
-		if (tile_can_be_named (tile, tile_x, tile_y)) {
+		if (tile_can_be_named (tile, tile_x, tile_y) && ! Tile_has_city (tile)) {
 			is->named_tile_menu_active = true;
 			is->named_tile_menu_tile_x = tile_x;
 			is->named_tile_menu_tile_y = tile_y;
