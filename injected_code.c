@@ -13771,7 +13771,7 @@ leader_has_pact_ally_district_access (Leader * leader, int district_id)
 		if (civ_id == self_id)
 			continue;
 		Leader * other = &leaders[civ_id];
-		if (((leader->Relation_Treaties[civ_id] & 1) != 0 ||  // 1 = peace treaty
+		if (((leader->Relation_Treaties[civ_id] & 1) != 0 &&  // 1 = peace treaty
 		     (leader->Relation_Treaties[civ_id] & 4) != 0) && // 4 = mutual protection pact
 		    leader_can_natively_build_district (other, district_id)) {
 			return true;
