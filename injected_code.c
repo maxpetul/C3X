@@ -16755,12 +16755,14 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 	for (int culture = 0; culture < 5; culture++) {
 		read_in_dir(&img, art_dir, CITY_BASE[culture], NULL);
 		if (img.JGL.Image == NULL) return false;
+		int sprite_w = img.JGL.Image->vtable->m54_Get_Width(img.JGL.Image) / 3;
+		int sprite_h = img.JGL.Image->vtable->m55_Get_Height(img.JGL.Image) / 4;
 		int y = 0;
-		for (int era = 0; era < 4; ++era, y += 95) {
+		for (int era = 0; era < 4; ++era, y += sprite_h) {
 			int x = 0;
-			for (int size = 0; size < 3; ++size, x += 167) {
+			for (int size = 0; size < 3; ++size, x += sprite_w) {
 				const int idx = culture + 5*era + 20*size;
-				Sprite_slice_pcx(&this->City_Images[idx], __, &img, x, y, 167, 95, 1, 1);
+				Sprite_slice_pcx(&this->City_Images[idx], __, &img, x, y, sprite_w, sprite_h, 1, 1);
 			}
 		}
 	}
@@ -16772,21 +16774,26 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 	for (int culture = 0; culture < 5; ++culture) {
 		read_in_dir(&img, art_dir, CITY_WALL[culture], NULL);
 		if (img.JGL.Image == NULL) return false;
+		int sprite_w = img.JGL.Image->vtable->m54_Get_Width(img.JGL.Image);
+		int sprite_h = img.JGL.Image->vtable->m55_Get_Height(img.JGL.Image) / 4;
 		int y = 0;
-		for (int era = 0; era < 4; ++era, y += 95) {
+		for (int era = 0; era < 4; ++era, y += sprite_h) {
 			const int size = 3; // walled towns are a special category
         	const int idx = culture + 5*era + 20*size;
-        	Sprite_slice_pcx(&this->City_Images[idx], __, &img, 0, y, 167, 95, 1, 1);
+        	Sprite_slice_pcx(&this->City_Images[idx], __, &img, 0, y, sprite_w, sprite_h, 1, 1);
 		}
 	}
 
 	// Destroyed cities
 	read_in_dir(&img, art_dir, "DESTROY.pcx", NULL);
 	if (img.JGL.Image == NULL) return false;
-    int x = 0;
-    for (int i = 0; i < 3; ++i, x += 167) {
-        Sprite_slice_pcx(&this->Destroyed_City_Images[i], __, &img, x, 0, 167, 95, 1, 1);
-    }
+	{
+		int sprite_w = img.JGL.Image->vtable->m54_Get_Width(img.JGL.Image) / 3;
+		int sprite_h = img.JGL.Image->vtable->m55_Get_Height(img.JGL.Image);
+		int x = 0;
+		for (int i = 0; i < 3; ++i, x += sprite_w)
+			Sprite_slice_pcx(&this->Destroyed_City_Images[i], __, &img, x, 0, sprite_w, sprite_h, 1, 1);
+	}
 
 	// Districts (if enabled)
 	if (is->current_config.enable_districts) {
