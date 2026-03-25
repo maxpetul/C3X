@@ -108,6 +108,12 @@ enum unit_cycle_search_criteria {
 	UCSC_SIMILAR_NEAR_DESTINATION
 };
 
+enum no_ai_patrol_override {
+	NAPO_ZERO = 0,
+	NAPO_ONE,
+	NAPO_NONE
+};
+
 enum special_defensive_bombard_rules {
 	SDBR_LETHAL         =  1,
 	SDBR_NOT_INVISIBLE  =  2,
@@ -309,6 +315,7 @@ struct c3x_config {
 	int years_to_double_building_culture;
 	int tourism_time_scale_percent;
 	bool allow_sale_of_small_wonders;
+	enum no_ai_patrol_override override_no_ai_patrol;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;

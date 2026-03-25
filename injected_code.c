@@ -1705,6 +1705,17 @@ read_unit_cycle_search_criteria (struct string_slice const * s, int * out_val)
 }
 
 bool
+read_no_ai_patrol_override (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "zero")) { *out_val = NAPO_ZERO; return true; }
+	else if (slice_matches_str (&trimmed, "one" )) { *out_val = NAPO_ONE;  return true; }
+	else if (slice_matches_str (&trimmed, "none")) { *out_val = NAPO_NONE; return true; }
+	else
+		return false;
+}
+
+bool
 read_work_area_limit (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
@@ -2097,6 +2108,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "unit_cycle_search_criteria")) {
 					if (! read_unit_cycle_search_criteria (&value, (int *)&cfg->unit_cycle_search_criteria))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "override_no_ai_patrol")) {
+					if (! read_no_ai_patrol_override (&value, (int *)&cfg->override_no_ai_patrol))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_defensive_bombard_rules")) {
 					struct parsable_field_bit bits[] = {
@@ -11193,6 +11207,7 @@ patch_init_floating_point ()
 	base_config.work_area_limit = WAL_NONE;
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
 	base_config.double_minimap_size = MDM_HIGH_DEF;
+	base_config.override_no_ai_patrol = NAPO_NONE;
 	base_config.unit_cycle_search_criteria = UCSC_STANDARD;
 	base_config.city_work_radius = 2;
 	base_config.day_night_cycle_mode = DNCM_OFF;
@@ -14370,6 +14385,14 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 
 	// Clear old alias bits
 	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = is->aliased_leader_title_bits = 0;
+
+	// Apply no AI patrol override
+	if (is->current_config.override_no_ai_patrol == NAPO_ZERO)
+		*p_allow_ai_patrol = true;
+	else if (is->current_config.override_no_ai_patrol == NAPO_ONE)
+		*p_allow_ai_patrol = false;
+	else if (is->current_config.override_no_ai_patrol == NAPO_NONE)
+		*p_allow_ai_patrol = 0 == get_int_from_conquests_ini ("NoAIPatrol", 1, 0);
 
 	// Clear day/night cycle vars and deindex sprite proxies, if necessary.
 	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
