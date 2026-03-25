@@ -26346,7 +26346,7 @@ patch_City_get_building_defense_bonus (City * this)
 		is->current_config.enable_great_wall_districts &&
 		is->current_config.disable_great_wall_city_defense_bonus;
 
-	if (is->current_config.optimize_improvement_loops) {
+	if (is->current_config.optimize_improvement_loops || cancel_great_wall_boost) {
 		int tr = 0;
 		int is_size_level_1 = (this->Body.Population.Size <= p_bic_data->General.MaximumSize_City) &&
 			(this->Body.Population.Size <= p_bic_data->General.MaximumSize_Town);
