@@ -108,10 +108,12 @@ show_in_day_night_hours = 18-6
 
 #Animation
 name                    = Cattle
-ini_path                = Resources\MilkCow\MilkCow.INI
+;ini_path                = Resources\MilkCow\MilkCow.INI
+ini_path                = Resources\Cow\black_and_white_cow.INI
 type                    = resource
 resource_type           = Cattle
 direction               = southeast
+frame_time_seconds      = 0.2
 show_in_day_night_hours = 7-17
 
 #Animation
