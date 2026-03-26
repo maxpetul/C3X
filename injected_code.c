@@ -3200,6 +3200,18 @@ patch_Unit_get_max_move_points_for_disembarking (Unit * this)
 		return patch_Unit_get_max_move_points (this);
 }
 
+// Unit::move_to_adjacent_tile uses a separate "spend all remaining movement when disembarking" branch for land units moving from water to land.
+// Bridge districts still look like water tiles to that stock logic, so stepping off a bridge can incorrectly consume the whole turn. When the
+// wrapper around move_to_adjacent_tile detects bridge->land movement, it precomputes the correct spent-moves total and exposes it here.
+int __fastcall
+patch_Unit_get_max_move_points_for_bridge_exit (Unit * this)
+{
+	if ((this != NULL) && (this == is->move_spend_override_unit))
+		return is->move_spend_override_value;
+	else
+		return patch_Unit_get_max_move_points (this);
+}
+
 // This func implements GA remaining turns indicator. It intercepts a call to some kind of text processing function when it's called to process the
 // text in the lower right (containing current research, GA status, & mobilization) and splices in the number of remaining GA turns if in a GA.
 int __fastcall
@@ -27246,6 +27258,8 @@ int __fastcall
 patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool param_2, int param_3, byte param_4)
 {
 	is->moving_unit_to_adjacent_tile = true;
+	is->move_spend_override_unit = NULL;
+	is->move_spend_override_value = 0;
 
 	bool const allow_worker_coast = is->current_config.enable_districts && is->current_config.workers_can_enter_coast && is_worker (this);
 	bool const allow_bridge_walk = is->current_config.enable_districts &&
@@ -27257,12 +27271,37 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 	bool coast_override_active = false;
 	enum UnitStateType prev_state = this->Body.UnitState;
 	int prev_container = this->Body.Container_Unit;
+	bool restore_goto_path = prev_state == UnitState_Go_To;
+	int prev_path_len = this->Body.path_len;
+	int prev_path_dest_x = this->Body.path_dest_x;
+	int prev_path_dest_y = this->Body.path_dest_y;
 
 	if (allow_worker_coast || allow_bridge_walk || allow_canal_sail) {
 		int nx, ny;
 		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
 		Tile * dest = tile_at (nx, ny);
 		if (dest != NULL) {
+			if (allow_bridge_walk && ! dest->vtable->m35_Check_Is_Water (dest)) {
+				Tile * src = tile_at (this->Body.X, this->Body.Y);
+				if ((src != NULL) && (src != p_null_tile)) {
+					struct district_instance * src_inst = get_district_instance (src);
+					bool from_bridge = (src_inst != NULL) &&
+					                   (src_inst->district_id == BRIDGE_DISTRICT_ID) &&
+					                   district_is_complete (src, src_inst->district_id);
+					if (from_bridge) {
+						int move_cost = patch_Trade_Net_get_movement_cost (
+							is->trade_net, __,
+							this->Body.X, this->Body.Y, nx, ny,
+							this, this->Body.CivID, 0, neighbor_index, NULL);
+						if (move_cost >= 0) {
+							int spent_moves = this->Body.Moves + move_cost;
+							is->move_spend_override_unit = this;
+							is->move_spend_override_value = not_above (spent_moves, patch_Unit_get_max_move_points (this));
+						}
+					}
+				}
+			}
+
 			bool should_override = false;
 			if (allow_worker_coast &&
 			    dest->vtable->m35_Check_Is_Water (dest) &&
@@ -27310,6 +27349,10 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 				is->coast_walk_transport_override = false;
 				is->coast_walk_prev_state = prev_state;
 				is->coast_walk_prev_container = prev_container;
+				is->coast_walk_restore_goto_path = restore_goto_path;
+				is->coast_walk_prev_path_len = prev_path_len;
+				is->coast_walk_prev_path_dest_x = prev_path_dest_x;
+				is->coast_walk_prev_path_dest_y = prev_path_dest_y;
 			}
 		}
 	}
@@ -27326,11 +27369,18 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 		if (this->Body.Container_Unit == this->Body.ID) {
 			this->Body.Container_Unit = is->coast_walk_prev_container;
 			Unit_set_state (this, __, is->coast_walk_prev_state);
+			if (is->coast_walk_restore_goto_path) {
+				this->Body.path_len = is->coast_walk_prev_path_len;
+				this->Body.path_dest_x = is->coast_walk_prev_path_dest_x;
+				this->Body.path_dest_y = is->coast_walk_prev_path_dest_y;
+			}
 		}
 	}
 
 	is->temporarily_disallow_lethal_zoc = false;
 	is->moving_unit_to_adjacent_tile = false;
+	is->move_spend_override_unit = NULL;
+	is->move_spend_override_value = 0;
 	return tr;
 }
 

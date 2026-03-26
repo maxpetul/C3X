@@ -1833,6 +1833,12 @@ struct injected_state {
 	bool coast_walk_transport_override;
 	enum UnitStateType coast_walk_prev_state;
 	int coast_walk_prev_container;
+	bool coast_walk_restore_goto_path;
+	int coast_walk_prev_path_len;
+	int coast_walk_prev_path_dest_x;
+	int coast_walk_prev_path_dest_y;
+	Unit * move_spend_override_unit;
+	int move_spend_override_value;
 
 	// Used to record info about a defensive bomardment event during Fighter::fight. Gets set by Fighter::damage_by_defensive_bombardment and
 	// cleared when Fighter::fight returns.
