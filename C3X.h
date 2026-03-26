@@ -591,9 +591,6 @@ enum c3x_label {
 	CL_DISTRICTS_IN_SAVE_FILE,
 	CL_CURRENTLY_CONFIGURED_DISTRICTS,
 
-	// Maritime district pillaging button tooltip
-	CL_PILLAGE,
-
 	// Tile naming
 	CL_NAME_TILE,
 	CL_RENAME_TILE,

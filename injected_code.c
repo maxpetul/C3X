@@ -18936,34 +18936,6 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 
 	if (is->current_config.enable_districts) {
 		set_up_district_buttons (this);
-
-		if (p_main_screen_form->Current_Unit != NULL) {
-			Unit_Body * selected_unit = &p_main_screen_form->Current_Unit->Body;
-
-			enum UnitTypeClasses class = p_bic_data->UnitTypes[selected_unit->UnitTypeID].Unit_Class;
-			Tile * tile = tile_at (selected_unit->X, selected_unit->Y);
-			struct district_instance * existing_inst = get_district_instance (tile);
-			if (class == UTC_Sea && tile->vtable->m35_Check_Is_Water (tile) && existing_inst != NULL && 
-			patch_Unit_can_perform_command (p_main_screen_form->Current_Unit, __, UCV_Pillage)) {
-
-				// Really hate this but can't figure out a cleaner way to do it.
-				// If looping through command buttons, the command ID is always zero if disallowed
-				Command_Button * pillage_button = &this->Unit_Command_Buttons[3];
-				// Special actions sprites: UCV_Pillage is index 3 (0x10000008).
-				Sprite * base_img = &this->Images[0x80 + 3];
-				pillage_button->Command = UCV_Pillage;
-				pillage_button->field_6D8 = 0x10;
-				pillage_button->Button.vtable->m02_Show_Disabled ((Base_Form *)&pillage_button->Button);
-				pillage_button->Button.Images[0] = base_img - 0x3b;
-				pillage_button->Button.Images[1] = base_img;
-				pillage_button->Button.Images[2] = base_img + 0x3b;
-				pillage_button->Button.Images[3] = &this->Images[2];
-				pillage_button->Button.field_664 = 0;
-				pillage_button->Button.field_5FC[13] = 0;
-				pillage_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&pillage_button->Button, __, 0);
-				Button_set_tooltip (&pillage_button->Button, __, is->c3x_labels[CL_PILLAGE]);
-			}
-		}
 	}
 
 	// If the minimum city separation is increased, then gray out the found city button if we're too close to another city.
