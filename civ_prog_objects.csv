@@ -428,6 +428,7 @@ inlead,	   0x5B8FC0,	0x5C7A40,	0x5B8CD0,	"Unit_move_to_adjacent_tile",			"int (_
 repl call, 0x5B91B4,	0x0,	    0x0,	    "Tile_check_water_for_canal_move_to_adjacent_tile_dest",	""
 repl call, 0x5B945B,	0x5C7EDE,	0x5B916B,	"Trade_Net_get_move_cost_after_zoc",		""
 repl call, 0x5B9471,	0x5C7EF4,	0x5B9181,	"Unit_can_move_after_zoc",			""
+repl call, 0x5B94E4,	0x0,	    0x0,	    "Unit_get_max_move_points_for_bridge_exit",	""
 repl vptr, 0x66DD40,	0x68AE20,	0x66DD40,	"Unit_teleport",				"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, Unit * unit_telepad)"
 define,	   0x5BEF00,	0x5CDB10,	0x5BEC10,	"Unit_score_kill",				"void (__fastcall *) (Unit * this, int edx, Unit * victim, bool was_attacking)"
 inlead,	   0x4A1AE0,	0x4A86E0,	0x4A1B70,	"Fighter_find_defensive_bombarder",		"Unit * (__fastcall *) (Fighter * this, int edx, Unit * attacker, Unit * defender)"
