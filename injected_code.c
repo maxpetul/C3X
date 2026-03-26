@@ -33631,9 +33631,8 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 				struct wonder_district_info * info = &inst->wonder_info;
 				if (info->state == WDS_UNUSED)
 					do_replacement = true;
-			// Allow replace of Great Wall if the civ has the tech to make it obsolete
-			} else if (existing_district_id == GREAT_WALL_DISTRICT_ID) {
-				
+			} else if (district_is_obsolete_for_civ (existing_district_id, request_city->Body.CivID)) {
+				do_replacement = true;
 			} else {
 				snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d cannot replace existing district ID %d at (%d,%d), cancelling request\n", worker->Body.ID, existing_district_id, worker->Body.X, worker->Body.Y);
 				(*p_OutputDebugStringA) (ss);
@@ -35268,7 +35267,6 @@ patch_Unit_ai_move_air_defense_unit (Unit * this)
 	}
 
 	Unit_ai_move_air_defense_unit (this);
-	return;
 
 	Unit_set_state (this, __, 0);
 	if (this->Body.Damage > 0) {
@@ -35319,7 +35317,6 @@ patch_Unit_ai_move_air_transport (Unit * this)
 	}
 
 	Unit_ai_move_air_transport (this);
-	return;
 
 	if (this->Body.Damage < 1) {
 		if (Unit_can_airdrop (this)) {
