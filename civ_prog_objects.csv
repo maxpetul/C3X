@@ -425,6 +425,7 @@ define,	   0x4A7F61,	0x4AEC26,	0x4A7FF1,	"ADDR_ZOC_CHECK_ATTACKER_ANIM_FIELD_111
 define,	   0x4A770A,	0x4AE3CA,	0x4A779A,	"ADDR_SKIP_ZOC_FOR_ONE_HP_LAND_UNIT",		"byte *"
 define,	   0x4A7745,	0x4AE405,	0x4A77D5,	"ADDR_SKIP_ZOC_FOR_ONE_HP_SEA_UNIT",		"byte *"
 inlead,	   0x5B8FC0,	0x5C7A40,	0x5B8CD0,	"Unit_move_to_adjacent_tile",			"int (__fastcall *) (Unit * this, int edx, int neighbor_index, bool param_2, int param_3, byte param_4)"
+repl call, 0x5B91B4,	0x0,	    0x0,	    "Tile_check_water_for_canal_move_to_adjacent_tile_dest",	""
 repl call, 0x5B945B,	0x5C7EDE,	0x5B916B,	"Trade_Net_get_move_cost_after_zoc",		""
 repl call, 0x5B9471,	0x5C7EF4,	0x5B9181,	"Unit_can_move_after_zoc",			""
 repl vptr, 0x66DD40,	0x68AE20,	0x66DD40,	"Unit_teleport",				"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, Unit * unit_telepad)"

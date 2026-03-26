@@ -35923,5 +35923,23 @@ patch_Unit_select_army_member_for_combat (Unit * this, int edx, int param_1, cha
 	return Unit_select_army_member_for_combat (this, __, param_1, param_2);
 }
 
+int __fastcall
+patch_Tile_check_water_for_canal_move_to_adjacent_tile_dest (Tile * this)
+{
+	if ((this != NULL) && (this != p_null_tile) &&
+	    is->current_config.enable_districts &&
+	    is->current_config.enable_canal_districts &&
+	    (is->coast_walk_unit != NULL) &&
+	    (p_bic_data->UnitTypes[is->coast_walk_unit->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
+		struct district_instance * inst = get_district_instance (this);
+		if ((inst != NULL) &&
+		    (inst->district_id == CANAL_DISTRICT_ID) &&
+		    district_is_complete (this, inst->district_id))
+			return 1;
+	}
+
+	return this->vtable->m35_Check_Is_Water (this);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
