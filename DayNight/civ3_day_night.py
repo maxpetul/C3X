@@ -21,7 +21,7 @@ Tested knobs (your current favorites work unchanged):
 import argparse
 import shutil
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple, Set, Dict
+from typing import Iterable, List, Sequence, Tuple, Set, Dict, Optional
 
 from PIL import Image
 from civ3_city_lights import is_night_hour
@@ -133,7 +133,7 @@ def _find_nearest_index(
     pal: List[int],
     src_idx: int,
     allowed: Iterable[int],
-) -> int | None:
+) -> Optional[int]:
     src_rgb = _rgb_of_index(pal, src_idx)
     best = None
     best_d2 = 1e18
@@ -228,7 +228,7 @@ def _free_palette_slots(
     return freed
 
 
-def _sample_neighbor_index(px, x: int, y: int, w: int, h: int, r: int) -> int | None:
+def _sample_neighbor_index(px, x: int, y: int, w: int, h: int, r: int) -> Optional[int]:
     """
     Return the most common palette index in the (2r+1)x(2r+1) neighborhood
     around (x,y), excluding the center pixel. If nothing valid, return None.
@@ -731,7 +731,9 @@ def adjust_palette_for_time(
 def copy_noon_to_label(noon_dir: Path, label_dir: Path) -> List[Path]:
     label_dir.mkdir(parents=True, exist_ok=True)
     copied: List[Path] = []
-    for src in noon_dir.glob("*.pcx"):
+    for src in noon_dir.iterdir():
+        if not src.is_file() or src.suffix.lower() != ".pcx":
+            continue
         dst = label_dir / src.name
         shutil.copy2(src, dst)
         copied.append(dst)

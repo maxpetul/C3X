@@ -225,6 +225,7 @@ def walk_and_fix(data_dir: str, noon_folder: str,
                  isolation_radius: int, search_radius: int, max_radius: int,
                  remove_all_green: bool, only_hour: int=None, verbose: bool=False) -> None:
     noon_abs = os.path.normpath(os.path.join(data_dir, noon_folder))
+    annotations_abs = os.path.normpath(os.path.join(data_dir, "Annotations"))
     targets = []
 
     if only_hour is not None:
@@ -239,6 +240,7 @@ def walk_and_fix(data_dir: str, noon_folder: str,
             sub = os.path.normpath(os.path.join(data_dir, name))
             if not os.path.isdir(sub): continue
             if os.path.normcase(sub) == os.path.normcase(noon_abs): continue
+            if os.path.normcase(sub) == os.path.normcase(annotations_abs): continue
             targets.append(sub)
 
     total_changed = 0

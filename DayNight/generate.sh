@@ -189,17 +189,17 @@ process_art_set() {
   if [[ -n "${ONLY_HOUR}" ]]; then
     # Only the specified hour
     if [[ -d "$data_dir/$ONLY_HOUR" ]]; then
-      rm -f "$data_dir/$ONLY_HOUR"/*_lights.pcx || true
+      find "$data_dir/$ONLY_HOUR" -maxdepth 1 -type f -iname '*_lights.pcx' -delete || true
     fi
     # Also clean the noon folder
     if [[ -d "$data_dir/$NOON_SUBFOLDER" ]]; then
-      rm -f "$data_dir/$NOON_SUBFOLDER"/*_lights.pcx || true
+      find "$data_dir/$NOON_SUBFOLDER" -maxdepth 1 -type f -iname '*_lights.pcx' -delete || true
     fi
   else
     # All hour-named subfolders under data_dir (e.g., 0000, 0100, ..., 2400)
     # Do not touch the external $annotation_dir.
     while IFS= read -r -d '' hour_dir; do
-      rm -f "${hour_dir}"/*_lights.pcx || true
+      find "${hour_dir}" -maxdepth 1 -type f -iname '*_lights.pcx' -delete || true
     done < <(find "$data_dir" -mindepth 1 -maxdepth 1 -type d -regex '.*/[0-9]{4}$' -print0)
   fi
 }
