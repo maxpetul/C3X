@@ -92,7 +92,7 @@ ini_path                = Resources\Deer\Deer.INI
 type                    = resource
 resource_type           = Game
 direction               = southwest
-y_offset                = -10
+y_offset                = -12
 frame_time_seconds      = 0.14
 show_in_day_night_hours = 7-17
 
@@ -102,7 +102,7 @@ ini_path                = Resources\Deer\Deer_night.INI
 type                    = resource
 resource_type           = Game
 direction               = southwest
-y_offset                = -10
+y_offset                = -12
 frame_time_seconds      = 0.14
 show_in_day_night_hours = 18-6
 
@@ -139,6 +139,15 @@ type                    = resource
 resource_type           = Horses
 direction               = southeast
 show_in_day_night_hours = 18-6
+
+#Animation
+name                    = Ivory
+ini_path                = Resources\Elephant\Elephant.ini
+type                    = resource
+resource_type           = Ivory
+direction               = southwest
+frame_time_seconds      = 0.17
+show_in_day_night_hours = 7-17
 
 ;===Example PCX animation of river segment===
 ;#Animation
