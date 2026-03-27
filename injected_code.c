@@ -35262,9 +35262,9 @@ patch_Unit_ai_move_air_bombard_unit (Unit * this)
 		}
 	}
 
-	if ((base_x >= 0) && ((this->Body.X != base_x) || (this->Body.Y != base_y))) {
+	if ((base_x >= 0) && (base_y >= 0) && ((this->Body.X != base_x) || (this->Body.Y != base_y))) {
 		Unit_set_escortee (this, __, -1);
-		patch_Unit_move (this, __, base_x, base_y);
+		Unit_rebase (this, __, base_x, base_y);
 		return;
 	}
 
@@ -35318,9 +35318,9 @@ patch_Unit_ai_move_air_defense_unit (Unit * this)
 		}
 	}
 
-	if ((base_x >= 0) && ((this->Body.X != base_x) || (this->Body.Y != base_y))) {
+	if ((base_x >= 0) && (base_y >= 0) && ((this->Body.X != base_x) || (this->Body.Y != base_y))) {
 		Unit_set_escortee (this, __, -1);
-		patch_Unit_move (this, __, base_x, base_y);
+		Unit_rebase (this, __, base_x, base_y);
 		return;
 	}
 
@@ -35392,9 +35392,9 @@ patch_Unit_ai_move_air_transport (Unit * this)
 			}
 		}
 
-		if ((base_x >= 0) && ((this->Body.X != base_x) || (this->Body.Y != base_y))) {
+		if ((base_x >= 0) && (base_y >= 0) && ((this->Body.X != base_x) || (this->Body.Y != base_y))) {
 			Unit_set_escortee (this, __, -1);
-			patch_Unit_move (this, __, base_x, base_y);
+			Unit_rebase (this, __, base_x, base_y);
 			if (Unit_count_contained_units (this) > 0) {
 				patch_Unit_disembark_passengers (this, __, this->Body.X, this->Body.Y);
 			}
