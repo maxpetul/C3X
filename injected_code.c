@@ -33103,23 +33103,11 @@ draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * ma
 	if (wall_nw) draw_district_on_map_or_canvas(&sprites[DIR_NW], map_renderer, pixel_x, pixel_y);
 	if (wall_ne) draw_district_on_map_or_canvas(&sprites[DIR_NE], map_renderer, pixel_x, pixel_y);
 
-	if (!wall_nw && !wall_ne && wall_n && water_ne)     
-		draw_district_on_map_or_canvas(&sprites[DIR_N], map_renderer, pixel_x, pixel_y);
-	if (!wall_ne && wall_n && water_nw)
-		draw_district_on_map_or_canvas(&sprites[DIR_N], map_renderer, pixel_x, pixel_y);
-	if (water_sw && water_nw && !water_w)
-		draw_district_on_map_or_canvas(&sprites[DIR_W], map_renderer, pixel_x, pixel_y);
-	if (water_n && !wall_nw && !wall_ne)
-		draw_district_on_map_or_canvas(&sprites[DIR_N], map_renderer, pixel_x, pixel_y);
-
 	// Base pillar
 	draw_district_on_map_or_canvas(base, map_renderer, pixel_x, pixel_y);
 
 	if (wall_sw) draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
 	if (wall_se) draw_district_on_map_or_canvas(&sprites[DIR_SE], map_renderer, pixel_x, pixel_y);
-
-	if (wall_s && !wall_sw && !wall_se)
-		draw_district_on_map_or_canvas(&sprites[DIR_S], map_renderer, pixel_x, pixel_y);
 }
 
 void
