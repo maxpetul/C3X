@@ -243,6 +243,7 @@ void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out
 void wrap_tile_coords (Map * map, int * x, int * y);
 int count_neighborhoods_in_city_radius (City * city);
 int count_utilized_neighborhoods_in_city_radius (City * city);
+bool city_has_resource_r (City * city, int resource_id, int max_generated_resource_id);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -12497,7 +12498,7 @@ clear_city_district_request (City * city, int district_id)
 }
 
 bool
-district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district_id)
+district_resource_prereqs_met_r (Tile * tile, int tile_x, int tile_y, int district_id, int max_req_resource_id)
 {
 	if ((tile == NULL) || (tile == p_null_tile) ||
 	    (district_id < 0) || (district_id >= is->district_count))
@@ -12524,6 +12525,8 @@ district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district
 		int resource_req = info->resource_prereq_ids[i];
 		if (resource_req < 0)
 			continue;
+		if (resource_req > max_req_resource_id)
+			return false;
 
 		bool has_resource = false;
 
@@ -12531,7 +12534,7 @@ district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district
 			City * req_city = coi.city;
 			if (! Trade_Net_is_tile_connected_to_city (is->trade_net, __, req_city, tile_x, tile_y))
 				continue;
-			if (! patch_City_has_resource (req_city, __, resource_req))
+			if (! city_has_resource_r (req_city, resource_req, max_req_resource_id))
 				continue;
 
 			has_resource = true;
@@ -12544,6 +12547,12 @@ district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district
 	}
 
 	return true;
+}
+
+bool
+district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district_id)
+{
+	return district_resource_prereqs_met_r (tile, tile_x, tile_y, district_id, INT_MAX);
 }
 
 int
@@ -12911,6 +12920,23 @@ district_can_generate_resource (int for_civ_id, struct district_config * dc)
 	return (req_tech_id < 0) || Leader_has_tech (&leaders[for_civ_id], __, req_tech_id);
 }
 
+bool
+district_generates_resource_for_civ (Tile * tile, struct district_instance * inst, struct district_config * dc, int civ_id)
+{
+	if ((tile == NULL) || (tile == p_null_tile) || (inst == NULL) || (dc == NULL))
+		return false;
+	if (inst->state != DS_COMPLETED)
+		return false;
+	if (dc->generated_resource_id < 0)
+		return false;
+	if (! district_can_generate_resource (civ_id, dc))
+		return false;
+
+	int tile_x = 0, tile_y = 0;
+	tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y);
+	return district_resource_prereqs_met_r (tile, tile_x, tile_y, inst->district_id, dc->generated_resource_id - 1);
+}
+
 void
 calculate_city_center_district_bonus (City * city, int * out_food, int * out_shields, int * out_gold)
 {
@@ -12955,7 +12981,7 @@ calculate_city_center_district_bonus (City * city, int * out_food, int * out_shi
 
 		if ((cfg->generated_resource_id >= 0) && (cfg->generated_resource_flags & MF_YIELDS)) {
 			int res_id = cfg->generated_resource_id;
-			if (district_can_generate_resource (city->Body.CivID, cfg)) {
+			if (district_generates_resource_for_civ (tile, inst, cfg, city->Body.CivID)) {
 				Resource_Type * res = &p_bic_data->ResourceTypes[res_id];
 				bonus_food += res->Food;
 				bonus_shields += res->Shield;
@@ -15282,7 +15308,18 @@ bool has_resources_required_by_building_r (City * city, int improv_id, int max_r
 bool __fastcall
 patch_City_has_resource (City * this, int edx, int resource_id)
 {
+	return city_has_resource_r (this, resource_id, INT_MAX);
+}
+
+bool
+city_has_resource_r (City * this, int resource_id, int max_generated_resource_id)
+{
 	bool tr;
+	if ((this == NULL) || (resource_id < 0) || (resource_id >= p_bic_data->ResourceTypeCount))
+		return false;
+	if (resource_id > max_generated_resource_id)
+		return false;
+
 	if (is->current_config.patch_phantom_resource_bug &&
 	    (resource_id >= 32) && (resource_id < p_bic_data->ResourceTypeCount) &&
 	    (! City_has_trade_connection_to_capital (this))) {
@@ -15316,7 +15353,7 @@ patch_City_has_resource (City * this, int edx, int resource_id)
 			struct district_config * dc = &is->district_configs[district_id];
 			if ((dc->generated_resource_id == resource_id) &&
 			    (dc->generated_resource_flags & MF_LOCAL) &&
-			    district_can_generate_resource (this->Body.CivID, dc)) {
+			    district_generates_resource_for_civ (wai.tile, di, dc, this->Body.CivID)) {
 				tr = true;
 				break;
 			}
@@ -15359,7 +15396,7 @@ has_resources_required_by_building_r (City * city, int improv_id, int max_req_re
 		for (int n = 0; n < 2; n++) {
 			int res_id = (&improv->Resource1ID)[n];
 			if ((res_id >= 0) &&
-			    ((res_id > max_req_resource_id) || (! patch_City_has_resource (city, __, res_id))))
+			    ((res_id > max_req_resource_id) || (! city_has_resource_r (city, res_id, max_req_resource_id))))
 				return false;
 		}
 		return true;
@@ -15573,7 +15610,7 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups
 			int owner_id = district_tile->vtable->m38_Get_Territory_OwnerID (district_tile);
 			if (owner_id < 0)
 				continue;
-			if (! district_can_generate_resource (owner_id, cfg))
+			if (! district_generates_resource_for_civ (district_tile, inst, cfg, owner_id))
 				continue;
 			if ((cfg->generated_resource_flags & MF_LOCAL) != 0)
 				continue;
@@ -15644,7 +15681,7 @@ patch_Tile_get_visible_resource_when_recomputing (Tile * tile, int edx, int civ_
 			if ((district_tile != NULL) && (district_tile != p_null_tile) && (inst != NULL) &&
 			    (cfg != NULL) && (inst->state == DS_COMPLETED)) {
 				int owner_id = district_tile->vtable->m38_Get_Territory_OwnerID (district_tile);
-				if ((owner_id == civ_id) && district_can_generate_resource (owner_id, cfg))
+				if ((owner_id == civ_id) && district_generates_resource_for_civ (district_tile, inst, cfg, owner_id))
 					return cfg->generated_resource_id;
 			}
 			return -1;
@@ -30982,7 +31019,7 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	if ((config->generated_resource_id >= 0) &&
 	    (config->generated_resource_flags & MF_YIELDS) &&
 	    (city_form->CurrentCity != NULL) &&
-	    district_can_generate_resource (city_form->CurrentCity->Body.CivID, config)) {
+	    district_generates_resource_for_civ (tile, inst, config, city_form->CurrentCity->Body.CivID)) {
 		Resource_Type * res = &p_bic_data->ResourceTypes[config->generated_resource_id];
 		food_bonus   += res->Food;
 		shield_bonus += res->Shield;
@@ -33141,10 +33178,7 @@ draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, stru
 				int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
 				if ((owner_id >= 0) && ((visible_to_civ_id < 0) || (owner_id == visible_to_civ_id))) {
 					int res_id = cfg->generated_resource_id;
-					if (visible_to_civ_id >= 0) {
-						if (district_can_generate_resource (visible_to_civ_id, cfg))
-							district_resource = res_id;
-					} else
+					if (district_generates_resource_for_civ (tile, inst, cfg, owner_id))
 						district_resource = res_id;
 				}
 			}
