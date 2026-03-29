@@ -11105,24 +11105,6 @@ find_natural_wonder_index_by_name (char const * name)
 	return -1;
 }
 
-City *
-find_city_by_name (char const * name)
-{
-	if ((name == NULL) || (name[0] == '\0') || (p_cities == NULL) || (p_cities->Cities == NULL))
-		return NULL;
-
-	for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
-		City * city = get_city_ptr (city_index);
-		if ((city != NULL) && (city->Body.CityName != NULL)) {
-			(*p_OutputDebugStringA) (city->Body.CityName);
-		}
-		if ((city != NULL) && (city->Body.CityName != NULL) && (strcmp (city->Body.CityName, name) == 0))
-			return city;
-	}
-
-	return NULL;
-}
-
 void
 set_wonders_dependent_on_wonder_district (void)
 {
