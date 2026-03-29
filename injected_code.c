@@ -33233,40 +33233,43 @@ draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, stru
 	int right_x = pixel_x + (offset >> 1);
 
 	int icon_id = p_bic_data->ResourceTypes[district_resource].IconID;
-	if (icon_id >= 0 && icon_id < 36) {
-		Sprite * sprite = NULL;
-		if (is->tile_info_open) {
-			Map_Renderer * base_renderer = &p_bic_data->Map.Renderer;
-			if (base_renderer->Resources != NULL)
-				sprite = &base_renderer->Resources[icon_id];
-		} else if (map_renderer != NULL && map_renderer->Resources != NULL)
-			sprite = &map_renderer->Resources[icon_id];
-		if (sprite == NULL) {
-			Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
-			return;
-		}
+	Sprite * sprite = NULL;
+	Map_Renderer * resource_renderer = is->tile_info_open ? &p_bic_data->Map.Renderer : map_renderer;
+	int resource_sprite_count = 0;
+	if ((resource_renderer != NULL) && (resource_renderer->Resources != NULL))
+		// The renderer allocates Resources as a counted heap array: the int stored just before the
+		// first Sprite is the number of entries loaded from resources.pcx.
+		resource_sprite_count = ((int *)resource_renderer->Resources)[-1];
+	if ((icon_id < 0) || (icon_id >= resource_sprite_count)) {
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+	}
+	sprite = &resource_renderer->Resources[icon_id];
+	if (sprite == NULL) {
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+	}
 
-		if (base_resource >= 0) {
-			Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, left_x, pixel_y);
-		}
+	if (base_resource >= 0) {
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, left_x, pixel_y);
+	}
 
-		int tile_height   = tile_width >> 1;
-		int sprite_width  = sprite->Width;
-		int sprite_height = sprite->Height;
-		if (sprite_width <= 0)  sprite_width = sprite->Width3;
-		if (sprite_height <= 0) sprite_height = sprite->Height3;
-		int center_x = (tile_width - sprite_width) >> 1;
-		int center_y = (tile_height - sprite_height) >> 1;
-		int draw_x   = (base_resource >= 0) ? right_x : pixel_x;
-		draw_x += center_x;
-		int draw_y     = pixel_y + center_y;
-		if (is->tile_info_open) {
-			PCX_Image * canvas = (PCX_Image *)map_renderer;
-			patch_Sprite_draw (sprite, __, canvas, draw_x, draw_y, NULL);
-		} else {
-			int draw_scale = (p_bic_data->is_zoomed_out != false) + 1;
-			patch_Sprite_draw_on_map (sprite, __, map_renderer, draw_x, draw_y, 1, 1, draw_scale, 0);
-		}
+	int tile_height   = tile_width >> 1;
+	int sprite_width  = sprite->Width;
+	int sprite_height = sprite->Height;
+	if (sprite_width <= 0)  sprite_width = sprite->Width3;
+	if (sprite_height <= 0) sprite_height = sprite->Height3;
+	int center_x = (tile_width - sprite_width) >> 1;
+	int center_y = (tile_height - sprite_height) >> 1;
+	int draw_x   = (base_resource >= 0) ? right_x : pixel_x;
+	draw_x += center_x;
+	int draw_y     = pixel_y + center_y;
+	if (is->tile_info_open) {
+		PCX_Image * canvas = (PCX_Image *)map_renderer;
+		patch_Sprite_draw (sprite, __, canvas, draw_x, draw_y, NULL);
+	} else {
+		int draw_scale = (p_bic_data->is_zoomed_out != false) + 1;
+		patch_Sprite_draw_on_map (sprite, __, map_renderer, draw_x, draw_y, 1, 1, draw_scale, 0);
 	}
 }
 
