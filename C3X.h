@@ -2063,10 +2063,6 @@ struct district_button_image_set {
 	Sprite imgs[4];
 } district_btn_img_sets[COUNT_DISTRICT_TYPES];
 
-	// Tech ID keys -> district ID. If a tech (aka advance) ID is present in the
-	// table that means that tech enables a district. This also means one tech can enable at most one district.
-	struct table district_tech_prereqs;
-
 	// Building ID keys -> district ID. If a building ID is present in the
 	// table that means that building can only be built if there is a corresponding district is present in the city radius.
 	struct table district_building_prereqs;
