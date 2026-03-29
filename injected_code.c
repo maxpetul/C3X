@@ -31331,13 +31331,10 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 			bool is_distribution_hub = district_id == DISTRIBUTION_HUB_DISTRICT_ID;
 			bool is_natural_wonder   = district_id == NATURAL_WONDER_DISTRICT_ID;
 
-			// Skip distribution hubs if the feature is not enabled
-			if (is_distribution_hub && (!is->current_config.enable_districts || !is->current_config.enable_distribution_hub_districts))
-				continue;
-
 			if (is_natural_wonder && (!is->current_config.enable_natural_wonders))
 				continue;
 
+			// Distribution hubs are drawn in the dedicated wider-radius pass below.
 			if (is_distribution_hub)
 				continue;
 
