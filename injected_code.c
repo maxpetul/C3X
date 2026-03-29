@@ -3951,7 +3951,7 @@ district_is_buildable_on_square_type (struct district_config const * cfg, Tile *
 }
 
 bool
-natural_wonder_is_coastal_island (Tile * tile, int tile_x, int tile_y)
+is_coastal_island (Tile * tile, int tile_x, int tile_y)
 {
 	if ((tile == NULL) || (tile == p_null_tile))
 		return false;
@@ -4077,7 +4077,7 @@ natural_wonder_terrain_matches (struct natural_wonder_district_config const * cf
 			return false;
 	}
 
-	if (natural_wonder_is_coastal_island (tile, tile_x, tile_y))
+	if (is_coastal_island (tile, tile_x, tile_y))
 		return false;
 
 	if ((cfg->adjacent_to != SQ_Coast) && (count_adjacent_tiles_of_type (tile_x, tile_y, SQ_Coast) > 0))
