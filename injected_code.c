@@ -12500,7 +12500,7 @@ district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district
 	if (owner < 0)
 		return false;
 
-	// Check all resource prereqs - ALL must be present
+	// Check resource prereqs - ALL must be present
 	for (int i = 0; i < info->resource_prereq_count; i++) {
 		int resource_req = info->resource_prereq_ids[i];
 		if (resource_req < 0)
@@ -19344,8 +19344,10 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 				int req_tech = p_bic_data->WorkerJobs[WJ_Build_Railroad].RequireID;
 				if ((req_tech < 0) ||
 				    ((req_tech != p_bic_data->AdvanceCount) &&
-				     Leader_has_tech (&leaders[this->Body.CivID], __, req_tech)))
-					return true;
+				     Leader_has_tech (&leaders[this->Body.CivID], __, req_tech))) {
+					if (Leader_has_resources_for_tile_at (&leaders[this->Body.CivID], __, WJ_Build_Railroad, this->Body.X, this->Body.Y))
+						return true;
+				}
 			}
 		}
 		else if (unit_command_value == UCV_Build_Mine) {
@@ -21318,8 +21320,10 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 						int req_tech = p_bic_data->WorkerJobs[job].RequireID;
 						if ((req_tech < 0) ||
 						    ((req_tech != p_bic_data->AdvanceCount) &&
-						     Leader_has_tech (&leaders[this->ID], __, req_tech)))
-							tr = 1;
+						     Leader_has_tech (&leaders[this->ID], __, req_tech))) {
+							if (Leader_has_resources_for_tile_at (&leaders[this->ID], __, job, tile_x, tile_y))
+								tr = 1;
+						}
 					}
 				}
 			}

@@ -204,6 +204,7 @@ define,	   0x5FD320,	0x611210,	0x5FD200,	"PCX_Image_set_font",				"int (__fastca
 define,	   0x57EEC4,	0x58BBE8,	0x57EC24,	"ADDR_INTERCEPT_SET_RESOURCE_BIT",		"void *"
 inlead,	   0x4ADE30,	0x4B4E10,	0x4ADEC0,	"City_has_resource",				"bool (__fastcall *) (City * this, int edx, int resource_id)"
 define,	   0x4ADDC0,	0x4B4DA0,	0x4ADE50,	"City_has_trade_connection_to_capital",		"bool (__fastcall *) (City * this)"
+define,    0x55EEB0,    0x0,        0x0,        "Leader_has_resources_for_tile_at",          "bool (__fastcall *) (Leader * this, int edx, enum Worker_Jobs job, int tile_x, int tile_y)"
 inlead,	   0x57E450,	0x58B1A0,	0x57E1B0,	"Trade_Net_recompute_resources",		"void (__fastcall *) (Trade_Net * this, int edx, bool skip_popups)"
 define,	   0x561440,	0x56D5A0,	0x5613F0,	"Leader_has_tech",				"bool (__fastcall *) (Leader * this, int edx, int id)"
 inlead,	   0x4BED80,	0x4C6350,	0x4BEE10,	"City_cycle_specialist_type",			"bool (__fastcall *) (City * this, int edx, int mouse_x, int mouse_y, Citizen * citizen, City_Form * city_form)"
