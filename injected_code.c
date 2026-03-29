@@ -23377,7 +23377,8 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 {
 	Map * map = &p_bic_data->Map;
 	Tile * tile = tile_at (tile_x, tile_y);
-	is->current_render_tile = tile;
+	
+	is->current_render_tile   = tile;
 	is->current_render_tile_x = tile_x;
 	is->current_render_tile_y = tile_y;
 	is->current_render_tile_district = get_district_instance (tile);
@@ -23408,26 +23409,28 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 	}
 
 	// Districts-related highlights
-	if (is->current_config.enable_districts && is->tile_highlight_state == IS_OK && 
-		(((tile_x + tile_y) % 2) == 0)) {
+	if (is->current_config.enable_districts &&
+		(((tile_x + tile_y) % 2) == 0)) { // Replicate a check from the base game code. Without this we'd be drawing additional tiles half-way off the grid.
 		init_tile_highlights ();
+		if (is->tile_highlight_state == IS_OK) {
 
-		// Draw city work radius highlights for selected worker
-		if (is->current_config.enable_city_work_radii_highlights &&
-			is->highlight_city_radii) { // Replicate a check from the base game code. Without this we'd be drawing additional tiles half-way off the grid.
+			// Draw city work radius highlights for selected worker
+			if (is->current_config.enable_city_work_radii_highlights &&
+				is->highlight_city_radii) {
 
-			if ((tile != NULL) && (tile != p_null_tile)) {
-				int stored_ptr;
-				if (itable_look_up (&is->highlighted_city_radius_tile_pointers, (int)tile, &stored_ptr)) {
-					struct highlighted_city_radius_tile_info * info = (struct highlighted_city_radius_tile_info *)stored_ptr;
-					Sprite_draw_on_map (&is->tile_highlights[clamp(0, COUNT_TILE_HIGHLIGHTS - 1, info->highlight_level)], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+				if ((tile != NULL) && (tile != p_null_tile)) {
+					int stored_ptr;
+					if (itable_look_up (&is->highlighted_city_radius_tile_pointers, (int)tile, &stored_ptr)) {
+						struct highlighted_city_radius_tile_info * info = (struct highlighted_city_radius_tile_info *)stored_ptr;
+						Sprite_draw_on_map (&is->tile_highlights[clamp(0, COUNT_TILE_HIGHLIGHTS - 1, info->highlight_level)], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+					}
 				}
 			}
-		}
 
-		// If focusing on a tile after Great Wall completed, highlight the tile while getting user confirmation
-		if (is->focused_tile != NULL && is->focused_tile == tile) { 
-			Sprite_draw_on_map (&is->tile_highlights[10], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+			// If focusing on a tile after Great Wall completed, highlight the tile while getting user confirmation
+			if (is->focused_tile != NULL && is->focused_tile == tile) { 
+				Sprite_draw_on_map (&is->tile_highlights[10], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+			}
 		}
 	}
 }
