@@ -865,7 +865,7 @@ def main():
                    help="Sigma for sunrise/sunset warmth spread (higher = broader).")
 
     # Noon-neutral zone controls
-    p.add_argument("--noon-blend", type=float, default=0.85,
+    p.add_argument("--noon-blend", type=float, default=1.0,
                    help="0..1 strength to blend toward base palette near 12:00 (0=off).")
     p.add_argument("--noon-sigma", type=float, default=1.1,
                    help="Gaussian width (hours) around 12:00 (larger = broader).")
