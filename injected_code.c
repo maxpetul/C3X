@@ -14402,6 +14402,54 @@ remove_building_if_no_district (City * city, int district_id, int building_id)
 	return true;
 }
 
+bool
+city_has_other_completed_wonder_district_for_improvement (City * city, int wonder_improv_id, int removed_x, int removed_y)
+{
+	if (! (is->current_config.enable_districts && is->current_config.enable_wonder_districts) ||
+	    (city == NULL) || (wonder_improv_id < 0))
+		return false;
+
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		int x = wai.tile_x, y = wai.tile_y;
+		if ((x == removed_x) && (y == removed_y))
+			continue;
+
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_id != WONDER_DISTRICT_ID)
+			continue;
+
+		struct wonder_district_info * info = &inst->wonder_info;
+		if (info->state != WDS_COMPLETED)
+			continue;
+
+		int candidate_improv_id = get_wonder_improvement_id_from_index (info->wonder_index);
+		if (candidate_improv_id != wonder_improv_id)
+			continue;
+
+		return true;
+	}
+
+	return false;
+}
+
+void
+remove_shared_wonder_if_no_other_district (City * city, int wonder_improv_id, int removed_x, int removed_y)
+{
+	if ((city == NULL) || (wonder_improv_id < 0))
+		return;
+
+	if (! patch_City_has_improvement (city, __, wonder_improv_id, false))
+		return;
+
+	if (leaders[city->Body.CivID].Small_Wonders[wonder_improv_id] == city->Body.ID)
+		return;
+
+	if (city_has_other_completed_wonder_district_for_improvement (city, wonder_improv_id, removed_x, removed_y))
+		return;
+
+	patch_City_add_or_remove_improvement (city, __, wonder_improv_id, 0, false);
+}
+
 void
 reduce_city_population_due_to_lost_neighborhood (City * city)
 {
@@ -24787,19 +24835,22 @@ handle_possible_duplicate_small_wonders(City * city, Leader * leader)
 		Improvement * improv = &p_bic_data->Improvements[improv_id];
 
 		// Only check Small Wonders, which shouldn't be duplicated in a civ
-		if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
-			City * owning_city = get_city_ptr (leader->Small_Wonders[improv_id]);
-			if (owning_city != NULL) {
-				// Another city of the conquering civ has this Small Wonder, so remove it from captured city and destroy the district.
-				// We run the district removal manually here rather than through "handle_district_removed", as that function removes Wonders
-				// using leader->Small_Wonders, which would unset the Small Wonder from the original owning city, which we don't want, 
-				// and would only remove the Wonder if completed_wonder_districts_can_be_destroyed is true, which may not be the case 
-				patch_City_add_or_remove_improvement (city, __, improv_id, 0, false);
-				remove_district_instance (tile);
-				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
-				tile->vtable->m60_Set_Ruins (tile, __, 1);
+			if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
+				City * owning_city = get_city_ptr (leader->Small_Wonders[improv_id]);
+				if (owning_city != NULL) {
+					// Another city of the conquering civ has this Small Wonder, so remove it from captured city and destroy the district.
+					// We run the district removal manually here rather than through "handle_district_removed", as that function removes Wonders
+					// using leader->Small_Wonders, which would unset the Small Wonder from the original owning city, which we don't want, 
+					// and would only remove the Wonder if completed_wonder_districts_can_be_destroyed is true, which may not be the case 
+					patch_City_add_or_remove_improvement (city, __, improv_id, 0, false);
+					FOR_CITIES_OF (coi, leader->ID) {
+						remove_shared_wonder_if_no_other_district (coi.city, improv_id, x, y);
+					}
+					remove_district_instance (tile);
+					tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
+					tile->vtable->m60_Set_Ruins (tile, __, 1);
+				}
 			}
-		}
 	}
 }
 
