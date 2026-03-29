@@ -12152,7 +12152,6 @@ handle_scenario_named_tile_key (struct scenario_named_tile_entry * entry,
 }
 
 // Parses a .c3x.txt file corresponding to the given scenario file path, loading district instances as specified.
-// Attempts the scenario_path first, then scenario_config_path; if neither yields a readable file, no action is taken.
 //
 // The expected file format itself is very simple. Example:
 // 
