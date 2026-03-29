@@ -20607,6 +20607,8 @@ great_wall_blocks_civ (Tile * tile, int civ_id)
 		return false;
 	if (owner_id == civ_id)
 		return false;
+	if ((civ_id > 0) && ((leaders[civ_id].Relation_Treaties[owner_id] & 2) != 0)) // 2 = right of passage
+		return false;
 
 	struct district_instance * inst = get_district_instance (tile);
 	if ((inst == NULL) || (inst->district_id != GREAT_WALL_DISTRICT_ID))
