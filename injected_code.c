@@ -28592,16 +28592,17 @@ patch_City_spawn_unit_if_done (City * this)
 		if (needs_district) {
 			bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
 
-			// Mark district needed for AI
-			if (! is_human)
+			// For AI, redirect to a safe fallback and queue the missing district.
+			// For humans, this late hook should only veto the spawn and show a warning,
+			// otherwise the city gets switched off the intended build with no unit spawned.
+			if (! is_human) {
 				mark_city_needs_district (this, required_district_id);
-
-			// Find fallback land unit
-			City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
-			if (choose_defensive_unit_order (this, &defensive_order)) {
-				UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
-				if (def_type->Unit_Class == UTC_Land)
-					City_set_production (this, __, defensive_order.OrderType, defensive_order.OrderID, false);
+				City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
+				if (choose_defensive_unit_order (this, &defensive_order)) {
+					UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
+					if (def_type->Unit_Class == UTC_Land)
+						City_set_production (this, __, defensive_order.OrderType, defensive_order.OrderID, false);
+				}
 			}
 
 			// Show message to human player
