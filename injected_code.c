@@ -12869,11 +12869,6 @@ tile_suitable_for_district (Tile * tile, int district_id, City * city, bool * ou
 	if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID) return false;
 	if (! can_build_district_on_tile (tile, district_id, city->Body.CivID)) return false;
 
-	int tile_x = 0, tile_y = 0;
-	tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y);
-	if (! district_resource_prereqs_met (tile, tile_x, tile_y, district_id))
-		return false;
-
 	struct district_instance * inst = get_district_instance (tile);
 	if (inst != NULL) {
 		if (tile_has_obsolete_district_for_civ (tile, city->Body.CivID))
