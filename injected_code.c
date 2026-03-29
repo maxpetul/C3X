@@ -6454,17 +6454,36 @@ get_connected_city_for_distribution_hub (struct distribution_hub_record * rec)
 
 	Tile * tile = rec->tile;
 	if ((tile == NULL) || (tile == p_null_tile))
-		tile = tile_at (rec->tile_x, rec->tile_y);
-	if ((tile == NULL) || (tile == p_null_tile))
 		return NULL;
 
-	int city_id = tile->Body.connected_city_ids[rec->civ_id];
-	if (city_id < 0)
-		return NULL;
+	City * best_city = NULL;
+	int best_distance = INT_MAX;
+	int best_y = INT_MAX;
+	int best_x = INT_MAX;
+	int best_id = INT_MAX;
 
-	City * city = get_city_ptr (city_id);
+	FOR_CITIES_OF (coi, rec->civ_id) {
+		City * city = coi.city;
+		if (city == NULL)
+			continue;
+		if (! Trade_Net_is_tile_connected_to_city (is->trade_net, __, city, rec->tile_x, rec->tile_y))
+			continue;
 
-	return city;
+		int distance = compute_wrapped_manhattan_distance (rec->tile_x, rec->tile_y, city->Body.X, city->Body.Y);
+		if ((best_city == NULL) ||
+		    (distance < best_distance) ||
+		    ((distance == best_distance) && (city->Body.Y < best_y)) ||
+		    ((distance == best_distance) && (city->Body.Y == best_y) && (city->Body.X < best_x)) ||
+		    ((distance == best_distance) && (city->Body.Y == best_y) && (city->Body.X == best_x) && (city->Body.ID < best_id))) {
+			best_city = city;
+			best_distance = distance;
+			best_y = city->Body.Y;
+			best_x = city->Body.X;
+			best_id = city->Body.ID;
+		}
+	}
+
+	return best_city;
 }
 
 bool
