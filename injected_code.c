@@ -19386,7 +19386,6 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 {
 	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
-		enum SquareTypes base_type = (tile != NULL && tile != p_null_tile) ? tile->vtable->m50_Get_Square_BaseType (tile) : SQ_INVALID;
 
 		// No worker or settler commands allowed on natural wonders
 		if ((tile != NULL) && (tile != p_null_tile) && is->current_config.enable_natural_wonders) {
@@ -19439,12 +19438,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 			bool has_district = (tile != NULL) && (tile != p_null_tile) && (get_district_instance (tile) != NULL);
 
 			if (has_district) {
-				return base_type == SQ_Hills || 
-				       base_type == SQ_Mountains ||
-					   base_type == SQ_Desert ||
-					   base_type == SQ_Plains ||
-					   base_type == SQ_Grassland ||
-					   base_type == SQ_Tundra;
+				return Tile_get_mining_bonus (tile) > 0;
 			}
 		} else if (unit_command_value == UCV_Pillage) {
 			return patch_Unit_can_pillage (this, __, this->Body.X, this->Body.Y);
