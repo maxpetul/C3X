@@ -149,6 +149,14 @@ direction               = southwest
 frame_time_seconds      = 0.17
 show_in_day_night_hours = 7-17
 
+#Animation
+name                    = Fish
+ini_path                = Resources\Fish\Fish.INI
+type                    = resource
+resource_type           = Fish
+direction               = southeast
+show_in_day_night_hours = 7-17
+
 ;===Example PCX animation of river segment===
 ;#Animation
 ;name                    = DeltaRivers_12
