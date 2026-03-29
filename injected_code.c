@@ -4802,9 +4802,6 @@ water_tiles_connected_within_radius (int start_x, int start_y, int target_x, int
 bool
 canal_has_same_sea_isthmus (int tile_x, int tile_y, int civ_id, int check_radius)
 {
-	(void) civ_id;
-	(void) check_radius;
-
 	// If another canal exists nearby, this isn't a unique isthmus target.
 	FOR_TILES_AROUND (tai, workable_tile_counts[2], tile_x, tile_y) {
 		if (tai.n == 0)
@@ -6076,7 +6073,7 @@ remember_pending_building_order (City * city, int improvement_id)
 }
 
 bool
-lookup_pending_building_order (City * city, int * out_improv_id)
+look_up_pending_building_order (City * city, int * out_improv_id)
 {
 	if (! is->current_config.enable_districts ||
 	    (city == NULL) ||
@@ -6325,7 +6322,7 @@ district_is_complete(Tile * tile, int district_id)
 
 				// Check if city has pending building order that depends on this district
 				int pending_improv_id;
-				if (lookup_pending_building_order (requesting_city, &pending_improv_id)) {
+				if (look_up_pending_building_order (requesting_city, &pending_improv_id)) {
 					struct district_building_prereq_list * prereq_list = get_district_building_prereq_list (pending_improv_id);
 					if (district_building_prereq_list_contains (prereq_list, district_id)) {
 							snprintf (ss, sizeof ss, "City %s setting production to improvement %d\n",
@@ -12477,7 +12474,7 @@ clear_city_district_request (City * city, int district_id)
 	remove_pending_district_request (req);
 
 	int pending_improv_id;
-	if (lookup_pending_building_order (city, &pending_improv_id)) {
+	if (look_up_pending_building_order (city, &pending_improv_id)) {
 		int required_district_id;
 		if (city_requires_district_for_improvement (city, pending_improv_id, &required_district_id)) {
 			if (required_district_id == district_id)
@@ -13372,7 +13369,7 @@ find_tile_for_wonder_district (City * city, int * out_x, int * out_y)
 		return NULL;
 
 	int target_improv_id = -1;
-	if (lookup_pending_building_order (city, &target_improv_id)) {
+	if (look_up_pending_building_order (city, &target_improv_id)) {
 		if ((target_improv_id < 0) ||
 		    (target_improv_id >= p_bic_data->ImprovementsCount) ||
 		    ((p_bic_data->Improvements[target_improv_id].Characteristics & (ITC_Wonder | ITC_Small_Wonder)) == 0))
@@ -14892,7 +14889,7 @@ city_needs_wonder_district (City * city)
 		return false;
 
 	int pending_improv_id;
-	if (lookup_pending_building_order (city, &pending_improv_id)) {
+	if (look_up_pending_building_order (city, &pending_improv_id)) {
 		// Check if it's actually a wonder
 		if ((pending_improv_id >= 0) && (pending_improv_id < p_bic_data->ImprovementsCount)) {
 			Improvement * improv = &p_bic_data->Improvements[pending_improv_id];
