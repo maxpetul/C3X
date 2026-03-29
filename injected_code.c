@@ -34111,17 +34111,6 @@ patch_Unit_select (Unit * this)
 		}
 	}
 
-	if (is->current_config.show_ai_city_location_desirability_if_settler) {
-		int unit_type_id = this->Body.UnitTypeID;
-		int worker_actions = p_bic_data->UnitTypes[unit_type_id].Worker_Actions;
-		int new_perspective = (worker_actions >= 1 && (worker_actions & (UCV_Build_City)) && !is_worker(this)) ? p_main_screen_form->Player_CivID : -1;
-
-		if (new_perspective != is->city_loc_display_perspective) {
-			is->city_loc_display_perspective = new_perspective;
-			p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form); // Trigger map redraw
-		}
-	}
-
 	// Sometimes clearing of highlighted tiles doesn't trigger when CTRL lifted, so double-check here
 	if (is->current_config.enable_city_work_radii_highlights && is->highlight_city_radii) {
 		is->highlight_city_radii = false;
