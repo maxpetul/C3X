@@ -11006,19 +11006,21 @@ find_civ_trait_id_by_name (struct string_slice const * name, int * out_id)
 	if ((name == NULL) || (name->len <= 0) || (out_id == NULL))
 		return false;
 
-	struct trait_entry { char const * name; int id; } traits[] = {
-		{"Agricultural", 6},
-		{"Commercial", 1},
-		{"Expansionist", 2},
-		{"Industrious", 5},
-		{"Militaristic", 0},
-		{"Religious", 4},
-		{"Scientific", 3},
-		{"Seafaring", 7}
+	struct trait_entry { enum c3x_label label; char const * fallback_name; int id; } traits[] = {
+		{CL_AGRICULTURAL, "Agricultural", 6},
+		{CL_COMMERCIAL,   "Commercial",   1},
+		{CL_EXPANSIONIST, "Expansionist", 2},
+		{CL_INDUSTRIOUS,  "Industrious",  5},
+		{CL_MILITARISTIC, "Militaristic", 0},
+		{CL_RELIGIOUS,    "Religious",    4},
+		{CL_SCIENTIFIC,   "Scientific",   3},
+		{CL_SEAFARING,    "Seafaring",    7}
 	};
 
 	for (int i = 0; i < ARRAY_LEN (traits); i++) {
-		if (slice_matches_str (name, traits[i].name)) {
+		char const * localized_name = is->c3x_labels[traits[i].label];
+		if (((localized_name != NULL) && (localized_name[0] != '\0') && slice_matches_str (name, localized_name))
+		    || slice_matches_str (name, traits[i].fallback_name)) {
 			*out_id = traits[i].id;
 			return true;
 		}

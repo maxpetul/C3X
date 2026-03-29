@@ -153,3 +153,13 @@ In State 28
 In State 29
 In State 30
 In State 33
+
+; Civ Trait labels for find_civ_trait_id_by_name
+Agricultural
+Commercial
+Expansionist
+Industrious
+Militaristic
+Religious
+Scientific
+Seafaring
