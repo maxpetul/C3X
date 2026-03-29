@@ -11228,7 +11228,6 @@ void parse_building_and_tech_ids ()
 					is->district_infos[i].advance_prereq_ids[stored_tech_count] = tech_id;
 					stored_tech_count++;
 				}
-				itable_insert (&is->district_tech_prereqs, tech_id, i);
 			} else {
 				struct error_line * err = add_error_line (&district_parse_errors);
 				snprintf (err->text, sizeof err->text, "^  District \"%s\": advance_prereqs entry \"%.*s\" not found", district_name, tech_name.len, tech_name.str);
@@ -12397,7 +12396,6 @@ reset_district_state (bool reset_tile_map)
 	deinit_district_images ();
 	clear_highlighted_worker_tiles_for_districts ();
 
-	table_deinit (&is->district_tech_prereqs);
 	FOR_TABLE_ENTRIES (tei, &is->district_building_prereqs) {
 		struct district_building_prereq_list * list = (struct district_building_prereq_list *)tei.value;
 		if (list != NULL)
