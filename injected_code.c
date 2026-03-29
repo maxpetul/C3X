@@ -4486,7 +4486,7 @@ assign_workers_for_pending_districts (Leader * leader)
 }
 
 City *
-find_city_for_tile (int civ_id, int tile_x, int tile_y)
+find_closest_owned_city_for_tile (int civ_id, int tile_x, int tile_y)
 {
 	City * best_city = NULL;
 	int best_dist = INT_MAX;
@@ -5797,7 +5797,7 @@ assign_workers_for_ai_candidate_bridge_or_canals (Leader * leader)
 		if (target_idx < 0)
 			continue;
 
-		City * city = find_city_for_tile (civ_id, entry->tile_x[target_idx], entry->tile_y[target_idx]);
+		City * city = find_closest_owned_city_for_tile (civ_id, entry->tile_x[target_idx], entry->tile_y[target_idx]);
 		if (city == NULL)
 			continue;
 
