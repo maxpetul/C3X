@@ -243,6 +243,7 @@ void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out
 void wrap_tile_coords (Map * map, int * x, int * y);
 int count_neighborhoods_in_city_radius (City * city);
 int count_utilized_neighborhoods_in_city_radius (City * city);
+char * copy_trimmed_string_or_null (struct string_slice const * slice, int remove_quotes);
 bool city_has_resource_r (City * city, int resource_id, int max_generated_resource_id);
 
 struct pause_for_popup {
@@ -746,6 +747,11 @@ reset_to_base_config ()
 	if (cc->aircraft_victory_animation != NULL) {
 		free (cc->aircraft_victory_animation);
 		cc->aircraft_victory_animation = NULL;
+	}
+
+	if (cc->great_wall_auto_build_wonder_name != NULL) {
+		free (cc->great_wall_auto_build_wonder_name);
+		cc->great_wall_auto_build_wonder_name = NULL;
 	}
 
 	// Free unit limits table
@@ -2425,16 +2431,12 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					if (! read_ai_auto_build_great_wall_strategy (&value, (int *)&cfg->ai_auto_build_great_wall_strategy))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "great_wall_auto_build_wonder_name")) {
-					struct string_slice trimmed = trim_string_slice (&value, 1);
-					if (trimmed.len <= 0) {
-						cfg->great_wall_auto_build_wonder_improv_id = -1;
-					} else {
-						int improv_id;
-						if (find_improv_id_by_name (&trimmed, &improv_id))
-							cfg->great_wall_auto_build_wonder_improv_id = improv_id;
-						else
-							handle_config_error (&p, CPE_BAD_VALUE);
+					if (cfg->great_wall_auto_build_wonder_name != NULL) {
+						free (cfg->great_wall_auto_build_wonder_name);
+						cfg->great_wall_auto_build_wonder_name = NULL;
 					}
+					cfg->great_wall_auto_build_wonder_name = copy_trimmed_string_or_null (&value, 1);
+					cfg->great_wall_auto_build_wonder_improv_id = -1;
 				} else if (slice_matches_str (&p.key, "exclude_types_from_units_per_tile_limit")) {
 					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->exclude_types_from_units_per_tile_limit))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -11194,6 +11196,26 @@ void parse_building_and_tech_ids ()
 	char ss[200];
 	struct error_line * district_parse_errors = NULL;
 	struct error_line * wonder_parse_errors = NULL;
+
+	cfg->great_wall_auto_build_wonder_improv_id = -1;
+	if (cfg->enable_districts &&
+	    cfg->enable_great_wall_districts &&
+	    cfg->auto_build_great_wall_around_territory &&
+	    cfg->great_wall_auto_build_wonder_name != NULL &&
+	    cfg->great_wall_auto_build_wonder_name[0] != '\0') {
+		struct string_slice wonder_name = {
+			.str = cfg->great_wall_auto_build_wonder_name,
+			.len = strlen (cfg->great_wall_auto_build_wonder_name)
+		};
+		if (! find_improv_id_by_name (&wonder_name, &cfg->great_wall_auto_build_wonder_improv_id)) {
+			snprintf (ss, sizeof ss,
+				"Error reading config: The value for \"great_wall_auto_build_wonder_name\" is invalid: \"%s\"",
+				cfg->great_wall_auto_build_wonder_name);
+			ss[(sizeof ss) - 1] = '\0';
+			pop_up_in_game_error (ss);
+		}
+	}
+
 	for (int i = 0; i < is->district_count; i++) {
 		char const * district_name = (is->district_configs[i].name != NULL) ? is->district_configs[i].name : "District";
 		if (is->district_configs[i].command != 0)
