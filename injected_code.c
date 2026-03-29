@@ -32456,7 +32456,7 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
 }
 
 bool 
-wonder_allows_river (struct wonder_district_config const * cfg)
+wonder_requires_river (struct wonder_district_config const * cfg)
 {
 	unsigned int build_mask = wonder_buildable_square_type_mask (cfg);
 	if (build_mask == 0)
@@ -32791,7 +32791,7 @@ wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner
 		return false;
 
 	// If on a river and the wonder allows river alignment, make sure we face the river instead
-	bool allow_river = wonder_allows_river (cfg);
+	bool allow_river = wonder_requires_river (cfg);
 	if (allow_river) {
 		enum direction river_dir = DIR_ZERO;
 		if (get_primary_river_direction (center, &river_dir)) {
@@ -32877,19 +32877,6 @@ draw_district_on_map_or_canvas(Sprite * sprite, Map_Renderer * map_renderer, int
 	}
 
 	patch_Sprite_draw_on_map (sprite, __, map_renderer, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-}
-
-bool 
-district_allows_river (struct district_config const * cfg)
-{
-	unsigned int build_mask = cfg->buildable_square_types_mask;
-	if (build_mask == 0)
-		build_mask = district_default_buildable_mask ();
-	if ((build_mask & square_type_mask_bit (SQ_RIVER)) != 0)
-		return true;
-	if (cfg->buildable_on_rivers)
-		return true;
-	return false;
 }
 
 int
@@ -33448,7 +33435,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 					return;
 				}
 
-				if (wonder_allows_river(wcfg))
+				if (wonder_requires_river(wcfg))
 					align_district_with_river (tile, &draw_pixel_x, &draw_pixel_y, &river_dir);
 
 				int wonder_width    = (wcfg->custom_width > 0) ? wcfg->custom_width : 128;
