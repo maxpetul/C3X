@@ -237,7 +237,7 @@ bool city_radius_contains_tile (City * city, int tile_x, int tile_y);
 void on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y);
 bool ai_move_district_worker (Unit * worker, struct district_worker_record * rec);
 bool has_active_building (City * city, int improv_id);
-bool tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, int district_id, int i_improv);
+bool tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, int i_improv);
 void recompute_distribution_hub_totals ();
 void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y);
 void wrap_tile_coords (Map * map, int * x, int * y);
@@ -2928,7 +2928,7 @@ apply_district_bonus_entries (struct district_instance * inst,
 				bonus += entry->bonus;
 		} else if (entry->type == DBET_BUILDING) {
 			if (entry->building_id >= 0 &&
-			    tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, entry->building_id))
+			    tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, entry->building_id))
 				bonus += entry->bonus;
 		}
 	}
@@ -32439,7 +32439,7 @@ init_district_images ()
 }
 
 bool
-tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, int district_id, int i_improv)
+tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, int i_improv)
 {
 	Tile * center = tile_at (tile_x, tile_y);
 
@@ -32900,7 +32900,7 @@ get_energy_grid_image_index (int tile_x, int tile_y)
 		// Zero is "no building"; Buildings start from index one
 		int column_index = i + 1;
 		int building_id = info->dependent_building_ids[i];
-		if (tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, ENERGY_GRID_DISTRICT_ID, building_id))
+		if (tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, building_id))
 			return column_index;
 	}
 
@@ -33302,7 +33302,7 @@ count_completed_buildings_in_district_radius (int tile_x, int tile_y, int distri
 	int completed_count = 0;
 	for (int i = 0; i < district_info->dependent_building_count; i++) {
 		int building_id = district_info->dependent_building_ids[i];
-		if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id))
+		if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, building_id))
 			completed_count++;
 	}
 	return completed_count;
@@ -33320,7 +33320,7 @@ draw_district_on_map_or_canvas_by_buildings (Sprite * base_sprite, Map_Renderer 
 		// Zero is "base texture"; Actual building column art starts from index one
 		int column_index = i + 1;
 		int building_id = district_info->dependent_building_ids[i];
-		if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id)) {
+		if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, building_id)) {
 			Sprite * district_sprite = &is->district_img_sets[district_id].imgs[variant][era][column_index];
 			draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
 		}
