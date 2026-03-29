@@ -12693,22 +12693,22 @@ bridge_district_tile_is_valid (int tile_x, int tile_y)
 
 		int ns_count = count_contiguous_bridge_districts (tile_x, tile_y, 0, -2) +
 			       count_contiguous_bridge_districts (tile_x, tile_y, 0, 2);
-		if (ns_count > max_bridges)
+		if (ns_count >= max_bridges)
 			return false;
 
 		int we_count = count_contiguous_bridge_districts (tile_x, tile_y, -2, 0) +
 			       count_contiguous_bridge_districts (tile_x, tile_y, 2, 0);
-		if (we_count > max_bridges)
+		if (we_count >= max_bridges)
 			return false;
 
 		int swne_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, 1) +
 				 count_contiguous_bridge_districts (tile_x, tile_y, 1, -1);
-		if (swne_count > max_bridges)
+		if (swne_count >= max_bridges)
 			return false;
 
 		int nwse_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, -1) +
 				 count_contiguous_bridge_districts (tile_x, tile_y, 1, 1);
-		if (nwse_count > max_bridges)
+		if (nwse_count >= max_bridges)
 			return false;
 	}
 
