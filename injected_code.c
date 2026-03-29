@@ -1794,7 +1794,7 @@ read_ai_auto_build_great_wall_strategy (struct string_slice const * s, int * out
 }
 
 bool
-read_square_type_value (struct string_slice const * s, enum SquareTypes * out_type)
+read_tile_terrain_type_value (struct string_slice const * s, enum SquareTypes * out_type)
 {
 	if (s == NULL || out_type == NULL)
 		return false;
@@ -2035,7 +2035,7 @@ bool
 read_natural_wonder_terrain_type (struct string_slice const * s, enum SquareTypes * out_type)
 {
 	enum SquareTypes parsed;
-	if (! read_square_type_value (s, &parsed))
+	if (! read_tile_terrain_type_value (s, &parsed))
 		return false;
 
 	switch (parsed) {
@@ -3834,7 +3834,7 @@ tile_square_type_is (Tile * tile, enum SquareTypes type)
 }
 
 bool
-district_is_buildable_on_square_type (struct district_config const * cfg, Tile * tile)
+district_is_buildable_on_tile (struct district_config const * cfg, Tile * tile)
 {
 	if ((cfg == NULL) || (tile == NULL) || (tile == p_null_tile))
 		return false;
@@ -5063,7 +5063,7 @@ find_bridge_candidate_in_block (Map * map, int block_x0, int block_y0, int block
 				continue;
 			if (tile_has_resource (tile))
 				continue;
-			if (! district_is_buildable_on_square_type (&is->district_configs[BRIDGE_DISTRICT_ID], tile))
+			if (! district_is_buildable_on_tile (&is->district_configs[BRIDGE_DISTRICT_ID], tile))
 				continue;
 			if (tile_is_reserved_in_district_tile_map (tx, ty))
 				continue;
@@ -5104,7 +5104,7 @@ find_bridge_candidate_in_block (Map * map, int block_x0, int block_y0, int block
 						ok = false;
 						break;
 					}
-					if (! district_is_buildable_on_square_type (&is->district_configs[BRIDGE_DISTRICT_ID], bridge_tile)) {
+					if (! district_is_buildable_on_tile (&is->district_configs[BRIDGE_DISTRICT_ID], bridge_tile)) {
 						ok = false;
 						break;
 					}
@@ -5311,7 +5311,7 @@ find_canal_candidate_in_block (Map * map, int block_x0, int block_y0, int block_
 				continue;
 			if (tile_has_resource (start_tile))
 				continue;
-			if (! district_is_buildable_on_square_type (&is->district_configs[CANAL_DISTRICT_ID], start_tile))
+			if (! district_is_buildable_on_tile (&is->district_configs[CANAL_DISTRICT_ID], start_tile))
 				continue;
 			int continent_id = start_tile->vtable->m46_Get_ContinentID (start_tile);
 			if (continent_id < 0)
@@ -5364,7 +5364,7 @@ find_canal_candidate_in_block (Map * map, int block_x0, int block_y0, int block_
 								Tile * path_tile = tile_at (out_x[pi], out_y[pi]);
 								if ((path_tile == NULL) || (path_tile == p_null_tile) ||
 								    tile_has_resource (path_tile) ||
-								    (! district_is_buildable_on_square_type (&is->district_configs[CANAL_DISTRICT_ID], path_tile)) ||
+								    (! district_is_buildable_on_tile (&is->district_configs[CANAL_DISTRICT_ID], path_tile)) ||
 								    tile_is_reserved_in_district_tile_map (out_x[pi], out_y[pi])) {
 									buildable = false;
 									break;
@@ -5539,7 +5539,7 @@ find_canal_candidate_in_block (Map * map, int block_x0, int block_y0, int block_
 							next_dir++;
 							continue;
 						}
-						if (! district_is_buildable_on_square_type (&is->district_configs[CANAL_DISTRICT_ID], next_tile)) {
+						if (! district_is_buildable_on_tile (&is->district_configs[CANAL_DISTRICT_ID], next_tile)) {
 							next_dir++;
 							continue;
 						}
@@ -7863,7 +7863,7 @@ parse_buildable_square_type_mask (struct string_slice const * value,
 					entry_count += 1;
 				} else {
 				enum SquareTypes parsed;
-				if (read_square_type_value (&item_slice, &parsed)) {
+				if (read_tile_terrain_type_value (&item_slice, &parsed)) {
 					if ((parsed == SQ_RIVER) ||
 					    (parsed == SQ_Forest) ||
 					    (parsed == SQ_Jungle) ||
@@ -7905,7 +7905,7 @@ parse_buildable_square_type_mask (struct string_slice const * value,
 
 	if ((entry_count == 0) || ((mask == 0) && ! allow_city)) {
 		struct error_line * err = add_error_line (parse_errors);
-		snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected at least one square type)", line_number, key_name);
+		snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected at least one tile terrain type)", line_number, key_name);
 		err->text[(sizeof err->text) - 1] = '\0';
 		return false;
 	}
@@ -8141,7 +8141,7 @@ parse_district_bonus_entries (struct string_slice const * value,
 				entry->building_name = NULL;
 
 				enum SquareTypes parsed_type;
-				if (read_square_type_value (&trimmed_name, &parsed_type)) {
+				if (read_tile_terrain_type_value (&trimmed_name, &parsed_type)) {
 					entry->type = DBET_TILE;
 					entry->tile_type = parsed_type;
 				} else {
@@ -10680,13 +10680,13 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 
 	} else if (slice_matches_str (key, "adjacent_to")) {
 		enum SquareTypes adj;
-		if (read_square_type_value (value, &adj)) {
+		if (read_tile_terrain_type_value (value, &adj)) {
 			def->adjacent_to = adj;
 			def->has_adjacent_to = true;
 		} else {
 			def->adjacent_to = (enum SquareTypes)SQ_INVALID;
 			def->has_adjacent_to = false;
-			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized square type)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized tile terrain type)");
 		}
 
 	} else if (slice_matches_str (key, "adjacency_dir")) {
@@ -12786,7 +12786,7 @@ can_build_district_on_tile (Tile * tile, int district_id, int civ_id)
 	if ((cfg->command == UCV_Build_EnergyGrid)      && !is->current_config.enable_energy_grid_districts)      return false;
 	if ((cfg->command == UCV_Build_GreatWall)       && !is->current_config.enable_great_wall_districts)       return false;
 
-	if (! district_is_buildable_on_square_type (cfg, tile))
+	if (! district_is_buildable_on_tile (cfg, tile))
 		return false;
 
 	int tile_x = 0, tile_y = 0;
@@ -19685,7 +19685,7 @@ issue_district_worker_command (Unit * unit, int command)
 	if (tile->vtable->m20_Check_Pollution (tile, __, 0))
 		return;
 
-	if (! district_is_buildable_on_square_type (&is->district_configs[district_id], tile))
+	if (! district_is_buildable_on_tile (&is->district_configs[district_id], tile))
 		return;
 
 	// If District will be replaced by another District
@@ -24103,7 +24103,7 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 			if (require_other_civ_border && (! has_other_civ_border))
 				continue;
 
-			if (! district_is_buildable_on_square_type (cfg, tile))
+			if (! district_is_buildable_on_tile (cfg, tile))
 				continue;
 			if (! district_resource_prereqs_met (tile, x, y, GREAT_WALL_DISTRICT_ID))
 				continue;
@@ -33794,7 +33794,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 		unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
 		unsigned int removable_flags = overlay_flags & (destructible_overlays & ~(TILE_FLAG_ROAD | TILE_FLAG_RAILROAD));
-		bool district_buildable_here = district_is_buildable_on_square_type (&is->district_configs[req->district_id], tile);
+		bool district_buildable_here = district_is_buildable_on_tile (&is->district_configs[req->district_id], tile);
 
 		// Remove any existing improvements
 		tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
