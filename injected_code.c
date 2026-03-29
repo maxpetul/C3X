@@ -21292,14 +21292,20 @@ char __fastcall
 patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing)
 {
 	char tr;
+	bool is_ai = ((*p_human_player_bits & (1 << this->ID)) == 0);
 	bool skip_replacement_logic =
 		(p_main_screen_form->Player_CivID == this->ID) && is->current_config.skip_repeated_tile_improv_replacement_asks;
 
 	Tile * tile = tile_at (tile_x, tile_y);
+	if (is_ai && (tile != NULL) && (tile != p_null_tile)) {
+		int territory_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+		if (territory_owner > 0 && territory_owner != this->ID)
+			return 0;
+	}
 
 	// Check if AI is trying to change a district tile (before calling vanilla logic)
 	if ((is->current_config.enable_districts || is->current_config.enable_natural_wonders) && 
-		((*p_human_player_bits & (1 << this->ID)) == 0)) {
+		is_ai) {
 		if ((tile != NULL) && (tile != p_null_tile)) {
 			struct district_instance * inst = get_district_instance (tile);
 			if (inst != NULL && inst->district_id >= 0 && inst->district_id < is->district_count) {
@@ -33702,6 +33708,13 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 	}
 	req->city = request_city;
 	struct district_config * cfg = &is->district_configs[district_id];
+	Tile * target_tile = tile_at (req->target_x, req->target_y);
+	if ((target_tile == NULL) || (target_tile == p_null_tile) ||
+	    (target_tile->vtable->m38_Get_Territory_OwnerID (target_tile) != worker->Body.CivID) ||
+	    (! city_radius_contains_tile (request_city, req->target_x, req->target_y))) {
+		clear_city_district_request (request_city, req->district_id);
+		return false;
+	}
 
 	// If the worker has arrived
 	if ((worker->Body.X == req->target_x) && (worker->Body.Y == req->target_y)) {
@@ -33964,13 +33977,15 @@ patch_Unit_ai_move_terraformer (Unit * this)
 	int civ_id = this->Body.CivID;
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
 	bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
+	int territory_owner = ((tile != NULL) && (tile != p_null_tile)) ? tile->vtable->m38_Get_Territory_OwnerID (tile) : -1;
 
 	
-	if (is->current_config.enable_districts && ! is_human) {
+	if (is->current_config.enable_districts && ! is_human && is_worker (this)) {
 		update_tracked_worker_for_unit (this);
 		struct district_instance * inst = get_district_instance (tile);
 
-		if (inst != NULL && inst->district_id != NATURAL_WONDER_DISTRICT_ID && 
+		if ((territory_owner == civ_id) &&
+			inst != NULL && inst->district_id != NATURAL_WONDER_DISTRICT_ID && 
 			tile->vtable->m50_Get_Square_BaseType (tile) != SQ_Coast) {
 			// Roads should be made after district builds. The district is complete but 
 			// worker is still likely on the tile, so check here and build road if needed
