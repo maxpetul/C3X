@@ -12478,16 +12478,17 @@ clear_city_district_request (City * city, int district_id)
 }
 
 bool
-district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district_id, City * city)
+district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district_id)
 {
 	if ((tile == NULL) || (tile == p_null_tile) ||
 	    (district_id < 0) || (district_id >= is->district_count))
 		return false;
 
+	int owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
 	struct district_infos * info = &is->district_infos[district_id];
 	int on_tile_req = info->resource_prereq_on_tile_id;
 	if (on_tile_req >= 0) {
-		int res_here = tile->vtable->m39_Get_Resource_Type (tile);
+		int res_here = (owner >= 0) ? Tile_get_resource_visible_to (tile, __, owner) : -1;
 		if (res_here != on_tile_req)
 			return false;
 	}
@@ -12496,7 +12497,6 @@ district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district
 	if (info->resource_prereq_count <= 0)
 		return true;
 
-	int owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
 	if (owner < 0)
 		return false;
 
@@ -12508,22 +12508,15 @@ district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district
 
 		bool has_resource = false;
 
-		// Check if the specified city has this resource
-		if ((city != NULL) &&
-		    (city->Body.CivID == owner) &&
-		    city_radius_contains_tile (city, tile_x, tile_y) &&
-		    patch_City_has_resource (city, __, resource_req)) {
-			has_resource = true;
-		}
+		FOR_CITIES_OF (coi, owner) {
+			City * req_city = coi.city;
+			if (! Trade_Net_is_tile_connected_to_city (is->trade_net, __, req_city, tile_x, tile_y))
+				continue;
+			if (! patch_City_has_resource (req_city, __, resource_req))
+				continue;
 
-		// Check cities around this tile for the resource
-		if (!has_resource) {
-			FOR_CITIES_AROUND (wai, tile_x, tile_y) {
-				if (patch_City_has_resource (wai.city, __, resource_req)) {
-					has_resource = true;
-					break;
-				}
-			}
+			has_resource = true;
+			break;
 		}
 
 		// If this required resource is not available, the check fails
@@ -12786,7 +12779,7 @@ can_build_district_on_tile (Tile * tile, int district_id, int civ_id)
 	if (! leader_can_build_district (&leaders[civ_id], district_id))
 		return false;
 
-	if (! district_resource_prereqs_met (tile, tile_x, tile_y, district_id, NULL))
+	if (! district_resource_prereqs_met (tile, tile_x, tile_y, district_id))
 		return false;
 
 	if ((district_id == CANAL_DISTRICT_ID) && (! canal_district_tile_is_valid (tile_x, tile_y)))
@@ -12862,7 +12855,7 @@ tile_suitable_for_district (Tile * tile, int district_id, City * city, bool * ou
 
 	int tile_x = 0, tile_y = 0;
 	tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y);
-	if (! district_resource_prereqs_met (tile, tile_x, tile_y, district_id, city))
+	if (! district_resource_prereqs_met (tile, tile_x, tile_y, district_id))
 		return false;
 
 	struct district_instance * inst = get_district_instance (tile);
@@ -21298,7 +21291,7 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 				int owner_civ = tile->vtable->m38_Get_Territory_OwnerID (tile);
 				if ((owner_civ == this->ID) || (owner_civ == 0)) {
 					if (leader_can_build_district (this, inst->district_id) &&
-					    district_resource_prereqs_met (tile, tile_x, tile_y, inst->district_id, NULL))
+					    district_resource_prereqs_met (tile, tile_x, tile_y, inst->district_id))
 						tr = 1;
 				}
 			}
@@ -24009,7 +24002,7 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 
 			if (! district_is_buildable_on_square_type (cfg, tile))
 				continue;
-			if (! district_resource_prereqs_met (tile, x, y, GREAT_WALL_DISTRICT_ID, NULL))
+			if (! district_resource_prereqs_met (tile, x, y, GREAT_WALL_DISTRICT_ID))
 				continue;
 
 			struct district_instance * inst = get_district_instance (tile);

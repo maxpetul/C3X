@@ -64,6 +64,7 @@ define,    0x4ACD70,	0x4B3D30,	0x4ACE00,	"City_get_order_cost",				"int (__fastc
 define,    0x4ACD40,	0x4B3CE0,	0x4ACDD0,	"City_get_order_progress",			"int (__fastcall *) (City * this)"
 inlead,    0x57F360,	0x58C080,	0x57F0C0,	"Trade_Net_get_movement_cost",			"int (__fastcall *) (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned flags, int neighbor_index, Trade_Net_Distance_Info * dist_info)"
 define,	   0x57F0A0,	0x58BDB0,	0x57EE00,	"Trade_Net_have_trade_connection",		"bool (__fastcall *) (Trade_Net * this, int edx, City * a, City * b, int civ_id)"
+define,    0x57F130,    0x0,        0x0,        "Trade_Net_is_tile_connected_to_city",        "bool (__fastcall *) (Trade_Net * this, int edx, City * city, int tile_x, int tile_y)"
 inlead,    0x591BB0,	0x59F1D0,	0x5918D0,	"do_save_game",					"int (__cdecl *) (char const * file_path, char param_2, GUID * guid)"
 define,    0x4BCFF0,	0x4C4660,	0x4BD080,	"City_recompute_happiness",			"void (__fastcall *) (City * this)"
 define,    0x4B05D0,	0x4B7590,	0x4B0660,	"City_recompute_production",			"void (__fastcall *) (City * this)"
