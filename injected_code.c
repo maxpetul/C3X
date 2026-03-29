@@ -3618,6 +3618,8 @@ tai_init (int num_tiles, int x, int y)
 	tr.n = 0;
 	tr.num_tiles = num_tiles;
 	tr.tile = tile_at (x, y);
+	tr.tile_x = x;
+	tr.tile_y = y;
 	return tr;
 }
 
@@ -3824,17 +3826,6 @@ tri_init (int x, int y, int const * rings, int ring_count)
 }
 
 #define FOR_TILE_RINGS_AROUND(tri_name, _x, _y, _rings, _ring_count) for (struct tile_rings_iter tri_name = tri_init (_x, _y, _rings, _ring_count); (tri_name.r_idx < tri_name.ring_count); tri_next (&tri_name))
-
-void
-tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
-{
-	if (tai->tile != p_null_tile)
-		get_neighbor_coords (&p_bic_data->Map, tai->center_x, tai->center_y, tai->n, out_x, out_y);
-	else {
-		*out_x = -1;
-		*out_y = -1;
-	}
-}
 
 bool
 tile_square_type_is (Tile * tile, enum SquareTypes type)
@@ -4996,9 +4987,7 @@ tile_has_bridge_or_canal_nearby (int tile_x, int tile_y)
 		if ((inst != NULL) &&
 		    ((inst->district_id == BRIDGE_DISTRICT_ID) || (inst->district_id == CANAL_DISTRICT_ID)))
 			return true;
-		int nx = (tai.n == 0) ? tile_x : tai.tile_x;
-		int ny = (tai.n == 0) ? tile_y : tai.tile_y;
-		if (tile_part_of_existing_candidate (nx, ny))
+		if (tile_part_of_existing_candidate (tai.tile_x, tai.tile_y))
 			return true;
 	}
 	return false;
@@ -6549,9 +6538,8 @@ adjust_distribution_hub_coverage (struct distribution_hub_record * rec)
 		Tile * area_tile = tai.tile;
 		if ((area_tile == NULL) || (area_tile == p_null_tile))
 			continue;
-
-		int tx, ty;
-		tai_get_coords (&tai, &tx, &ty);
+		int tx = tai.tile_x;
+		int ty = tai.tile_y;
 
 		if (area_tile->vtable->m38_Get_Territory_OwnerID (area_tile) != rec->civ_id)
 			continue;
@@ -6648,9 +6636,8 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec)
 		Tile * area_tile = tai.tile;
 		if (area_tile == p_null_tile)
 			continue;
-
-		int tx, ty;
-		tai_get_coords (&tai, &tx, &ty);
+		int tx = tai.tile_x;
+		int ty = tai.tile_y;
 
 		// Only include tiles that belong to the distribution hub owner
 		if (area_tile->vtable->m38_Get_Territory_OwnerID (area_tile) != rec->civ_id)
@@ -6828,9 +6815,8 @@ recompute_distribution_hub_totals ()
 			Tile * area_tile = tai.tile;
 			if (area_tile == p_null_tile)
 				continue;
-
-			int tx, ty;
-			tai_get_coords (&tai, &tx, &ty);
+			int tx = tai.tile_x;
+			int ty = tai.tile_y;
 
 			if (area_tile->vtable->m38_Get_Territory_OwnerID (area_tile) != rec->civ_id)
 				continue;
@@ -25019,9 +25005,7 @@ eval_starting_location (Map * map, int const * alt_starting_locs, int alt_starti
 		FOR_TILES_AROUND (tai, 21, tile_x, tile_y) {
 			if (tai.n == 0)
 				continue; // Skip tile that would be covered by the city
-			int x, y;
-			tai_get_coords (&tai, &x, &y);
-			int tile_food = patch_Map_calc_food_yield_at (map, __, x, y, tai.tile->vtable->m50_Get_Square_BaseType (tai.tile), civ_id, 0, NULL);
+			int tile_food = patch_Map_calc_food_yield_at (map, __, tai.tile_x, tai.tile_y, tai.tile->vtable->m50_Get_Square_BaseType (tai.tile), civ_id, 0, NULL);
 			int food_required = p_bic_data->General.FoodPerCitizen + (tai.tile->vtable->m35_Check_Is_Water (tai.tile) ? 1 : 0);
 			break_even_food_tiles += tile_food >= food_required;
 		}
