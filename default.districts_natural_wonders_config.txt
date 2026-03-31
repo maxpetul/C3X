@@ -9,7 +9,7 @@
 [
   ;  Natural Wonder config fields (each Wonder block begins with "#Wonder")
   ;  - name                  : Text (required). Internal natural wonder name; must be unique.
-  ;  - terrain_type          : Text (required). Base terrain: desert, plains, grassland, jungle, tundra, floodplain, swamp, hill, mountain,
+  ;  - terrain_type          : Text (required). Base terrain: desert, plains, grassland, jungle, tundra, floodplain, marsh, hill, mountain,
                                                               forest, volcano, snow-forest, snow-mountain, snow-volcano, coast, sea, ocean.
   ;  - adjacent_to           : Text. Optional adjacency requirement: same list as buildable square types plus river, any (no requirement).
   ;  - adjacency_dir         : Text. Optional direction filter for adjacent_to (northeast, east, southeast, south, southwest, west, northwest, north).

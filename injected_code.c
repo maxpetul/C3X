@@ -1831,6 +1831,8 @@ read_tile_terrain_type_value (struct string_slice const * s, enum SquareTypes * 
 		{"forests",        SQ_Forest},
 		{"jungle",         SQ_Jungle},
 		{"jungles",        SQ_Jungle},
+		{"marsh",          SQ_Swamp},
+		{"marshes",        SQ_Swamp},
 		{"swamp",          SQ_Swamp},
 		{"swamps",         SQ_Swamp},
 		{"volcano",        SQ_Volcano},
@@ -7975,6 +7977,10 @@ parse_buildable_overlay_mask (struct string_slice const * value,
 					bit = DOM_FOREST;
 				} else if (slice_matches_str (&item_slice, "forests")) {
 					bit = DOM_FOREST;
+				} else if (slice_matches_str (&item_slice, "marsh")) {
+					bit = DOM_SWAMP;
+				} else if (slice_matches_str (&item_slice, "marshes")) {
+					bit = DOM_SWAMP;
 				} else if (slice_matches_str (&item_slice, "swamp")) {
 					bit = DOM_SWAMP;
 				} else if (slice_matches_str (&item_slice, "swamps")) {

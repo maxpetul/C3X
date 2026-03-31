@@ -27,12 +27,12 @@
   ;  - resource_prereq_on_tile         : Resource name required on the district tile. District cannot be built unless resource is on same tile.
   ;  - wonder_prereqs                  : Comma-separated wonder names. District cannot be built unless all Wonders are built by same civ.
   ;  - natural_wonder_prereqs          : Comma-separated natural wonder names. District cannot be built unless all Natural Wonders are within civ's territory.
-  ;  - buildable_on                    : Comma-separated square types: desert, plains, grassland, tundra, floodplain, hill, mountain, volcano,
-  ;                                                                    coast, sea, ocean, snow-forest, snow-mountain, snow-volcano, lake. (tile must be one of these)         
-  ;  - buildable_on_overlays           : Comma-separated overlays: irrigation, mine, fortress, barricade, jungle, forest, swamp, airfield. (optional; tile must be one of these).
+  ;  - buildable_on                    : Comma-separated tile types: desert, plains, grassland, tundra, floodplain, hill, mountain, volcano,
+  ;                                                                  coast, sea, ocean, snow-forest, snow-mountain, snow-volcano, lake. (tile must be one of these)         
+  ;  - buildable_on_overlays           : Comma-separated overlays: irrigation, mine, fortress, barricade, jungle, forest, marsh, airfield. (optional; tile must be one of these).
   ;  - buildable_on_districts          : Comma-separated district names (tile must already have a completed district of any of these types, which it would replace).
   ;  - buildable_on_rivers             : 0 or 1. If 1, district tile must be on a river.                                                               
-  ;  - buildable_without_removal       : Comma-separated overlays: jungle, forest, swamp. (optional; tile *may* have these, workers don't need to remove them first).
+  ;  - buildable_without_removal       : Comma-separated overlays: jungle, forest, marsh. (optional; tile *may* have these, workers don't need to remove them first).
   ;  - buildable_adjacent_to           : Same as buildable_on, plus "city".
   ;  - buildable_adjacent_to_overlays  : Same as buildable_on_overlays.
   ;  - buildable_adjacent_to_districts : Comma-separated district names (adjacent tile must have a completed district of any of these types).
@@ -452,20 +452,20 @@ shield_bonus           = 0
 happiness_bonus        = 0
 
 #District
-name                   = Great Wall
-btn_tile_sheet_row     = 0
-btn_tile_sheet_column  = 9
-tooltip                = Build Great Wall
-obsoleted_by           = Metallurgy
-wonder_prereqs         = "The Great Wall"
-buildable_on           = desert,plains,grassland,tundra,floodplain,mountain,hill,volcano
-buildable_without_removal = forest,swamp,jungle
-draw_over_resources    = 1
-defense_bonus_percent  = 50
-allow_multiple         = 1
-culture_bonus          = 0
-science_bonus          = 0
-food_bonus             = 0
-gold_bonus             = 0
-shield_bonus           = 0
-happiness_bonus        = 0
+name                      = Great Wall
+btn_tile_sheet_row        = 0
+btn_tile_sheet_column     = 9
+tooltip                   = Build Great Wall
+obsoleted_by              = Metallurgy
+wonder_prereqs            = "The Great Wall"
+buildable_on              = desert,plains,grassland,tundra,floodplain,mountain,hill,volcano
+buildable_without_removal = forest,marsh,jungle
+draw_over_resources       = 1
+defense_bonus_percent     = 50
+allow_multiple            = 1
+culture_bonus             = 0
+science_bonus             = 0
+food_bonus                = 0
+gold_bonus                = 0
+shield_bonus              = 0
+happiness_bonus           = 0
