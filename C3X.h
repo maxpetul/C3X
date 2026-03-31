@@ -114,6 +114,18 @@ enum no_ai_patrol_override {
 	NAPO_NONE
 };
 
+enum barbarian_activity_override {
+	BAO_NONE = -2,
+
+	// The values for these levels must match what the game uses internally for Map.World.Final_Barbarians_Activity
+	BAO_NO_BARBARIANS = -1,
+	BAO_SEDENTARY = 0,
+	BAO_ROAMING = 1,
+	BAO_RESTLESS = 2,
+	BAO_RAGING = 3,
+	BAO_RANDOM = 4
+};
+
 enum special_defensive_bombard_rules {
 	SDBR_LETHAL         =  1,
 	SDBR_NOT_INVISIBLE  =  2,
@@ -316,6 +328,7 @@ struct c3x_config {
 	int tourism_time_scale_percent;
 	bool allow_sale_of_small_wonders;
 	enum no_ai_patrol_override override_no_ai_patrol;
+	enum barbarian_activity_override override_barbarian_activity_level_for_scenario_maps;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
@@ -932,6 +945,7 @@ struct injected_state {
 	float (* strtof) (char const *, char **);
 	int (* strcmp) (char const *, char const *);
 	int (* strncmp) (char const *, char const *, size_t);
+	int (* _stricmp) (char const *, char const *);
 	size_t (* strlen) (char const *);
 	char * (* strncpy) (char *, char const *, size_t);
 	char * (* strcpy) (char *, char const *);

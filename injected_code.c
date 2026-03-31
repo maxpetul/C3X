@@ -41,6 +41,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define strtof is->strtof
 #define strncmp is->strncmp
 #define strcmp is->strcmp
+#define _stricmp is->_stricmp
 #define strlen is->strlen
 #define strncpy is->strncpy
 #define strcpy is->strcpy
@@ -1831,6 +1832,54 @@ read_direction_value (struct string_slice const * s, enum direction * out_dir)
 		return false;
 }
 
+bool
+read_barbarian_activity_override (struct string_slice const * s, enum barbarian_activity_override * out)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if (trimmed.len <= 0)
+		return false;
+
+	bool found = false;
+	char * extracted = extract_slice (s);
+
+	struct {
+		char * str;
+		enum barbarian_activity_override value;
+	} possibilities[] = {{ .str = "none"                            , .value = BAO_NONE },
+			     { .str = (*p_labels)[LBL_NO_BARBARIANS    ], .value = BAO_NO_BARBARIANS },
+			     { .str = (*p_labels)[LBL_NO_BARBARIANS + 1], .value = BAO_SEDENTARY },
+			     { .str = (*p_labels)[LBL_NO_BARBARIANS + 2], .value = BAO_ROAMING },
+			     { .str = (*p_labels)[LBL_NO_BARBARIANS + 3], .value = BAO_RESTLESS },
+			     { .str = (*p_labels)[LBL_NO_BARBARIANS + 4], .value = BAO_RAGING },
+			     { .str = (*p_labels)[LBL_RANDOM_BARBS]     , .value = BAO_RANDOM },
+			     { .str = "No Barbarians"                   , .value = BAO_NO_BARBARIANS },
+			     { .str = "Sedentary"                       , .value = BAO_SEDENTARY },
+			     { .str = "Roaming"                         , .value = BAO_ROAMING },
+			     { .str = "Restless"                        , .value = BAO_RESTLESS },
+			     { .str = "Raging"                          , .value = BAO_RAGING },
+			     { .str = "Random"                          , .value = BAO_RANDOM }};
+
+	// Check for exact match
+	for (int n = 0; n < ARRAY_LEN (possibilities); n++)
+		if (0 == strcmp (extracted, possibilities[n].str)) {
+			*out = possibilities[n].value;
+			found = true;
+			break;
+		}
+
+	// If not found, check again ignoring case
+	if (! found)
+		for (int n = 0; n < ARRAY_LEN (possibilities); n++)
+			if (0 == _stricmp (extracted, possibilities[n].str)) {
+				*out = possibilities[n].value;
+				found = true;
+				break;
+			}
+
+	free (extracted);
+	return found;
+}
+
 struct parsable_field_bit {
 	char * name;
 	int bit_value;
@@ -2111,6 +2160,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "override_no_ai_patrol")) {
 					if (! read_no_ai_patrol_override (&value, (int *)&cfg->override_no_ai_patrol))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "override_barbarian_activity_level_for_scenario_maps")) {
+					if (! read_barbarian_activity_override (&value, &cfg->override_barbarian_activity_level_for_scenario_maps))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_defensive_bombard_rules")) {
 					struct parsable_field_bit bits[] = {
@@ -11179,6 +11231,7 @@ patch_init_floating_point ()
 	strtol   = (void *)(*p_GetProcAddress) (is->msvcrt, "strtol");
 	strcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "strcmp");
 	strncmp  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncmp");
+	_stricmp = (void *)(*p_GetProcAddress) (is->msvcrt, "_stricmp");
 	strlen   = (void *)(*p_GetProcAddress) (is->msvcrt, "strlen");
 	strncpy  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncpy");
 	strcpy   = (void *)(*p_GetProcAddress) (is->msvcrt, "strcpy");
@@ -11208,6 +11261,7 @@ patch_init_floating_point ()
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
 	base_config.double_minimap_size = MDM_HIGH_DEF;
 	base_config.override_no_ai_patrol = NAPO_NONE;
+	base_config.override_barbarian_activity_level_for_scenario_maps = BAO_NONE;
 	base_config.unit_cycle_search_criteria = UCSC_STANDARD;
 	base_config.city_work_radius = 2;
 	base_config.day_night_cycle_mode = DNCM_OFF;
@@ -25647,6 +25701,22 @@ patch_MenuUnitList_get_length_before_sorting (MenuUnitList * this)
 		return length;
 }
 
+void __fastcall
+patch_Map_finalize_params_for_scenario_map (Map * this)
+{
+	Map_finalize_params (this);
+
+	enum barbarian_activity_override barb_override = is->current_config.override_barbarian_activity_level_for_scenario_maps;
+	if (barb_override != BAO_NONE) {
+		if (barb_override == BAO_RANDOM) {
+			LARGE_INTEGER time;
+			QueryPerformanceCounter (&time);
+			int r = this->Seed ^ time.u.LowPart; // The map seed will be the same every time so incorporate some entropy
+			this->World.Final_Barbarians_Activity = rand_int (&r, __, 5) - 1;
+		} else
+			this->World.Final_Barbarians_Activity = clamp (-1, 3, barb_override);
+	}
+}
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
