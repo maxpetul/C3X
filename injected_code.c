@@ -12521,13 +12521,32 @@ district_resource_prereqs_met_r (Tile * tile, int tile_x, int tile_y, int distri
 			return false;
 
 		bool has_resource = false;
+		bool is_bonus_resource = p_bic_data->ResourceTypes[resource_req].Class == RC_Bonus;
 
 		FOR_CITIES_OF (coi, owner) {
 			City * req_city = coi.city;
 			if (! Trade_Net_is_tile_connected_to_city (is->trade_net, __, req_city, tile_x, tile_y))
 				continue;
 			if (! city_has_resource_r (req_city, resource_req, max_req_resource_id))
-				continue;
+				if (! is_bonus_resource)
+					continue;
+				else {
+					int civ_id = req_city->Body.CivID;
+					FOR_TILES_AROUND (tai, is->workable_tile_count, req_city->Body.X, req_city->Body.Y) {
+						Tile * radius_tile = tai.tile;
+						if ((radius_tile == NULL) || (radius_tile == p_null_tile))
+							continue;
+						if (radius_tile->vtable->m38_Get_Territory_OwnerID (radius_tile) != civ_id)
+							continue;
+						if (Tile_get_resource_visible_to (radius_tile, __, civ_id) == resource_req) {
+							has_resource = true;
+							break;
+						}
+					}
+					if (has_resource)
+						break;
+					continue;
+				}
 
 			has_resource = true;
 			break;
@@ -13578,10 +13597,23 @@ city_can_build_district (City * city, int district_id)
 	if (! leader_can_build_district (&leaders[city->Body.CivID], district_id))
 		return false;
 
-	// Check resource prerequisites (city connection) - ALL must be present
-	for (int i = 0; i < info->resource_prereq_count; i++) {
-		int resource_req = info->resource_prereq_ids[i];
-		if ((resource_req >= 0) && ! patch_City_has_resource (city, __, resource_req))
+	if ((info->resource_prereq_count > 0) || (info->resource_prereq_on_tile_id >= 0)) {
+		bool resource_prereqs_met = false;
+
+		FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
+			Tile * tile = tai.tile;
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID)
+				continue;
+			if (! district_resource_prereqs_met_r (tile, tai.tile_x, tai.tile_y, district_id, INT_MAX))
+				continue;
+
+			resource_prereqs_met = true;
+			break;
+		}
+
+		if (! resource_prereqs_met)
 			return false;
 	}
 
@@ -15391,26 +15423,6 @@ city_has_resource_r (City * this, int resource_id, int max_generated_resource_id
 			    district_generates_resource_for_civ (wai.tile, di, dc, this->Body.CivID)) {
 				tr = true;
 				break;
-			}
-		}
-
-		// A district may alternatively require a bonus resource, which would be missed in above checks. 
-		// If that's the case, check if one is in the work radius
-		if (! tr) {
-			int res_class = p_bic_data->ResourceTypes[resource_id].Class;
-			if (res_class == RC_Bonus) {
-				int civ_id = this->Body.CivID;
-				FOR_TILES_AROUND (tai, is->workable_tile_count, this->Body.X, this->Body.Y) {
-					Tile * tile = tai.tile;
-					if ((tile == NULL) || (tile == p_null_tile))
-						continue;
-					if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id)
-						continue;
-					if (Tile_get_resource_visible_to (tile, __, civ_id) == resource_id) {
-						tr = true;
-						break;
-					}
-				}
 			}
 		}
 	}

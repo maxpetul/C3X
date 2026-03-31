@@ -23,7 +23,7 @@
   ;  - generated_resource              : Resource name plus optional flags: local, yields, no-tech-req. District generates resource if tile connected by road.
   ;  - advance_prereqs                 : Comma-separated tech names. District cannot be built unless all techs are discovered.
   ;  - obsoleted_by                    : Tech name that obsoletes this district. District cannot built after discovery.
-  ;  - resource_prereqs                : Comma-separated resource names. District cannot be built unless a nearby city has all required resources.
+  ;  - resource_prereqs                : Comma-separated resource names. The tile must be connected to cities with all required resources to be built.
   ;  - resource_prereq_on_tile         : Resource name required on the district tile. District cannot be built unless resource is on same tile.
   ;  - wonder_prereqs                  : Comma-separated wonder names. District cannot be built unless all Wonders are built by same civ.
   ;  - natural_wonder_prereqs          : Comma-separated natural wonder names. District cannot be built unless all Natural Wonders are within civ's territory.
