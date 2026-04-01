@@ -21304,7 +21304,9 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 		(p_main_screen_form->Player_CivID == this->ID) && is->current_config.skip_repeated_tile_improv_replacement_asks;
 
 	Tile * tile = tile_at (tile_x, tile_y);
-	if (is_ai && (tile != NULL) && (tile != p_null_tile)) {
+
+	// If districts on, short-circuit any potential AI workers accidentally building in another civ's territory. 
+	if (is->current_config.enable_districts && is_ai && (tile != NULL) && (tile != p_null_tile)) {
 		int territory_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
 		if (territory_owner > 0 && territory_owner != this->ID)
 			return 0;
