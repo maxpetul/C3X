@@ -24818,44 +24818,6 @@ remove_extra_palaces (City * city, City * excluded_destination)
 }
 
 void
-handle_possible_duplicate_small_wonders(City * city, Leader * leader)
-{
-	if ((city == NULL) || (leader == NULL))
-		return;
-
-	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
-		int x = wai.tile_x, y = wai.tile_y;
-		Tile * tile = wai.tile;
-
-		// Make sure it's a completed wonder district
-		struct district_instance * inst = wai.district_inst;
-		if (inst->district_id != WONDER_DISTRICT_ID) continue;
-		struct wonder_district_info * info = &inst->wonder_info;
-		if ((info == NULL) || (info->state != WDS_COMPLETED)) continue;
-
-		int improv_id = get_wonder_improvement_id_from_index (info->wonder_index);
-		if (improv_id < 0) continue;
-
-		Improvement * improv = &p_bic_data->Improvements[improv_id];
-
-		// Only check Small Wonders, which shouldn't be duplicated in a civ
-		if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
-			City * owning_city = get_city_ptr (leader->Small_Wonders[improv_id]);
-			if (owning_city != NULL) {
-				// Another city of the conquering civ has this Small Wonder, so remove it from captured city and destroy the district.
-				// We run the district removal manually here rather than through "handle_district_removed", as that function removes Wonders
-				// using leader->Small_Wonders, which would unset the Small Wonder from the original owning city, which we don't want, 
-				// and would only remove the Wonder if completed_wonder_districts_can_be_destroyed is true, which may not be the case 
-				patch_City_add_or_remove_improvement (city, __, improv_id, 0, false);
-				remove_district_instance (tile);
-				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
-				tile->vtable->m60_Set_Ruins (tile, __, 1);
-			}
-		}
-	}
-}
-
-void
 grant_nearby_wonders_to_city (City * city)
 {
 	// Give a city any completed wonder districts in work radius, if cities_with_mutual_district_receive_wonders is true.
