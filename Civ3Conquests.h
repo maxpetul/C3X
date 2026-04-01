@@ -2694,7 +2694,7 @@ struct Unit_vtable
   byte (__fastcall * ai_is_good_army_addition) (Unit *, __, Unit *);
   byte (__fastcall * is_enemy_of_civ) (Unit *, __, int, byte);
   byte (__fastcall * is_enemy_of_unit) (Unit *, __, Unit *, int);
-  int m17;
+  void (__fastcall * upgrade_checking_ga_and_strat) (Unit *);
   int m18;
   int (__fastcall * Move) (Unit *, int, int, char);
   int (__fastcall * teleport) (Unit *, int, int, int, Unit *);
