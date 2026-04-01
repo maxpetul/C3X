@@ -15657,9 +15657,9 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups
 			int owner_id = district_tile->vtable->m38_Get_Territory_OwnerID (district_tile);
 			if (owner_id < 0)
 				continue;
-			if (! district_generates_resource_for_civ (district_tile, inst, cfg, owner_id))
-				continue;
 			if ((cfg->generated_resource_flags & MF_LOCAL) != 0)
+				continue;
+			if (! district_can_generate_resource (owner_id, cfg))
 				continue;
 
 			reserve (sizeof is->resource_tiles[0],
