@@ -24839,22 +24839,19 @@ handle_possible_duplicate_small_wonders(City * city, Leader * leader)
 		Improvement * improv = &p_bic_data->Improvements[improv_id];
 
 		// Only check Small Wonders, which shouldn't be duplicated in a civ
-			if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
-				City * owning_city = get_city_ptr (leader->Small_Wonders[improv_id]);
-				if (owning_city != NULL) {
-					// Another city of the conquering civ has this Small Wonder, so remove it from captured city and destroy the district.
-					// We run the district removal manually here rather than through "handle_district_removed", as that function removes Wonders
-					// using leader->Small_Wonders, which would unset the Small Wonder from the original owning city, which we don't want, 
-					// and would only remove the Wonder if completed_wonder_districts_can_be_destroyed is true, which may not be the case 
-					patch_City_add_or_remove_improvement (city, __, improv_id, 0, false);
-					FOR_CITIES_OF (coi, leader->ID) {
-						remove_shared_wonder_if_no_other_district (coi.city, improv_id, x, y);
-					}
-					remove_district_instance (tile);
-					tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
-					tile->vtable->m60_Set_Ruins (tile, __, 1);
-				}
+		if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
+			City * owning_city = get_city_ptr (leader->Small_Wonders[improv_id]);
+			if (owning_city != NULL) {
+				// Another city of the conquering civ has this Small Wonder, so remove it from captured city and destroy the district.
+				// We run the district removal manually here rather than through "handle_district_removed", as that function removes Wonders
+				// using leader->Small_Wonders, which would unset the Small Wonder from the original owning city, which we don't want, 
+				// and would only remove the Wonder if completed_wonder_districts_can_be_destroyed is true, which may not be the case 
+				patch_City_add_or_remove_improvement (city, __, improv_id, 0, false);
+				remove_district_instance (tile);
+				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
+				tile->vtable->m60_Set_Ruins (tile, __, 1);
 			}
+		}
 	}
 }
 
@@ -24885,6 +24882,16 @@ grant_nearby_wonders_to_city (City * city)
 		if (improv_id < 0) continue;
 
 		if (patch_City_has_improvement (city, __, improv_id, false)) continue;
+
+		// Small wonders use Leader.Small_Wonders as their canonical owner record. If the city
+		// just changed hands and the new owner already has that small wonder elsewhere, do not
+		// re-grant it from the nearby district or the capture can recreate a duplicate.
+		Improvement * improv = &p_bic_data->Improvements[improv_id];
+		if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
+			City * owning_city = get_city_ptr (leaders[city->Body.CivID].Small_Wonders[improv_id]);
+			if (owning_city != NULL)
+				continue;
+		}
 
 		// Add the Wonder to the city
 		patch_City_add_or_remove_improvement (city, __, improv_id, 1, false);
@@ -28750,19 +28757,106 @@ patch_Leader_create_city_for_scenario (Leader * this, int edx, int x, int y, int
 	return tr;
 }
 
+City *
+find_city_to_inherit_shared_small_wonder (Leader * leader, int wonder_improv_id)
+{
+	if ((leader == NULL) ||
+	    (! is->current_config.enable_districts) ||
+	    (! is->current_config.enable_wonder_districts) ||
+	    (! is->current_config.cities_with_mutual_district_receive_wonders))
+		return NULL;
 
+	FOR_CITIES_OF (coi, leader->ID) {
+		City * city = coi.city;
+		if ((city == NULL) || (! patch_City_has_improvement (city, __, wonder_improv_id, false)))
+			continue;
+
+		FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+			Tile * tile = wai.tile;
+
+			struct district_instance * inst = wai.district_inst;
+			if (inst->district_id != WONDER_DISTRICT_ID)
+				continue;
+
+			struct wonder_district_info * info = &inst->wonder_info;
+			if ((info == NULL) || (info->state != WDS_COMPLETED))
+				continue;
+
+			int nearby_improv_id = get_wonder_improvement_id_from_index (info->wonder_index);
+			if (nearby_improv_id == wonder_improv_id)
+				return city;
+		}
+	}
+
+	return NULL;
+}
+
+void
+reassign_shared_small_wonder_owners_after_city_loss (Leader * leader, int const * lost_small_wonders, int lost_small_wonder_count)
+{
+	if ((! is->current_config.enable_districts) ||
+	    (leader == NULL) ||
+	    (! is->current_config.enable_wonder_districts) ||
+	    (! is->current_config.cities_with_mutual_district_receive_wonders) ||
+	    (lost_small_wonders == NULL) ||
+	    (lost_small_wonder_count <= 0))
+		return;
+
+	for (int n = 0; n < lost_small_wonder_count; n++) {
+		int improv_id = lost_small_wonders[n];
+		if ((improv_id < 0) || (improv_id >= p_bic_data->ImprovementsCount))
+			continue;
+
+		if (leader->Small_Wonders[improv_id] != -1)
+			continue;
+
+		// Vanilla clears Leader.Small_Wonders when the recorded owner city loses the building during
+		// capture. Only repair the small wonders that were actually present in the lost city before
+		// capture, and if another city of the same civ still legitimately shares the wonder district,
+		// promote that city to be the new canonical owner so the small wonder's effects still work.
+		City * replacement = find_city_to_inherit_shared_small_wonder (leader, improv_id);
+		if (replacement != NULL)
+			leader->Small_Wonders[improv_id] = replacement->Body.ID;
+	}
+}
 
 bool __fastcall
 patch_Leader_do_capture_city (Leader * this, int edx, City * city, bool involuntary, bool converted)
 {
-	is->currently_capturing_city = city;
-	on_lose_city (&leaders[city->Body.CivID], city, converted ? CLR_CONVERTED : (involuntary ? CLR_CONQUERED : CLR_TRADED));
-
-	if (is->current_config.enable_districts && is->current_config.enable_wonder_districts) {
-		handle_possible_duplicate_small_wonders (city, this);
+	Leader * previous_owner = &leaders[city->Body.CivID];
+	int lost_small_wonders[32];
+	int lost_small_wonder_count = 0;
+	
+	// Record which small wonders were physically present in the city before capture so any
+	// post-capture ownership repair only touches wonders actually affected.
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_wonder_districts &&
+	    is->current_config.cities_with_mutual_district_receive_wonders) {
+		for (int improv_id = 0; improv_id < p_bic_data->ImprovementsCount; improv_id++) {
+			Improvement * improv = &p_bic_data->Improvements[improv_id];
+			if ((improv->Characteristics & ITC_Small_Wonder) == 0)
+				continue;
+			if (! patch_City_has_improvement (city, __, improv_id, false))
+				continue;
+			if (lost_small_wonder_count >= ARRAY_LEN (lost_small_wonders))
+				break;
+			lost_small_wonders[lost_small_wonder_count++] = improv_id;
+		}
 	}
 
+	is->currently_capturing_city = city;
+	on_lose_city (previous_owner, city, converted ? CLR_CONVERTED : (involuntary ? CLR_CONQUERED : CLR_TRADED));
 	bool tr = Leader_do_capture_city (this, __, city, involuntary, converted);
+	
+	// The game clears the losing civ's canonical Small_Wonders owner when the recorded city loses
+	// the building. Reassign that ownership here if another same-civ city still legitimately shares the wonder district.
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_wonder_districts &&
+	    is->current_config.cities_with_mutual_district_receive_wonders &&
+		lost_small_wonder_count > 0) {
+		reassign_shared_small_wonder_owners_after_city_loss (previous_owner, lost_small_wonders, lost_small_wonder_count);
+	}
+
 	on_gain_city (this, city, converted ? CGR_CONVERTED : (involuntary ? CGR_CONQUERED : CGR_TRADED));
 	is->currently_capturing_city = NULL;
 	return tr;
