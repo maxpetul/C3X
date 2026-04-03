@@ -24819,17 +24819,20 @@ remove_extra_palaces (City * city, City * excluded_destination)
 	} while (extra_palace_lost >= 0);
 }
 
+// Give a city any completed wonder districts in work radius, if cities_with_mutual_district_receive_wonders is true.
+// This is essentially for cases where the original Wonder-constructing city is lost and a new city is built 
+// that can work the same wonder district tile.
 void
 grant_nearby_wonders_to_city (City * city)
 {
-	// Give a city any completed wonder districts in work radius, if cities_with_mutual_district_receive_wonders is true.
-	// This is essentially for cases where the original Wonder-constructing city is destroyed and a new city is built 
-	// that can work the same wonder district tile.
 	if (! is->current_config.enable_districts ||
 	    ! is->current_config.enable_wonder_districts ||
 	    ! is->current_config.cities_with_mutual_district_receive_wonders ||
 	    (city == NULL))
 		return;
+
+	bool prev_flag = is->sharing_buildings_by_districts_in_progress;
+	is->sharing_buildings_by_districts_in_progress = true;
 
 	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		int x = wai.tile_x, y = wai.tile_y;
@@ -24853,13 +24856,17 @@ grant_nearby_wonders_to_city (City * city)
 		Improvement * improv = &p_bic_data->Improvements[improv_id];
 		if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
 			City * owning_city = get_city_ptr (leaders[city->Body.CivID].Small_Wonders[improv_id]);
-			if (owning_city != NULL)
+			if ((owning_city != NULL) &&
+			    (owning_city->Body.CivID == city->Body.CivID) &&
+			    ! city_radius_contains_tile (owning_city, x, y))
 				continue;
 		}
 
 		// Add the Wonder to the city
 		patch_City_add_or_remove_improvement (city, __, improv_id, 1, false);
 	}
+
+	is->sharing_buildings_by_districts_in_progress = prev_flag;
 }
 
 void
@@ -28756,6 +28763,34 @@ find_city_to_inherit_shared_small_wonder (Leader * leader, int wonder_improv_id)
 }
 
 void
+collect_small_wonders_present_in_city (City * city, int * lost_small_wonders, int * lost_small_wonder_count, int max_lost_small_wonders)
+{
+	if ((city == NULL) ||
+	    (lost_small_wonders == NULL) ||
+	    (lost_small_wonder_count == NULL) ||
+	    (max_lost_small_wonders <= 0))
+		return;
+
+	*lost_small_wonder_count = 0;
+
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_wonder_districts ||
+	    ! is->current_config.cities_with_mutual_district_receive_wonders)
+		return;
+
+	for (int improv_id = 0; improv_id < p_bic_data->ImprovementsCount; improv_id++) {
+		Improvement * improv = &p_bic_data->Improvements[improv_id];
+		if ((improv->Characteristics & ITC_Small_Wonder) == 0)
+			continue;
+		if (! patch_City_has_improvement (city, __, improv_id, false))
+			continue;
+		if (*lost_small_wonder_count >= max_lost_small_wonders)
+			break;
+		lost_small_wonders[(*lost_small_wonder_count)++] = improv_id;
+	}
+}
+
+void
 reassign_shared_small_wonder_owners_after_city_loss (Leader * leader, int const * lost_small_wonders, int lost_small_wonder_count)
 {
 	if ((! is->current_config.enable_districts) ||
@@ -28789,24 +28824,11 @@ patch_Leader_do_capture_city (Leader * this, int edx, City * city, bool involunt
 {
 	Leader * previous_owner = &leaders[city->Body.CivID];
 	int lost_small_wonders[32];
-	int lost_small_wonder_count = 0;
+	int lost_small_wonder_count;
 	
 	// Record which small wonders were physically present in the city before capture so any
 	// post-capture ownership repair only touches wonders actually affected.
-	if (is->current_config.enable_districts &&
-	    is->current_config.enable_wonder_districts &&
-	    is->current_config.cities_with_mutual_district_receive_wonders) {
-		for (int improv_id = 0; improv_id < p_bic_data->ImprovementsCount; improv_id++) {
-			Improvement * improv = &p_bic_data->Improvements[improv_id];
-			if ((improv->Characteristics & ITC_Small_Wonder) == 0)
-				continue;
-			if (! patch_City_has_improvement (city, __, improv_id, false))
-				continue;
-			if (lost_small_wonder_count >= ARRAY_LEN (lost_small_wonders))
-				break;
-			lost_small_wonders[lost_small_wonder_count++] = improv_id;
-		}
-	}
+	collect_small_wonders_present_in_city (city, lost_small_wonders, &lost_small_wonder_count, ARRAY_LEN (lost_small_wonders));
 
 	is->currently_capturing_city = city;
 	on_lose_city (previous_owner, city, converted ? CLR_CONVERTED : (involuntary ? CLR_CONQUERED : CLR_TRADED));
@@ -28829,8 +28851,16 @@ patch_Leader_do_capture_city (Leader * this, int edx, City * city, bool involunt
 void __fastcall
 patch_City_raze (City * this, int edx, int civ_id_responsible, bool checking_elimination)
 {
-	on_lose_city (&leaders[this->Body.CivID], this, CLR_DESTROYED);
+	Leader * previous_owner = &leaders[this->Body.CivID];
+	int lost_small_wonders[32];
+	int lost_small_wonder_count;
+
+	collect_small_wonders_present_in_city (this, lost_small_wonders, &lost_small_wonder_count, ARRAY_LEN (lost_small_wonders));
+	on_lose_city (previous_owner, this, CLR_DESTROYED);
 	City_raze (this, __, civ_id_responsible, checking_elimination);
+
+	if (lost_small_wonder_count > 0)
+		reassign_shared_small_wonder_owners_after_city_loss (previous_owner, lost_small_wonders, lost_small_wonder_count);
 
 	// Delete the extra improvement bits records for this city
 	City_Improvements * improv_lists[2] = {&this->Body.Improvements_1, &this->Body.Improvements_2};
