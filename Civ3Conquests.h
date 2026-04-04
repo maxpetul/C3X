@@ -2693,7 +2693,7 @@ struct Unit_vtable
   int (__fastcall * eval_total_defense) (Unit *);
   byte (__fastcall * has_enough_escorters_present) (Unit *);
   void (__fastcall * check_escorter_health) (Unit *, __, byte *, byte *);
-  int m10;
+  int (__fastcall * pillage_if_ai_army) (Unit *, __, int, int);
   int m11;
   int m12;
   int (__fastcall * get_sea_id) (Unit *);

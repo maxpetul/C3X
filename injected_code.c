@@ -19615,7 +19615,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 				if ((req_tech < 0) ||
 				    ((req_tech != p_bic_data->AdvanceCount) &&
 				     Leader_has_tech (&leaders[this->Body.CivID], __, req_tech))) {
-					if (Leader_has_resources_for_tile_at (&leaders[this->Body.CivID], __, WJ_Build_Railroad, this->Body.X, this->Body.Y))
+					if (Leader_has_resources_for_job_at (&leaders[this->Body.CivID], __, WJ_Build_Railroad, this->Body.X, this->Body.Y))
 						return true;
 				}
 			}
@@ -21612,7 +21612,7 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 						if ((req_tech < 0) ||
 						    ((req_tech != p_bic_data->AdvanceCount) &&
 						     Leader_has_tech (&leaders[this->ID], __, req_tech))) {
-							if (Leader_has_resources_for_tile_at (&leaders[this->ID], __, job, tile_x, tile_y))
+							if (Leader_has_resources_for_job_at (&leaders[this->ID], __, job, tile_x, tile_y))
 								tr = 1;
 						}
 					}
