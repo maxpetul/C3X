@@ -35756,10 +35756,25 @@ patch_Unit_ai_move_air_transport (Unit * this)
 bool __fastcall
 patch_Tile_has_colony_ignore_extraterritorial (Tile * tile)
 {
-	if (is->current_config.allow_extraterritorial_colonies)
+	if (!Tile_has_colony (tile))
 		return false;
 
-	return Tile_has_colony (tile);
+	if (!is->current_config.allow_extraterritorial_colonies)
+		return true;
+
+	if ((tile == NULL) || (tile == p_null_tile))
+		return true;
+
+	int tile_building_id = tile->vtable->m47_Get_Tile_BuildingID (tile);
+	if ((tile_building_id < 0) || (p_colonies == NULL) || (p_colonies->Items == NULL) ||
+	    (tile_building_id > p_colonies->LastIndex))
+		return true;
+
+	Tile_Building_Body * colony_body = p_colonies->Items[tile_building_id].Object;
+	if ((colony_body == NULL) || ((int)colony_body == offsetof (Tile_Building, Body)))
+		return true;
+
+	return colony_body->OwnerID == tile->vtable->m38_Get_Territory_OwnerID (tile);
 }
 
 int __fastcall
