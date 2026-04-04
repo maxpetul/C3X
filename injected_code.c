@@ -7761,28 +7761,28 @@ find_special_district_index_by_name (char const * name)
 	return -1;
 }
 
-void
-disable_special_district_config (int index)
+bool
+district_is_included_by_final_config (int district_id)
 {
-	if ((index < 0) || (index >= USED_SPECIAL_DISTRICT_TYPES))
-		return;
+	if ((district_id < 0) || (district_id >= is->district_count))
+		return false;
 
-	struct district_config * cfg = &is->district_configs[index];
-	struct district_config const * defaults = &special_district_defaults[index];
-	free_special_district_override_strings (cfg, defaults);
-	memset (cfg, 0, sizeof *cfg);
-	cfg->command = -1;
-	cfg->generated_resource_id = -1;
-	for (int i = 0; i < ARRAY_LEN (cfg->buildable_on_district_ids); i++)
-		cfg->buildable_on_district_ids[i] = -1;
-	for (int i = 0; i < ARRAY_LEN (cfg->buildable_adjacent_to_district_ids); i++)
-		cfg->buildable_adjacent_to_district_ids[i] = -1;
-	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_traits_ids); i++)
-		cfg->buildable_by_civ_traits_ids[i] = -1;
-	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_govs_ids); i++)
-		cfg->buildable_by_civ_govs_ids[i] = -1;
-	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_cultures_ids); i++)
-		cfg->buildable_by_civ_cultures_ids[i] = -1;
+	if (! is->current_config.enable_districts)
+		return false;
+
+	switch (district_id) {
+		case NEIGHBORHOOD_DISTRICT_ID:     return is->current_config.enable_neighborhood_districts;
+		case WONDER_DISTRICT_ID:           return is->current_config.enable_wonder_districts;
+		case DISTRIBUTION_HUB_DISTRICT_ID: return is->current_config.enable_distribution_hub_districts;
+		case AERODROME_DISTRICT_ID:        return is->current_config.enable_aerodrome_districts;
+		case PORT_DISTRICT_ID:             return is->current_config.enable_port_districts;
+		case CENTRAL_RAIL_HUB_DISTRICT_ID: return is->current_config.enable_central_rail_hub_districts;
+		case ENERGY_GRID_DISTRICT_ID:      return is->current_config.enable_energy_grid_districts;
+		case BRIDGE_DISTRICT_ID:           return is->current_config.enable_bridge_districts;
+		case CANAL_DISTRICT_ID:            return is->current_config.enable_canal_districts;
+		case GREAT_WALL_DISTRICT_ID:       return is->current_config.enable_great_wall_districts;
+		default:                           return true;
+	}
 }
 
 bool
@@ -8922,19 +8922,12 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 }
 
 void
-finalize_parsed_district_definition (struct parsed_district_definition * def,
-				     int section_start_line,
-				     unsigned int * mentioned_special_district_mask)
+finalize_parsed_district_definition (struct parsed_district_definition * def, int section_start_line)
 {
 	if ((! def->has_name) || (def->name == NULL))
 		return;
 
-	int special_index = find_special_district_index_by_name (def->name);
-	if (special_index >= 0) {
-		if (mentioned_special_district_mask != NULL)
-			*mentioned_special_district_mask |= (1u << special_index);
-		override_special_district_from_definition (def, section_start_line);
-	} else
+	if (! override_special_district_from_definition (def, section_start_line))
 		add_dynamic_district_from_definition (def, section_start_line);
 
 	free_parsed_district_definition (def);
@@ -9702,8 +9695,7 @@ void
 load_dynamic_district_config_file (char const * file_path,
 				   int path_is_relative_to_mod_dir,
 				   int log_missing,
-				   int drop_existing_configs,
-				   int disable_unmentioned_special_districts)
+				   int drop_existing_configs)
 {
 	char path[MAX_PATH];
 	if (path_is_relative_to_mod_dir) {
@@ -9733,7 +9725,6 @@ load_dynamic_district_config_file (char const * file_path,
 	bool in_section = false;
 	int section_start_line = 0;
 	int line_number = 0;
-	unsigned int mentioned_special_district_mask = 0;
 	struct error_line * unrecognized_keys = NULL;
 	struct error_line * parse_errors = NULL;
 
@@ -9765,7 +9756,7 @@ load_dynamic_district_config_file (char const * file_path,
 			directive = trim_string_slice (&directive, 0);
 			if ((directive.len > 0) && slice_matches_str (&directive, "District")) {
 				if (in_section)
-					finalize_parsed_district_definition (&def, section_start_line, &mentioned_special_district_mask);
+					finalize_parsed_district_definition (&def, section_start_line);
 				in_section = true;
 				section_start_line = line_number;
 			}
@@ -9802,14 +9793,7 @@ load_dynamic_district_config_file (char const * file_path,
 	}
 
 	if (in_section)
-		finalize_parsed_district_definition (&def, section_start_line, &mentioned_special_district_mask);
-
-	if (disable_unmentioned_special_districts) {
-		for (int i = 0; i < USED_SPECIAL_DISTRICT_TYPES; i++) {
-			if ((mentioned_special_district_mask & (1u << i)) == 0)
-				disable_special_district_config (i);
-		}
-	}
+		finalize_parsed_district_definition (&def, section_start_line);
 
 	free_parsed_district_definition (&def);
 	free (text);
@@ -9857,7 +9841,7 @@ load_dynamic_district_configs ()
 	if ((scenario_district_config_path != NULL) &&
 	    (0 != strcmp (scenario_filename, scenario_district_config_path)) &&
 	    file_exists_at_path (scenario_district_config_path)) {
-		load_dynamic_district_config_file (scenario_district_config_path, 0, 0, 1, 1);
+		load_dynamic_district_config_file (scenario_district_config_path, 0, 0, 1);
 		return;
 	}
 
@@ -9866,12 +9850,12 @@ load_dynamic_district_configs ()
 		snprintf (user_path, sizeof user_path, "%s\\%s", is->mod_rel_dir, "user.districts_config.txt");
 		user_path[(sizeof user_path) - 1] = '\0';
 		if (file_exists_at_path (user_path)) {
-			load_dynamic_district_config_file ("user.districts_config.txt", 1, 0, 1, 1);
+			load_dynamic_district_config_file ("user.districts_config.txt", 1, 0, 1);
 			return;
 		}
 	}
 
-	load_dynamic_district_config_file ("default.districts_config.txt", 1, 1, 1, 0);
+	load_dynamic_district_config_file ("default.districts_config.txt", 1, 1, 1);
 }
 
 void
@@ -11361,6 +11345,33 @@ void parse_building_and_tech_ids ()
 
 	for (int i = 0; i < is->district_count; i++) {
 		char const * district_name = (is->district_configs[i].name != NULL) ? is->district_configs[i].name : "District";
+		if (! district_is_included_by_final_config (i)) {
+			is->district_infos[i].advance_prereq_count = 0;
+			for (int j = 0; j < ARRAY_LEN (is->district_infos[i].advance_prereq_ids); j++)
+				is->district_infos[i].advance_prereq_ids[j] = -1;
+			is->district_infos[i].obsoleted_by_id = -1;
+			is->district_infos[i].resource_prereq_count = 0;
+			for (int j = 0; j < MAX_DISTRICT_DEPENDENTS; j++)
+				is->district_infos[i].resource_prereq_ids[j] = -1;
+			is->district_infos[i].resource_prereq_on_tile_id = -1;
+			is->district_infos[i].wonder_prereq_count = 0;
+			for (int j = 0; j < ARRAY_LEN (is->district_infos[i].wonder_prereq_ids); j++)
+				is->district_infos[i].wonder_prereq_ids[j] = -1;
+			is->district_infos[i].natural_wonder_prereq_count = 0;
+			for (int j = 0; j < ARRAY_LEN (is->district_infos[i].natural_wonder_prereq_ids); j++)
+				is->district_infos[i].natural_wonder_prereq_ids[j] = -1;
+			is->district_infos[i].dependent_building_count = 0;
+			for (int j = 0; j < ARRAY_LEN (is->district_infos[i].dependent_building_ids); j++)
+				is->district_infos[i].dependent_building_ids[j] = -1;
+			for (int j = 0; j < ARRAY_LEN (is->district_configs[i].buildable_on_district_ids); j++)
+				is->district_configs[i].buildable_on_district_ids[j] = -1;
+			is->district_configs[i].buildable_on_district_id_count = 0;
+			for (int j = 0; j < ARRAY_LEN (is->district_configs[i].buildable_adjacent_to_district_ids); j++)
+				is->district_configs[i].buildable_adjacent_to_district_ids[j] = -1;
+			is->district_configs[i].buildable_adjacent_to_district_id_count = 0;
+			is->district_configs[i].generated_resource_id = -1;
+			continue;
+		}
 		if ((is->district_configs[i].name != NULL) &&
 		    (is->district_configs[i].command != 0) &&
 		    (is->district_configs[i].command != -1))
