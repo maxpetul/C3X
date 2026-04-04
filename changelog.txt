@@ -29,6 +29,52 @@
 - Prevent immobile units from retreating when any non-standard retreat rule is set
 - Fix improper movement along limited railroads or fast roads after reloading game with same standard scenario
 - Fix doubly contained units not always appearing right after their container on the right-click menu
+- Fix crash caused by modded empty armies with non-zero attack/defense being allowed to enter combat and dividing by their unit count
+- 11 new districts: Ski Resort, Port, Bridge, Central Rail Hub, Data Center, Energy Grid, Great Wall, Canal, Offshore Extraction Zone, Park, Water Park
+- 7 new natural wonders: Wadi Rum, Eyjafjallajokull, Ha Long Bay, Lofoten Skerries, Geirangerfjord, Delicate Arch, Savanna (mostly a desert/tundra theme this time)
+- 3 new wonders: Great Lighthouse, Colossus, Hoover Dam
+- Add support for maritime districts
+- Move Research Lab from Campus to Data Center dependency
+- Add Great Wall auto-build around borders event after Great Wall wonder is completed
+- Add support for Named Tiles, which shows custom verbiage on a given tile (can be set in-game or via scenario.districts.txt)
+- Fix bug with districts not rendering on right-click tile detail modal
+- Fix bug with workers "building" a natural wonder if user clicks "Move all units of type" button
+- Fix bug with custom scenario district art not loading from scenario folder
+- Add support for alternative directions of Wonders, based on city vs. wonder tile location
+- Add negative district bonuses
+- Add custom logic for river- & port-related rendering
+- Add granular configuration control over where districts can be built by tile and adjacent tile types
+- Add support for districts being dependent on wonders & natural wonders
+- Add support for districts enabled by alliances with other civs that can build them
+- Add support for restrictions of who can build districts by civ name, trait, culture, government
+- Allow multiple advance prerequisites
+- Touch up art for Industrial Zones, Newton's University, Holy Site, Bach's Cathedral
+- Add support for buildings being buildable if one of multiple possible districts is built
+- Add support for districts generating resources
+- Add support for districts requiring resources, both in cities or on a tile
+- Add optional flag for districts to serve as alternative irrigation source
+- Add patches to enable buildings dependent on adjacent water sources to be enabled if water in work area (eg, Ports can be built if city has water in work radius), except for Aqueducts & Coastal Fortresses, which still require adjacency
+- Add flag for districts with dependent buildings to be custom tile improvements, which encourages the AI to evaluate whether to build them on each tile, like irrigation and mines
+- Add much smarter AI for distribution hubs, with ai_distribution_hub_build_strategy = auto (AI assess civ-wide and city level needs to determine how best to use tiles and distro hubs to build)
+- Add more balance distribution hub yields, with amount of shields/food each city receives decreasing as the number of recipient cities grows
+- Add AI build strategy and analysis of where to place canals and bridges
+- Add cap on max distribution hubs relative to number of cities
+- Add flag for show_ai_city_location_desirability_if_settler, which automatically shows city desirability over tiles if a settler is selected.
+- Add flag for auto_zoom_city_screen_for_large_work_areas, which prevents the city screen from auto-zooming out if the city_work_radius is >= 4 
+- Add support for extraterritorial colonies, where colonies can be built in another civ's territory or be built beforehand but not disappear as borders grow, at a relation penalty
+- Add happiness_bonus to district yields
+- Add display_name, in case name shown to user is different
+- Add optional custom height/width & x/y offsets for district art
+- Add error messaging to main screen if buildings / techs aren't parsed correctly, like other config options (in R26 this silently fails)
+- Distro hub yields on city screen are drawn even if outside city work radius (useful as in R26 they aren't drawn if outside the work radius, even if city is receiving distro hub yields)
+- Make tile highlights green, not red
+- Replace all redundant, hard to read district tile loops with proper macros
+- Add custom logic for air unit position and bombing if using aerodromes. 
+- Add support for alternative rendering logic (in districts config, render_strategy = "by-building") for handling districts whose buildings are not dependent on each other. 
+- Add custom logic for naval units to heal in ports and pillage enemy ports. 
+- Add custom logic for unit movement on bridges, canals, great wall
+- Allow flexible additive bonuses for districts in config based on nearby cities' available buildings and district tile & overlay types
+- Allow naval units to pillage (maritime districts)
 
 * RELEASE 26
 - Add some options to make land transports viable, controlled by land_transport_rules setting

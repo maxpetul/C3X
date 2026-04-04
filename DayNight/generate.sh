@@ -14,7 +14,7 @@ ANNOTATION_DIR="../Art/DayNight/Annotations"
 DATA_DIR="../Art/DayNight"
 
 NOON_SUBFOLDER="1200"
-ONLY_HOUR="2400"       # set empty "" to process all hours
+ONLY_HOUR=""       # set empty "" to process all hours
 
 # ---- Day/Night settings ----
 WARMTH=1.7            # Scale for sunrise/sunset warmth (1.0 = base)
@@ -171,6 +171,7 @@ process_art_set() {
     --data "$data_dir"
     --noon "$NOON_SUBFOLDER"
     --verbose
+    --remove-all-green
   )
 
   if [[ -n "${ONLY_HOUR}" ]]; then
@@ -188,17 +189,17 @@ process_art_set() {
   if [[ -n "${ONLY_HOUR}" ]]; then
     # Only the specified hour
     if [[ -d "$data_dir/$ONLY_HOUR" ]]; then
-      rm -f "$data_dir/$ONLY_HOUR"/*_lights.pcx || true
+      find "$data_dir/$ONLY_HOUR" -maxdepth 1 -type f -iname '*_lights.pcx' -delete || true
     fi
     # Also clean the noon folder
     if [[ -d "$data_dir/$NOON_SUBFOLDER" ]]; then
-      rm -f "$data_dir/$NOON_SUBFOLDER"/*_lights.pcx || true
+      find "$data_dir/$NOON_SUBFOLDER" -maxdepth 1 -type f -iname '*_lights.pcx' -delete || true
     fi
   else
     # All hour-named subfolders under data_dir (e.g., 0000, 0100, ..., 2400)
     # Do not touch the external $annotation_dir.
     while IFS= read -r -d '' hour_dir; do
-      rm -f "${hour_dir}"/*_lights.pcx || true
+      find "${hour_dir}" -maxdepth 1 -type f -iname '*_lights.pcx' -delete || true
     done < <(find "$data_dir" -mindepth 1 -maxdepth 1 -type d -regex '.*/[0-9]{4}$' -print0)
   fi
 }
