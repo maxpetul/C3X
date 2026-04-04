@@ -17688,6 +17688,7 @@ patch_init_floating_point ()
 		{"do_not_pollute_impassable_tiles"                       , false, offsetof (struct c3x_config, do_not_pollute_impassable_tiles)},
 		{"show_hp_of_stealth_attack_options"                     , false, offsetof (struct c3x_config, show_hp_of_stealth_attack_options)},
 		{"exclude_invisible_units_from_stealth_attack"           , false, offsetof (struct c3x_config, exclude_invisible_units_from_stealth_attack)},
+		{"exclude_passengers_from_stealth_attack"                , false, offsetof (struct c3x_config, exclude_passengers_from_stealth_attack)},
 		{"convert_to_landmark_after_planting_forest"             , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
 		{"allow_sale_of_aqueducts_and_hospitals"                 , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
 		{"no_cross_shore_detection"                              , false, offsetof (struct c3x_config, no_cross_shore_detection)},
@@ -25880,6 +25881,9 @@ patch_Unit_can_stealth_attack (Unit * this, int edx, Unit * target)
 		return false;
 
 	else if (tr && is->current_config.exclude_invisible_units_from_stealth_attack && ! patch_Unit_is_visible_to_civ (target, __, this->Body.CivID, 1))
+		return false;
+
+	else if (tr && is->current_config.exclude_passengers_from_stealth_attack && get_unit_ptr (target->Body.Container_Unit) != NULL)
 		return false;
 
 	else

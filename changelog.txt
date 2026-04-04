@@ -6,6 +6,7 @@
 - Can select a different method for unit autoselection that searches for similar units near where the last selected unit started or ended up
   - Option named unit_cycle_search_criteria
 - Can specify a victory animation for air units in aircraft_victory_animation option
+- Option to prevent stealth attacks from targeting units contained in other units (named exclude_passengers_from_stealth_attack)
 - Any unit types listed in exclude_types_from_units_per_tile_limit will be exempted from the stack limit and not count toward it
 - If any unit types are listed in limit_defensive_retreat_on_water_to_types option, only those will be allowed to retreat defensively on water
 - Any unit types listed in can_bombard_only_sea_tiles will be prevented from bombarding land tiles

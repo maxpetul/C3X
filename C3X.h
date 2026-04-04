@@ -321,6 +321,7 @@ struct c3x_config {
 	bool do_not_pollute_impassable_tiles;
 	bool show_hp_of_stealth_attack_options;
 	bool exclude_invisible_units_from_stealth_attack;
+	bool exclude_passengers_from_stealth_attack;
 	bool convert_to_landmark_after_planting_forest;
 	int chance_for_nukes_to_destroy_max_one_hp_units;
 	bool allow_sale_of_aqueducts_and_hospitals;
