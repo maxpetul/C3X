@@ -3818,11 +3818,12 @@ wai_init_cities (int x, int y)
 			     (aerodrome_inst->district_id == AERODROME_DISTRICT_ID) && \
 			     district_is_complete (aerodrome_tile, AERODROME_DISTRICT_ID); \
 			     aerodrome_inst = NULL) \
-				for (int aerodrome_x = 0, aerodrome_y = 0; \
+				for (int aerodrome_x = 0, aerodrome_y = 0, _iter_count = 0; \
+				     _iter_count == 0 && \
 				     district_instance_get_coords (aerodrome_inst, aerodrome_tile, &aerodrome_x, &aerodrome_y) && \
 				     (aerodrome_tile->vtable->m38_Get_Territory_OwnerID (aerodrome_tile) == (unit_ptr)->Body.CivID) && \
 				     patch_Unit_is_in_rebase_range ((unit_ptr), __, aerodrome_x, aerodrome_y); \
-				     aerodrome_x = 0, aerodrome_y = 0)
+				     _iter_count++)
 
 struct tile_rings_iter {
 	int center_x, center_y;
@@ -35603,19 +35604,20 @@ patch_Unit_ai_move_air_bombard_unit (Unit * this)
 	int best_base_score = 0x7fffffff;
 	int base_x = -1, base_y = -1;
 	FOR_AERODROMES_AROUND (this) {
-		if (is_below_stack_limit (aerodrome_tile, this->Body.CivID, this->Body.UnitTypeID)) {
-			int count = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 6, -1, -1);
-			int x_dist = Map_get_x_dist (&p_bic_data->Map, __, aerodrome_x, this->Body.X);
-			int y_dist = Map_get_y_dist (&p_bic_data->Map, __, aerodrome_y, this->Body.Y);
-			int score = (count * 10) + ((x_dist + y_dist) >> 1);
-			if ((this->Body.X == aerodrome_x) && (this->Body.Y == aerodrome_y))
-				score -= 20;
+		if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID, this->Body.UnitTypeID))
+			continue;
 
-			if (score < best_base_score) {
-				best_base_score = score;
-				base_x = aerodrome_x;
-				base_y = aerodrome_y;
-			}
+		int count = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 6, -1, -1);
+		int x_dist = Map_get_x_dist (&p_bic_data->Map, __, aerodrome_x, this->Body.X);
+		int y_dist = Map_get_y_dist (&p_bic_data->Map, __, aerodrome_y, this->Body.Y);
+		int score = (count * 10) + ((x_dist + y_dist) >> 1);
+		if ((this->Body.X == aerodrome_x) && (this->Body.Y == aerodrome_y))
+			score -= 20;
+
+		if (score < best_base_score) {
+			best_base_score = score;
+			base_x = aerodrome_x;
+			base_y = aerodrome_y;
 		}
 	}
 
@@ -35657,19 +35659,20 @@ patch_Unit_ai_move_air_defense_unit (Unit * this)
 	int best_base_score = 0x7fffffff;
 	int base_x = -1, base_y = -1;
 	FOR_AERODROMES_AROUND (this) {
-		if (is_below_stack_limit (aerodrome_tile, this->Body.CivID, this->Body.UnitTypeID)) {
-			int count = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 7, -1, -1);
-			int x_dist = Map_get_x_dist (&p_bic_data->Map, __, aerodrome_x, this->Body.X);
-			int y_dist = Map_get_y_dist (&p_bic_data->Map, __, aerodrome_y, this->Body.Y);
-			int score = (count * 10) + ((x_dist + y_dist) >> 1);
-			if ((this->Body.X == aerodrome_x) && (this->Body.Y == aerodrome_y))
-				score -= 20;
+		if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID, this->Body.UnitTypeID))
+			continue;
 
-			if (score < best_base_score) {
-				best_base_score = score;
-				base_x = aerodrome_x;
-				base_y = aerodrome_y;
-			}
+		int count = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 7, -1, -1);
+		int x_dist = Map_get_x_dist (&p_bic_data->Map, __, aerodrome_x, this->Body.X);
+		int y_dist = Map_get_y_dist (&p_bic_data->Map, __, aerodrome_y, this->Body.Y);
+		int score = (count * 10) + ((x_dist + y_dist) >> 1);
+		if ((this->Body.X == aerodrome_x) && (this->Body.Y == aerodrome_y))
+			score -= 20;
+
+		if (score < best_base_score) {
+			best_base_score = score;
+			base_x = aerodrome_x;
+			base_y = aerodrome_y;
 		}
 	}
 
@@ -35727,21 +35730,22 @@ patch_Unit_ai_move_air_transport (Unit * this)
 		int best_score = -1;
 		int base_x = -1, base_y = -1;
 		FOR_AERODROMES_AROUND (this) {
-			if (is_below_stack_limit (aerodrome_tile, this->Body.CivID, this->Body.UnitTypeID)) {
-				int score = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 0, -1, -1) +
-					count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 1, -1, -1) + 1;
-				if (count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 9, -1, -1) == 0)
-					score *= 2;
-				int cont_id = aerodrome_tile->vtable->m46_Get_ContinentID (aerodrome_tile);
-				if ((cont_id >= 0) && (cont_id < p_bic_data->Map.Continent_Count) &&
-				    (p_bic_data->Map.Continents[cont_id].Body.TileCount > 0x15))
-					score *= 2;
+			if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID, this->Body.UnitTypeID))
+				continue;
 
-				if (score > best_score) {
-					best_score = score;
-					base_x = aerodrome_x;
-					base_y = aerodrome_y;
-				}
+			int score = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 0, -1, -1) +
+				count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 1, -1, -1) + 1;
+			if (count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 9, -1, -1) == 0)
+				score *= 2;
+			int cont_id = aerodrome_tile->vtable->m46_Get_ContinentID (aerodrome_tile);
+			if ((cont_id >= 0) && (cont_id < p_bic_data->Map.Continent_Count) &&
+			    (p_bic_data->Map.Continents[cont_id].Body.TileCount > 0x15))
+				score *= 2;
+
+			if (score > best_score) {
+				best_score = score;
+				base_x = aerodrome_x;
+				base_y = aerodrome_y;
 			}
 		}
 
