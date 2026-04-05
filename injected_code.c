@@ -35428,7 +35428,7 @@ try_path_to_friendly_port_district (Unit * unit, bool require_damaged, bool requ
 					continue;
 			}
 
-			if (! is_below_stack_limit (tile, unit->Body.CivID, UTC_Sea))
+			if (! is_below_stack_limit (tile, unit->Body.CivID, unit->Body.UnitTypeID))
 				continue;
 
 			int path_len = 0;
@@ -35603,7 +35603,7 @@ patch_Unit_ai_move_air_bombard_unit (Unit * this)
 	int best_base_score = 0x7fffffff;
 	int base_x = -1, base_y = -1;
 	FOR_AERODROMES_AROUND (this) {
-		if (is_below_stack_limit (aerodrome_tile, this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class)) {
+		if (is_below_stack_limit (aerodrome_tile, this->Body.CivID, this->Body.UnitTypeID)) {
 			int count = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 6, -1, -1);
 			int x_dist = Map_get_x_dist (&p_bic_data->Map, __, aerodrome_x, this->Body.X);
 			int y_dist = Map_get_y_dist (&p_bic_data->Map, __, aerodrome_y, this->Body.Y);
@@ -35657,7 +35657,7 @@ patch_Unit_ai_move_air_defense_unit (Unit * this)
 	int best_base_score = 0x7fffffff;
 	int base_x = -1, base_y = -1;
 	FOR_AERODROMES_AROUND (this) {
-		if (is_below_stack_limit (aerodrome_tile, this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class)) {
+		if (is_below_stack_limit (aerodrome_tile, this->Body.CivID, this->Body.UnitTypeID)) {
 			int count = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 7, -1, -1);
 			int x_dist = Map_get_x_dist (&p_bic_data->Map, __, aerodrome_x, this->Body.X);
 			int y_dist = Map_get_y_dist (&p_bic_data->Map, __, aerodrome_y, this->Body.Y);
@@ -35727,7 +35727,7 @@ patch_Unit_ai_move_air_transport (Unit * this)
 		int best_score = -1;
 		int base_x = -1, base_y = -1;
 		FOR_AERODROMES_AROUND (this) {
-			if (is_below_stack_limit (aerodrome_tile, this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class)) {
+			if (is_below_stack_limit (aerodrome_tile, this->Body.CivID, this->Body.UnitTypeID)) {
 				int score = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 0, -1, -1) +
 					count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 1, -1, -1) + 1;
 				if (count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 9, -1, -1) == 0)
