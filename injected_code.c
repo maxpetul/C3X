@@ -32376,7 +32376,14 @@ patch_Civilopedia_Article_m01_Draw_UNIT (Civilopedia_Article * this)
 			entries[0] = strdup (s);
 		}
 
-		print_pedia_unit_stats (&p_civilopedia_form->Base.Data.Canvas, 213, is->pedia_unit_stats_second_column_strs, entry_count);
+		if (entry_count <= 6)
+			print_pedia_unit_stats (&p_civilopedia_form->Base.Data.Canvas, 213, entries, entry_count);
+		else { // If more than 6 entries, split some off into a third column
+			int third_count = entry_count / 2,
+			    second_count = entry_count - third_count;
+			print_pedia_unit_stats (&p_civilopedia_form->Base.Data.Canvas, 198, entries, second_count);
+			print_pedia_unit_stats (&p_civilopedia_form->Base.Data.Canvas, 355, &entries[second_count], third_count);
+		}
 
 		for (int n = 0; n < capacity; n++) {
 			free (entries[n]);
