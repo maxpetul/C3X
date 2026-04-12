@@ -627,6 +627,10 @@ enum c3x_label {
 	CL_IN_STATE_30,
 	CL_IN_STATE_33,
 
+	// For unit stats on Civilopedia
+	CL_HP_BONUS,
+	CL_WORKER_STRENGTH,
+
 	CL_AGRICULTURAL,
 	CL_COMMERCIAL,
 	CL_EXPANSIONIST,

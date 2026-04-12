@@ -32376,6 +32376,29 @@ patch_Civilopedia_Article_m01_Draw_UNIT (Civilopedia_Article * this)
 			entries[0] = strdup (s);
 		}
 
+		// Add bombard range if tactical nuke with bombard strength == 0 because the base game won't display it
+		if (entry_count < capacity &&
+		    this->unit_type->Unit_Class == UTC_Land &&
+		    this->unit_type->Bombard_Strength == 0 &&
+		    UnitType_has_ability (this->unit_type, __, UTA_Nuclear_Weapon) &&
+		    UnitType_has_ability (this->unit_type, __, UTA_Tacticle_Missile)) {
+			snprintf (s, (sizeof s) - 1, "%s: %d", (*p_labels)[LBL_BOMBARD_RANGE], this->unit_type->Bombard_Range);
+			entries[entry_count++] = strdup (s);
+		}
+
+		// Add HP Bonus
+		if (entry_count < capacity && this->unit_type->Hit_Point_Bonus != 0) {
+			snprintf (s, (sizeof s) - 1, "%s: %d", is->c3x_labels[CL_HP_BONUS], this->unit_type->Hit_Point_Bonus);
+			entries[entry_count++] = strdup (s);
+		}
+
+		// Add worker strength
+		int rounded_worker_strength = ((int)(this->unit_type->WorkerStrength * 10000.0f) + 50) / 100;
+		if (entry_count < capacity && rounded_worker_strength != 0) {
+			snprintf (s, (sizeof s) - 1, "%s: %d%%", is->c3x_labels[CL_WORKER_STRENGTH], rounded_worker_strength);
+			entries[entry_count++] = strdup (s);
+		}
+
 		if (entry_count <= 6)
 			print_pedia_unit_stats (&p_civilopedia_form->Base.Data.Canvas, 213, entries, entry_count);
 		else { // If more than 6 entries, split some off into a third column
