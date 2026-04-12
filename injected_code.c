@@ -32350,13 +32350,21 @@ print_pedia_unit_stats (PCX_Image * canvas, int x, char ** entries, int entry_co
 void __fastcall
 patch_Civilopedia_Article_m01_Draw_UNIT (Civilopedia_Article * this)
 {
+	// Make sure list of second column stat strings is clear before drawing
+	char ** entries = is->pedia_unit_stats_second_column_strs;
+	int capacity = ARRAY_LEN (is->pedia_unit_stats_second_column_strs);
+	if (is->current_config.expand_civilopedia_unit_stats)
+		for (int n = 0; n < capacity; n++) {
+			free (entries[n]);
+			entries[n] = NULL;
+		}
+
 	draw_civilopedia_article (Civilopedia_Article_m01_Draw_UNIT, this);
 
-	if (is->current_config.expand_civilopedia_unit_stats) {
+	bool drew_stats = this->show_description == false || this->more_text_line_count == 0;
+	if (is->current_config.expand_civilopedia_unit_stats && drew_stats) {
 		// By this point entries have been filled in for the second column of unit stats (see ...draw_pedia_unit_stats_2nd_column), which has
 		// not actually been drawn.
-		char ** entries = is->pedia_unit_stats_second_column_strs;
-		int capacity = ARRAY_LEN (is->pedia_unit_stats_second_column_strs);
 		int entry_count = 0;
 		for (int n = 0; n < capacity; n++)
 			if (entries[n] != NULL)
@@ -32407,11 +32415,6 @@ patch_Civilopedia_Article_m01_Draw_UNIT (Civilopedia_Article * this)
 			print_pedia_unit_stats (&p_civilopedia_form->Base.Data.Canvas, 198, entries, second_count);
 			print_pedia_unit_stats (&p_civilopedia_form->Base.Data.Canvas, 355, &entries[second_count], third_count);
 		}
-
-		for (int n = 0; n < capacity; n++) {
-			free (entries[n]);
-			entries[n] = NULL;
-		}
 	}
 }
 
@@ -32421,7 +32424,7 @@ patch_PCX_Image_draw_pedia_unit_stats_2nd_column (PCX_Image * this, int edx, cha
 	if (is->current_config.expand_civilopedia_unit_stats)
 		for (int n = 0; n < ARRAY_LEN (is->pedia_unit_stats_second_column_strs); n++)
 			if (is->pedia_unit_stats_second_column_strs[n] == NULL) {
-				is->pedia_unit_stats_second_column_strs[n] = strdup (str);
+				is->pedia_unit_stats_second_column_strs[n] = strdup (str); // Record what would have been drawn here
 				str = " "; // Draw empty string. Can't skip draw call entirely b/c we need the return value
 				break;
 			}
