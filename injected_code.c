@@ -17672,6 +17672,7 @@ patch_init_floating_point ()
 		{"accentuate_cities_on_minimap"                          , false, offsetof (struct c3x_config, accentuate_cities_on_minimap)},
 		{"allow_multipage_civilopedia_descriptions"              , true , offsetof (struct c3x_config, allow_multipage_civilopedia_descriptions)},
 		{"reformat_turns_remaining_on_domestic_advisor_screen"   , true , offsetof (struct c3x_config, reformat_turns_remaining_on_domestic_advisor_screen)},
+		{"expand_right_click_menu_unit_stats"                    , true , offsetof (struct c3x_config, expand_right_click_menu_unit_stats)},
 		{"enable_trade_net_x"                                    , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                            , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                    , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -29195,6 +29196,8 @@ patch_MenuUnitItem_write_text_to_temp_str (MenuUnitItem * this)
 	MenuUnitItem_write_text_to_temp_str (this);
 
 	Unit * unit = this->unit;
+	char s[500];
+
 	char repl_verb[32];
 	if (is->current_config.describe_states_of_units_on_menu &&
 	    (unit->Body.CivID == p_main_screen_form->Player_CivID) &&
@@ -29203,9 +29206,89 @@ patch_MenuUnitItem_write_text_to_temp_str (MenuUnitItem * this)
 		char * verb = (unit->Body.UnitState == UnitState_Fortifying) ? (*p_labels)[LBL_WAKE] : (*p_labels)[LBL_ACTIVATE];
 		char * verb_str_start = strstr (temp_str, verb);
 		if (verb_str_start != NULL) {
-			char s[500];
 			char * verb_str_end = verb_str_start + strlen (verb);
 			snprintf (s, sizeof s, "%.*s%s%s", verb_str_start - temp_str, temp_str, repl_verb, verb_str_end);
+			s[(sizeof s) - 1] = '\0';
+			strncpy (temp_str, s, sizeof s);
+		}
+	}
+
+	if (is->current_config.expand_right_click_menu_unit_stats) {
+		char * stats_start_paren = NULL,
+		     * stats_end_paren = NULL; {
+			int len = strlen (temp_str);
+			for (int n = len - 1; n >= 0; n--)
+				if (temp_str[n] == ')') {
+					stats_end_paren = &temp_str[n];
+					break;
+				}
+
+			if (stats_end_paren != NULL) {
+				int nesting = 0;
+				for (char * c = stats_end_paren; c != temp_str; c--) {
+					if (*c == ')')
+						nesting++;
+					else if (*c == '(') {
+						nesting--;
+						if (nesting == 0) {
+							stats_start_paren = c;
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		if (stats_start_paren != NULL && stats_end_paren != NULL) {
+			UnitType * unit_type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
+
+			char attack[30];
+			if (unit_type->Unit_Class != UTC_Air && unit_type->Bombard_Strength == 0)
+				snprintf (attack, sizeof attack, "%d", Unit_get_attack_strength (unit));
+			else {
+				int range = unit_type->Unit_Class == UTC_Air ? unit_type->OperationalRange : unit_type->Bombard_Range;
+				snprintf (attack, sizeof attack, "%d(%d.%d.%d)", Unit_get_attack_strength (unit), unit_type->Bombard_Strength, unit_type->FireRate, range);
+			}
+			attack[(sizeof attack) - 1] = '\0';
+
+			char defense[30];
+			if (unit_type->Air_Defence == 0)
+				snprintf (defense, sizeof defense, ".%d", Unit_get_defense_strength (unit));
+			else
+				snprintf (defense, sizeof defense, ".%d(%d)", Unit_get_defense_strength (unit), unit_type->Air_Defence);
+			defense[(sizeof defense) - 1] = '\0';
+
+			char moves[30];
+			if (Unit_get_containing_army (unit) == NULL && ! UnitType_has_ability (unit_type, __, UTA_Immobile)) {
+				int rmr = p_bic_data->General.RoadsMovementRate,
+				    max_moves = Unit_get_max_move_points (unit) / rmr;
+				if (unit->Body.CivID == p_main_screen_form->Player_CivID) {
+					int remaining_move_points = clamp (0, 9999, Unit_get_max_move_points (unit) - unit->Body.Moves),
+					    remaining_moves = (remaining_move_points + rmr - 1) / rmr;
+					snprintf (moves, sizeof moves, ".%d/%d", remaining_moves, max_moves);
+				} else
+					snprintf (moves, sizeof moves, ".%d", max_moves);
+			} else
+				moves[0] = '\0';
+			moves[(sizeof moves) - 1] = '\0';
+
+			char transport[30];
+			if (unit->Body.CivID == p_main_screen_form->Player_CivID && Unit_get_transport_capacity (unit) > 0)
+				snprintf (transport, sizeof transport, ".%d/%d", Unit_count_contained_units (unit), Unit_get_transport_capacity (unit));
+			else
+				transport[0] = '\0';
+			transport[(sizeof transport) - 1] = '\0';
+
+			bool is_captured = unit->Body.RaceID != leaders[unit->Body.CivID].RaceID;
+			int rounded_worker_strength = ((int)(unit_type->WorkerStrength * 10000.0f * (is_captured ? 0.5f : 1.0f)) + 50) / 100;
+			char worker_strength[30];
+			if (rounded_worker_strength != 0)
+				snprintf (worker_strength, sizeof worker_strength, ".%d%%", rounded_worker_strength);
+			else
+				worker_strength[0] = '\0';
+			worker_strength[(sizeof worker_strength) - 1] = '\0';
+
+			snprintf (s, sizeof s, "%.*s(%s%s%s%s%s)", stats_start_paren - temp_str, temp_str, attack, defense, moves, transport, worker_strength);
 			s[(sizeof s) - 1] = '\0';
 			strncpy (temp_str, s, sizeof s);
 		}
