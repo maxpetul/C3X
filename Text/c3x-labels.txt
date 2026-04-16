@@ -96,7 +96,7 @@ Building Railroad
 Planting Forest
 Clearing Forest
 Clearing Wetlands
-Clearing Pollution
+Clearing Damage
 Building Airfield
 Building Radar Tower
 Building Outpost
