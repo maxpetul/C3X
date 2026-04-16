@@ -35545,7 +35545,7 @@ patch_Unit_ai_move_naval_missile_transport (Unit * this)
 	if (! is->current_config.enable_districts || 
 		! is->current_config.enable_port_districts ||
 		! is->current_config.naval_units_use_port_districts_not_cities) {
-		patch_Unit_ai_move_naval_missile_transport (this);
+		Unit_ai_move_naval_missile_transport (this);
 		return;
 	}
 
