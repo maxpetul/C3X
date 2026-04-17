@@ -22619,6 +22619,19 @@ patch_Unit_disembark_passengers (Unit * this, int edx, int tile_x, int tile_y)
 	     * target = tile_at (tile_x      , tile_y);
 	if (is->current_config.patch_blocked_disembark_freeze && (tile != NULL) && (target != NULL)) {
 		enum SquareTypes target_terrain = target->vtable->m50_Get_Square_BaseType (target);
+
+		bool blocked_by_district = false, blocked_by_district_for_wheeled = false; {
+			if (is->current_config.enable_districts) {
+				bool impassible, impassible_to_wheeled;
+				if (great_wall_blocks_civ (target, this->Body.CivID))
+					blocked_by_district = blocked_by_district_for_wheeled = true;
+				else if (get_tile_district_impassibility (target, &impassible, &impassible_to_wheeled)) {
+					blocked_by_district = impassible;
+					blocked_by_district_for_wheeled = impassible || impassible_to_wheeled;
+				}
+			}
+		}
+
 		FOR_UNITS_ON (uti, tile) {
 			Unit * escortee = get_unit_ptr (uti.unit->Body.escortee);
 			if (   (escortee != NULL)
@@ -22628,7 +22641,10 @@ patch_Unit_disembark_passengers (Unit * this, int edx, int tile_x, int tile_y)
 				|| (   is->current_config.disallow_trespassing
 				    && check_trespassing (uti.unit->Body.CivID, tile, target)
 				    && ! is_allowed_to_trespass (uti.unit))
-				|| Unit_is_terrain_impassable (uti.unit, __, target_terrain)))
+				|| Unit_is_terrain_impassable (uti.unit, __, target_terrain)
+				|| blocked_by_district
+				|| (   blocked_by_district_for_wheeled
+				    && Unit_has_ability (uti.unit, __, UTA_Wheeled))))
 				Unit_set_escortee (uti.unit, __, -1);
 		}
 	}
@@ -28035,6 +28051,29 @@ patch_Unit_can_disembark_anything (Unit * this, int edx, int tile_x, int tile_y)
 			}
 		if (stack_limited_for_all)
 			return false;
+	}
+
+	// Apply district restrictions on tile entry
+	if (base && is->current_config.enable_districts) {
+		if (great_wall_blocks_civ (target_tile, this->Body.CivID))
+			return false;
+
+		bool impassible = false, impassible_to_wheeled = false;
+		if (get_tile_district_impassibility (target_tile, &impassible, &impassible_to_wheeled)) {
+			if (impassible)
+				return false;
+
+			if (impassible_to_wheeled) {
+				bool any_non_wheeled_passengers = false;
+				FOR_UNITS_ON (uti, this_tile)
+					if ((uti.unit->Body.Container_Unit == this->Body.ID) && ! Unit_has_ability (uti.unit, __, UTA_Wheeled)) {
+						any_non_wheeled_passengers = true;
+						break;
+					}
+				if (! any_non_wheeled_passengers)
+					return false;
+			}
+		}
 	}
 
 	// Apply trespassing restriction. First check if this civ may move into (tile_x, tile_y) without trespassing. If it would be trespassing, then
