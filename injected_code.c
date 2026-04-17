@@ -21628,11 +21628,12 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 bool __fastcall
 patch_Unit_can_hurry_production (Unit * this, int edx, City * city, bool exclude_cheap_improvements)
 {
-	if (is->current_config.allow_military_leaders_to_hurry_wonders && Unit_has_ability (this, __, UTA_Leader)) {
-		LeaderKind actual_kind = this->Body.leader_kind;
+	if (is->current_config.allow_military_leaders_to_hurry_wonders &&
+	    Unit_has_ability (this, __, UTA_Leader) &&
+	    this->Body.leader_kind == LK_Military) {
 		this->Body.leader_kind = LK_Scientific;
 		bool tr = Unit_can_hurry_production (this, __, city, exclude_cheap_improvements);
-		this->Body.leader_kind = actual_kind;
+		this->Body.leader_kind = LK_Military;
 		return tr;
 	} else
 		return Unit_can_hurry_production (this, __, city, exclude_cheap_improvements);
