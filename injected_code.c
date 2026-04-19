@@ -36229,6 +36229,14 @@ patch_Main_Screen_Form_find_next_unit_for_cycling (Main_Screen_Form * this)
 }
 
 void __fastcall
+patch_UnitIDList_insert_after_init (UnitIDList * this, int edx, int id, UnitIDItem * item)
+{
+	// If using non-standard unit cycling, avoid calling this method b/c it sometimes causes a crash
+	if (is->current_config.unit_cycle_search_criteria == UCSC_STANDARD)
+		UnitIDList_insert_after (this, __, id, item);
+}
+
+void __fastcall
 patch_City_m22 (City * this, int edx, bool param_1)
 {
 	int * p_stack = (int *)&param_1;
