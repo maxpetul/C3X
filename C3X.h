@@ -350,6 +350,7 @@ struct c3x_config {
 	bool allow_sale_of_small_wonders;
 	enum no_ai_patrol_override override_no_ai_patrol;
 	enum barbarian_activity_override override_barbarian_activity_level_for_scenario_maps;
+	bool initialize_preplaced_scenario_leaders_as_mgls;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;

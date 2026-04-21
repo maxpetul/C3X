@@ -1,3 +1,5 @@
+- Option to initialize preplaced scenario leader units properly so they behave like normal military great leaders spawned during the game
+  - Named initialize_preplaced_scenario_leaders_as_mgls
 - Fix crash in modded naval missile transport unit AI that occurs when districts are turned off
 - Fix crash caused by AI disembarking onto tile made impassible by districts
 - Fix possible crash when spawning unit during movement phase (e.g. popping a settler from a hut) with non-standard unit cycling turned on

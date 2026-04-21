@@ -17739,6 +17739,7 @@ patch_init_floating_point ()
 		{"allow_adjacent_resources_of_different_types"           , false, offsetof (struct c3x_config, allow_adjacent_resources_of_different_types)},
 		{"allow_corruption_in_capital"                           , false, offsetof (struct c3x_config, allow_corruption_in_capital)},
 		{"allow_sale_of_small_wonders"                           , false, offsetof (struct c3x_config, allow_sale_of_small_wonders)},
+		{"initialize_preplaced_scenario_leaders_as_mgls"         , false, offsetof (struct c3x_config, initialize_preplaced_scenario_leaders_as_mgls)},
 	};
 
 	struct integer_config_option {
@@ -29266,6 +29267,13 @@ patch_Map_place_scenario_things (Map * this)
 	is->is_placing_scenario_things = true;
 
 	Map_place_scenario_things (this);
+
+	if (is->current_config.initialize_preplaced_scenario_leaders_as_mgls && p_units->Units != NULL)
+		for (int n = 0; n <= p_units->LastIndex; n++) {
+			Unit * unit = get_unit_ptr (n);
+			if (unit != NULL && Unit_has_ability (unit, __, UTA_Leader) && unit->Body.leader_kind == 0)
+				unit->Body.leader_kind = LK_Military;
+		}
 
 	// If there are any mills in the config then recompute yields & happiness in all cities. This must be done because we avoid doing this as
 	// mills are added to cities while placing scenario things.
