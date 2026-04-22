@@ -27653,6 +27653,17 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 	return tr;
 }
 
+void __fastcall
+patch_Unit_load_into_army_after_move_to_adj_tile (Unit * this, int edx, Unit * loadee)
+{
+	// Take care not to load an army into itself b/c that will cause the game to crash. The game may attempt to do that at the end of
+	// move_to_adjacent_tile b/c we return the unit itself as a transport target when we want to allow it to move onto coast.
+	if (is->coast_walk_transport_override && this == loadee)
+		return;
+
+	Unit_load_into_army (this, __, loadee);
+}
+
 int __fastcall
 patch_Unit_teleport (Unit * this, int edx, int tile_x, int tile_y, Unit * unit_telepad)
 {
@@ -31807,11 +31818,13 @@ patch_find_nearest_city_for_ai_alliance_eval (int tile_x, int tile_y, int owner_
 int __fastcall
 patch_Unit_get_max_move_points (Unit * this)
 {
-	if (Unit_has_ability (this, __, UTA_Army) && is->current_config.patch_empty_army_movement) {
+	bool is_army = Unit_has_ability (this, __, UTA_Army);
+	if (is_army && is->current_config.patch_empty_army_movement) {
 		int slowest_member_mp = INT_MAX;
 		bool any_units_in_army = false;
 		FOR_UNITS_ON (uti, tile_at (this->Body.X, this->Body.Y)) {
-			if (uti.unit->Body.Container_Unit == this->Body.ID) {
+			// Must check 'uni.unit != this' to prevent recursive crash mentioned below
+			if (uti.unit != this && uti.unit->Body.Container_Unit == this->Body.ID) {
 				any_units_in_army = true;
 				slowest_member_mp = not_above (Unit_get_max_move_points (uti.unit), slowest_member_mp);
 			}
@@ -31820,6 +31833,15 @@ patch_Unit_get_max_move_points (Unit * this)
 			return slowest_member_mp + p_bic_data->General.RoadsMovementRate;
 		else
 			return get_max_move_points (&p_bic_data->UnitTypes[this->Body.UnitTypeID], this->Body.CivID);
+
+	// If the unit is an army and has been set as contained inside itself for a coast walk, the game will crash due to recursive calls computing
+	// the max MP of each member. In that case, temporarily restore its true container.
+	} else if (is_army && is->coast_walk_transport_override && this->Body.Container_Unit == this->Body.ID) {
+		this->Body.Container_Unit = is->coast_walk_prev_container;
+		int tr = Unit_get_max_move_points (this);
+		this->Body.Container_Unit = this->Body.ID;
+		return tr;
+
 	} else
 		return Unit_get_max_move_points (this);
 }
