@@ -5778,7 +5778,8 @@ generate_ai_canal_and_bridge_targets ()
 {
 	if (is->ai_candidate_bridge_or_canals_initialized)
 		return;
-	if ((! is->current_config.enable_canal_districts) && (! is->current_config.enable_bridge_districts))
+	if (((! is->current_config.enable_canal_districts) || (is->current_config.max_contiguous_canal_districts <= 0)) &&
+	    ((! is->current_config.enable_bridge_districts) || (is->current_config.max_contiguous_bridge_districts <= 0)))
 		return;
 
 	Map * map = &p_bic_data->Map;
@@ -5791,14 +5792,18 @@ generate_ai_canal_and_bridge_targets ()
 	if (block_size <= 0)
 		block_size = 10;
 
-	if (is->current_config.enable_bridge_districts && is->current_config.ai_builds_bridges) {
+	if (is->current_config.enable_bridge_districts &&
+	    is->current_config.ai_builds_bridges &&
+	    (is->current_config.max_contiguous_bridge_districts > 0)) {
 		generate_ai_bridge_candidates_by_block (
 			map,
 			block_size,
 			is->current_config.max_contiguous_bridge_districts);
 	}
 
-	if (is->current_config.enable_canal_districts && is->current_config.ai_builds_canals) {
+	if (is->current_config.enable_canal_districts &&
+	    is->current_config.ai_builds_canals &&
+	    (is->current_config.max_contiguous_canal_districts > 0)) {
 		generate_ai_canal_candidates_by_block (
 			map,
 			block_size,
@@ -12872,6 +12877,9 @@ district_line_is_straight (int tile_x, int tile_y, int district_id)
 bool
 bridge_district_tile_is_valid (int tile_x, int tile_y)
 {
+	if (is->current_config.max_contiguous_bridge_districts <= 0)
+		return false;
+
 	if (! tile_is_coastal_water (tile_x, tile_y))
 		return false;
 
@@ -12892,29 +12900,27 @@ bridge_district_tile_is_valid (int tile_x, int tile_y)
 	if (! has_adjacent_land_or_bridge)
 		return false;
 
-	if (is->current_config.max_contiguous_bridge_districts > 0) {
-		int max_bridges = is->current_config.max_contiguous_bridge_districts;
+	int max_bridges = is->current_config.max_contiguous_bridge_districts;
 
-		int ns_count = count_contiguous_bridge_districts (tile_x, tile_y, 0, -2) +
-			       count_contiguous_bridge_districts (tile_x, tile_y, 0, 2);
-		if (ns_count >= max_bridges)
-			return false;
+	int ns_count = count_contiguous_bridge_districts (tile_x, tile_y, 0, -2) +
+		       count_contiguous_bridge_districts (tile_x, tile_y, 0, 2);
+	if (ns_count >= max_bridges)
+		return false;
 
-		int we_count = count_contiguous_bridge_districts (tile_x, tile_y, -2, 0) +
-			       count_contiguous_bridge_districts (tile_x, tile_y, 2, 0);
-		if (we_count >= max_bridges)
-			return false;
+	int we_count = count_contiguous_bridge_districts (tile_x, tile_y, -2, 0) +
+		       count_contiguous_bridge_districts (tile_x, tile_y, 2, 0);
+	if (we_count >= max_bridges)
+		return false;
 
-		int swne_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, 1) +
-				 count_contiguous_bridge_districts (tile_x, tile_y, 1, -1);
-		if (swne_count >= max_bridges)
-			return false;
+	int swne_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, 1) +
+			 count_contiguous_bridge_districts (tile_x, tile_y, 1, -1);
+	if (swne_count >= max_bridges)
+		return false;
 
-		int nwse_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, -1) +
-				 count_contiguous_bridge_districts (tile_x, tile_y, 1, 1);
-		if (nwse_count >= max_bridges)
-			return false;
-	}
+	int nwse_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, -1) +
+			 count_contiguous_bridge_districts (tile_x, tile_y, 1, 1);
+	if (nwse_count >= max_bridges)
+		return false;
 
 	return district_line_is_straight (tile_x, tile_y, BRIDGE_DISTRICT_ID);
 }
@@ -12922,14 +12928,15 @@ bridge_district_tile_is_valid (int tile_x, int tile_y)
 bool
 canal_district_tile_is_valid (int tile_x, int tile_y)
 {
+	if (is->current_config.max_contiguous_canal_districts <= 0)
+		return false;
+
 	if (tile_is_water (tile_x, tile_y))
 		return false;
 
-	if (is->current_config.max_contiguous_canal_districts > 0) {
-		int count = count_contiguous_canal_districts (tile_x, tile_y, is->current_config.max_contiguous_canal_districts);
-		if (count > is->current_config.max_contiguous_canal_districts)
-			return false;
-	}
+	int count = count_contiguous_canal_districts (tile_x, tile_y, is->current_config.max_contiguous_canal_districts);
+	if (count > is->current_config.max_contiguous_canal_districts)
+		return false;
 
 	Map * map = &p_bic_data->Map;
 	int const adj_dx[8] = { 0, 0, -2, 2, 1, 1, -1, -1 };
@@ -12977,6 +12984,7 @@ can_build_district_on_tile (Tile * tile, int district_id, int civ_id)
 	if ((cfg->command == UCV_Build_Aerodrome)       && !is->current_config.enable_aerodrome_districts)        return false;
 	if ((cfg->command == UCV_Build_Port)            && !is->current_config.enable_port_districts)             return false;
 	if ((cfg->command == UCV_Build_Bridge)          && !is->current_config.enable_bridge_districts)           return false;
+	if ((cfg->command == UCV_Build_Canal)           && !is->current_config.enable_canal_districts)            return false;
 	if ((cfg->command == UCV_Build_CentralRailHub)  && !is->current_config.enable_central_rail_hub_districts) return false;
 	if ((cfg->command == UCV_Build_EnergyGrid)      && !is->current_config.enable_energy_grid_districts)      return false;
 	if ((cfg->command == UCV_Build_GreatWall)       && !is->current_config.enable_great_wall_districts)       return false;
@@ -17599,7 +17607,6 @@ patch_init_floating_point ()
 		{"enable_ai_production_ranking"                          , true , offsetof (struct c3x_config, enable_ai_production_ranking)},
 		{"enable_ai_city_location_desirability_display"          , true,  offsetof (struct c3x_config, enable_ai_city_location_desirability_display)},
 		{"show_ai_city_location_desirability_if_settler"         , false, offsetof (struct c3x_config, show_ai_city_location_desirability_if_settler)},
-		{"auto_zoom_city_screen_for_large_work_areas"            , true,  offsetof (struct c3x_config, auto_zoom_city_screen_for_large_work_areas)},
 		{"zero_corruption_when_off"                              , true , offsetof (struct c3x_config, zero_corruption_when_off)},
 		{"disallow_land_units_from_affecting_water_tiles"        , true , offsetof (struct c3x_config, disallow_land_units_from_affecting_water_tiles)},
 		{"dont_end_units_turn_after_airdrop"                     , false, offsetof (struct c3x_config, dont_end_units_turn_after_airdrop)},
@@ -29335,7 +29342,10 @@ void __fastcall
 patch_Main_Screen_Form_open_quick_build_chooser (Main_Screen_Form * this, int edx, City * city, int mouse_x, int mouse_y)
 {
 	recompute_resources_if_necessary ();
+	bool restore_named_tile_menu = is->named_tile_menu_active;
+	is->named_tile_menu_active = false;
 	Main_Screen_Form_open_quick_build_chooser (this, __, city, mouse_x, mouse_y);
+	is->named_tile_menu_active = restore_named_tile_menu;
 }
 
 int __fastcall
