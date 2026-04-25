@@ -261,6 +261,7 @@ struct c3x_config {
 	int ai_multi_start_extra_palaces_capacity;
 	bool promote_wonder_decorruption_effect;
 	bool allow_military_leaders_to_hurry_wonders;
+	bool allow_multiple_battle_created_units_per_player;
 	int ai_research_multiplier;
 	int ai_settler_perfume_on_founding;
 	int ai_settler_perfume_on_founding_duration;

@@ -16233,6 +16233,9 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 			int_to_bytes (ADDR_TRADABLE_UNITS_SIZE_TO_CLEAR, tradable_units_size);
 	}
 
+	// Remove the standard rule that blocks battle-created units while the player already has one
+	set_nopification (cfg->allow_multiple_battle_created_units_per_player, ADDR_EXISTING_BATTLE_CREATED_UNIT_CHECK, 6);
+
 	// Remove era limit
 	// replacing 0x74 (= jump if zero [after cmp'ing era count with 4]) with 0xEB
 	WITH_MEM_PROTECTION (ADDR_ERA_COUNT_CHECK, 1, PAGE_EXECUTE_READWRITE)
@@ -17615,6 +17618,7 @@ patch_init_floating_point ()
 		{"allow_defensive_retreat_on_water"                      , false, offsetof (struct c3x_config, allow_defensive_retreat_on_water)},
 		{"promote_wonder_decorruption_effect"                    , false, offsetof (struct c3x_config, promote_wonder_decorruption_effect)},
 		{"allow_military_leaders_to_hurry_wonders"               , false, offsetof (struct c3x_config, allow_military_leaders_to_hurry_wonders)},
+		{"allow_multiple_battle_created_units_per_player"        , false, offsetof (struct c3x_config, allow_multiple_battle_created_units_per_player)},
 		{"aggressively_penalize_bankruptcy"                      , false, offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
 		{"no_penalty_exception_for_agri_fresh_water_city_tiles"  , false, offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
 		{"use_offensive_artillery_ai"                            , true , offsetof (struct c3x_config, use_offensive_artillery_ai)},
