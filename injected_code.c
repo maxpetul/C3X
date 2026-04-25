@@ -21478,7 +21478,18 @@ patch_Game_get_wonder_city_id (Game * this, int edx, int wonder_improvement_id)
 		Improvement * improv = &p_bic_data->Improvements[wonder_improvement_id];
 		if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
 			// Need to check if Small_Wonders array is NULL b/c recompute_auto_improvements gets called with leaders that are absent/dead.
-			return (leader->Small_Wonders != NULL) ? leader->Small_Wonders[wonder_improvement_id] : -1;
+			int tr = (leader->Small_Wonders != NULL) ? leader->Small_Wonders[wonder_improvement_id] : -1;
+
+			// If the palace has been set as a small wonder, the Small_Wonders entry for it may not have been updated properly. In that
+			// case, check the player's CapitalID as well.
+			City * capital;
+			if (tr == -1 &&
+			    improv->ImprovementFlags & ITF_Center_of_Empire &&
+			    (capital = get_city_ptr (leader->CapitalID)) != NULL &&
+			    patch_City_has_improvement (capital, __, wonder_improvement_id, false))
+				tr = capital->Body.ID;
+
+			return tr;
 		}
 	}
 	return Game_get_wonder_city_id (this, __, wonder_improvement_id);
