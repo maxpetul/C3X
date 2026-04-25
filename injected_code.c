@@ -211,6 +211,10 @@ get_city_ptr (int id)
 	return NULL;
 }
 
+// Forward declarations for unit counter system (defined after their dependencies)
+enum recognizable_parse_result parse_unit_counter_group (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_group);
+enum recognizable_parse_result parse_counter_rule (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_rule);
+
 // Declare various functions needed for districts and hard to untangle and reorder here
 void __fastcall patch_City_recompute_yields_and_happiness (City * this);
 void __fastcall patch_Map_build_trade_network (Map * this);
@@ -774,6 +778,13 @@ reset_to_base_config ()
 	// Overwrite the current config with the base config
 	memcpy (&is->current_config, &is->base_config, sizeof is->current_config);
 
+	// These fields are heap-allocated and must not be inherited from base_config
+	// (base_config never owns valid pointers for them)
+	is->current_config.unit_counter_groups       = NULL;
+	is->current_config.count_unit_counter_groups = 0;
+	is->current_config.counter_rules             = NULL;
+	is->current_config.count_counter_rules       = 0;
+
 	// Recreate loaded config names list with just the base config
 	is->loaded_config_names = malloc (sizeof *is->loaded_config_names);
 	is->loaded_config_names->name = strdup ("(base)");
@@ -1323,6 +1334,7 @@ parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_line
 	} else
 		return RPR_PARSE_ERROR;
 }
+
 
 enum recognizable_parse_result
 parse_civ_name_alias_list  (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_civ_era_alias_list)
@@ -2620,6 +2632,22 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->share_visibility_in_hotseat = ival != 0;
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
+				} else if (slice_matches_str (&p.key, "unit_group")) {
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct unit_counter_group),
+											 parse_unit_counter_group,
+											 (void **)&cfg->unit_counter_groups,
+											 &cfg->count_unit_counter_groups)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "counter_rule")) {
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct counter_rule),
+											 parse_counter_rule,
+											 (void **)&cfg->counter_rules,
+											 &cfg->count_counter_rules)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
@@ -3818,12 +3846,11 @@ wai_init_cities (int x, int y)
 			     (aerodrome_inst->district_id == AERODROME_DISTRICT_ID) && \
 			     district_is_complete (aerodrome_tile, AERODROME_DISTRICT_ID); \
 			     aerodrome_inst = NULL) \
-				for (int aerodrome_x = 0, aerodrome_y = 0, _iter_count = 0; \
-				     _iter_count == 0 && \
+				for (int aerodrome_x = 0, aerodrome_y = 0; \
 				     district_instance_get_coords (aerodrome_inst, aerodrome_tile, &aerodrome_x, &aerodrome_y) && \
 				     (aerodrome_tile->vtable->m38_Get_Territory_OwnerID (aerodrome_tile) == (unit_ptr)->Body.CivID) && \
 				     patch_Unit_is_in_rebase_range ((unit_ptr), __, aerodrome_x, aerodrome_y); \
-				     _iter_count++)
+				     aerodrome_x = 0, aerodrome_y = 0)
 
 struct tile_rings_iter {
 	int center_x, center_y;
@@ -7760,6 +7787,247 @@ find_special_district_index_by_name (char const * name)
 			return i;
 	}
 	return -1;
+}
+
+
+// ---------------------------------------------------------------
+// 兵种克制系统
+// ---------------------------------------------------------------
+
+struct unit_counter_group *
+find_unit_counter_group_by_name (struct c3x_config * cfg, char const * name)
+{
+	for (int i = 0; i < cfg->count_unit_counter_groups; i++) {
+		struct unit_counter_group * g = &cfg->unit_counter_groups[i];
+		if (g->name && strcmp (g->name, name) == 0)
+			return g;
+	}
+	return NULL;
+}
+
+bool
+unit_type_in_group (struct unit_counter_group * g, int type_id)
+{
+	char const * name = p_bic_data->UnitTypes[type_id].Name;
+	for (int i = 0; i < g->count_type_ids; i++)
+		if (strcmp (p_bic_data->UnitTypes[g->type_ids[i]].Name, name) == 0)
+			return true;
+	return false;
+}
+
+bool
+unit_matches_counter_side (struct c3x_config * cfg, int type_id,
+                           int match, char * group_name)
+{
+	if (match == UCM_ANY)
+		return true;
+	if (match == UCM_GROUP) {
+		struct unit_counter_group * g =
+		    find_unit_counter_group_by_name (cfg, group_name);
+		return g && unit_type_in_group (g, type_id);
+	}
+	// Direct unit type match: compare by name rather than exact ID so that
+	// AI strategy duplicates (same name, different ID) are also matched.
+	return strcmp (p_bic_data->UnitTypes[match].Name,
+	               p_bic_data->UnitTypes[type_id].Name) == 0;
+}
+
+enum recognizable_parse_result
+parse_unit_counter_group (char ** p_cursor,
+                          struct error_line ** p_unrecognized_lines,
+                          void * out_group)
+{
+	char * cur = *p_cursor;
+	struct string_slice group_name;
+	if (! (parse_string (&cur, &group_name) && skip_punctuation (&cur, ':')))
+		return RPR_PARSE_ERROR;
+
+	struct unit_counter_group * g = out_group;
+	g->name           = extract_slice (&group_name);
+	g->type_ids       = NULL;
+	g->count_type_ids = 0;
+
+	int any_unrecognized = 0;
+	struct string_slice type_name;
+	while (parse_string (&cur, &type_name)) {
+		// Loop through all unit types with this name, including AI strategy
+		// duplicates (same name, different ID), which the game creates internally.
+		int type_id = 0;
+		bool found_any = false;
+		while (find_unit_type_id_by_name (&type_name, type_id, &type_id)) {
+			g->type_ids = realloc (g->type_ids,
+			    (g->count_type_ids + 1) * sizeof (int));
+			g->type_ids[g->count_type_ids++] = type_id;
+			found_any = true;
+			type_id++;  // continue search from next index
+		}
+		if (! found_any) {
+			add_unrecognized_line (p_unrecognized_lines, &type_name);
+			any_unrecognized = 1;
+		}
+		if (! skip_punctuation (&cur, ','))
+			break;
+	}
+	*p_cursor = cur;
+	return any_unrecognized ? RPR_UNRECOGNIZED : RPR_OK;
+}
+
+enum recognizable_parse_result
+parse_counter_rule (char ** p_cursor,
+                    struct error_line ** p_unrecognized_lines,
+                    void * out_rule)
+{
+	char * cur = *p_cursor;
+	struct string_slice attacker_name, vs_token, defender_name;
+
+	if (! parse_string (&cur, &attacker_name))
+		return RPR_PARSE_ERROR;
+	if (! (parse_string (&cur, &vs_token) &&
+	       slice_matches_str (&vs_token, "vs")))
+		return RPR_PARSE_ERROR;
+	if (! parse_string (&cur, &defender_name))
+		return RPR_PARSE_ERROR;
+
+	struct counter_rule * r = out_rule;
+	*r = (struct counter_rule) {
+		.attacker_match = UCM_ANY,
+		.defender_match = UCM_ANY,
+		.terrain_type   = -1,
+		.district_id    = -1,
+		.self_atk_pct   = 100,
+		.self_def_pct   = 100,
+		.enemy_atk_pct  = 100,
+		.enemy_def_pct  = 100,
+	};
+
+	if (! slice_matches_str (&attacker_name, "*")) {
+		int type_id;
+		if (find_unit_type_id_by_name (&attacker_name, 0, &type_id))
+			r->attacker_match = type_id;
+		else {
+			r->attacker_match = UCM_GROUP;
+			r->attacker_group = extract_slice (&attacker_name);
+		}
+	}
+
+	if (! slice_matches_str (&defender_name, "*")) {
+		int type_id;
+		if (find_unit_type_id_by_name (&defender_name, 0, &type_id))
+			r->defender_match = type_id;
+		else {
+			r->defender_match = UCM_GROUP;
+			r->defender_group = extract_slice (&defender_name);
+		}
+	}
+
+	struct string_slice token;
+	while (parse_string (&cur, &token)) {
+		if (slice_matches_str (&token, "in-city")) {
+			r->only_in_city = true;
+		} else if (slice_matches_str (&token, "ignore-terrain")) {
+			r->ignore_terrain = true;
+		} else if (slice_matches_str (&token, "self-atk")) {
+			if (! parse_int (&cur, &r->self_atk_pct))
+				return RPR_PARSE_ERROR;
+		} else if (slice_matches_str (&token, "self-def")) {
+			if (! parse_int (&cur, &r->self_def_pct))
+				return RPR_PARSE_ERROR;
+		} else if (slice_matches_str (&token, "enemy-atk")) {
+			if (! parse_int (&cur, &r->enemy_atk_pct))
+				return RPR_PARSE_ERROR;
+		} else if (slice_matches_str (&token, "enemy-def")) {
+			if (! parse_int (&cur, &r->enemy_def_pct))
+				return RPR_PARSE_ERROR;
+		} else if (slice_matches_str (&token, "terrain")) {
+			struct string_slice terrain_name;
+			if (! parse_string (&cur, &terrain_name))
+				return RPR_PARSE_ERROR;
+			if (! read_tile_terrain_type_value (&terrain_name,
+			        (enum SquareTypes *)&r->terrain_type)) {
+				add_unrecognized_line (p_unrecognized_lines, &terrain_name);
+				return RPR_UNRECOGNIZED;
+			}
+		} else if (slice_matches_str (&token, "district")) {
+			struct string_slice district_name;
+			if (! parse_string (&cur, &district_name))
+				return RPR_PARSE_ERROR;
+			char * dname = extract_slice (&district_name);
+			int idx = find_special_district_index_by_name (dname);
+			free (dname);
+			if (idx < 0) {
+				add_unrecognized_line (p_unrecognized_lines, &district_name);
+				return RPR_UNRECOGNIZED;
+			}
+			r->district_id = idx;
+		} else {
+			break;
+		}
+	}
+
+	*p_cursor = cur;
+	return RPR_OK;
+}
+
+void
+apply_counter_rules (struct c3x_config * cfg,
+                     Unit * attacker, Unit * defender, Tile * def_tile,
+                     int * out_attacker_atk, int * out_defender_def,
+                     bool * out_ignore_terrain)
+{
+	int a_type   = attacker->Body.UnitTypeID;
+	int d_type   = defender->Body.UnitTypeID;
+	bool in_city = Tile_has_city (def_tile);
+
+	int aa = 100, dd = 100;
+	bool ignore = false;
+
+	for (int i = 0; i < cfg->count_counter_rules; i++) {
+		struct counter_rule * r = &cfg->counter_rules[i];
+
+		// 检查正向匹配（attacker=规则攻击方，defender=规则防守方）
+		// 生效字段：self-atk（攻击方攻击力）、enemy-def（防守方防御力）
+		bool forward = unit_matches_counter_side (cfg, a_type,
+		                   r->attacker_match, r->attacker_group) &&
+		               unit_matches_counter_side (cfg, d_type,
+		                   r->defender_match, r->defender_group);
+
+		// 检查反向匹配（attacker=规则防守方，defender=规则攻击方）
+		// 生效字段：self-def（规则攻击方现在是防守方）、enemy-atk（规则防守方现在是攻击方）
+		bool reverse = unit_matches_counter_side (cfg, a_type,
+		                   r->defender_match, r->defender_group) &&
+		               unit_matches_counter_side (cfg, d_type,
+		                   r->attacker_match, r->attacker_group);
+
+		if (! forward && ! reverse)
+			continue;
+
+		// 环境条件以防守方所在格为准
+		if (r->only_in_city && ! in_city)
+			continue;
+		if (r->terrain_type != -1 &&
+		    ! tile_matches_square_type (def_tile,
+		          (enum SquareTypes)r->terrain_type))
+			continue;
+		if (r->district_id != -1 &&
+		    ! (cfg->enable_districts &&
+		       district_is_complete (def_tile, r->district_id)))
+			continue;
+
+		if (forward) {
+			aa = aa * r->self_atk_pct  / 100;  // self-atk：攻击方攻击力
+			dd = dd * r->enemy_def_pct / 100;  // enemy-def：防守方防御力
+		}
+		if (reverse) {
+			aa = aa * r->enemy_atk_pct / 100;  // enemy-atk：规则防守方现在作为攻击方
+			dd = dd * r->self_def_pct  / 100;  // self-def：规则攻击方现在作为防守方
+		}
+		if (forward || reverse)
+			ignore = ignore || r->ignore_terrain;
+	}
+
+	*out_attacker_atk  = aa;
+	*out_defender_def  = dd;
+	*out_ignore_terrain = ignore;
 }
 
 bool
@@ -17739,7 +18007,7 @@ patch_init_floating_point ()
 		{"allow_adjacent_resources_of_different_types"           , false, offsetof (struct c3x_config, allow_adjacent_resources_of_different_types)},
 		{"allow_corruption_in_capital"                           , false, offsetof (struct c3x_config, allow_corruption_in_capital)},
 		{"allow_sale_of_small_wonders"                           , false, offsetof (struct c3x_config, allow_sale_of_small_wonders)},
-		{"initialize_preplaced_scenario_leaders_as_mgls"         , false, offsetof (struct c3x_config, initialize_preplaced_scenario_leaders_as_mgls)},
+		{"enable_unit_counters"									 , false, offsetof (struct c3x_config, enable_unit_counters)},
 	};
 
 	struct integer_config_option {
@@ -21629,12 +21897,11 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 bool __fastcall
 patch_Unit_can_hurry_production (Unit * this, int edx, City * city, bool exclude_cheap_improvements)
 {
-	if (is->current_config.allow_military_leaders_to_hurry_wonders &&
-	    Unit_has_ability (this, __, UTA_Leader) &&
-	    this->Body.leader_kind == LK_Military) {
+	if (is->current_config.allow_military_leaders_to_hurry_wonders && Unit_has_ability (this, __, UTA_Leader)) {
+		LeaderKind actual_kind = this->Body.leader_kind;
 		this->Body.leader_kind = LK_Scientific;
 		bool tr = Unit_can_hurry_production (this, __, city, exclude_cheap_improvements);
-		this->Body.leader_kind = LK_Military;
+		this->Body.leader_kind = actual_kind;
 		return tr;
 	} else
 		return Unit_can_hurry_production (this, __, city, exclude_cheap_improvements);
@@ -22621,19 +22888,6 @@ patch_Unit_disembark_passengers (Unit * this, int edx, int tile_x, int tile_y)
 	     * target = tile_at (tile_x      , tile_y);
 	if (is->current_config.patch_blocked_disembark_freeze && (tile != NULL) && (target != NULL)) {
 		enum SquareTypes target_terrain = target->vtable->m50_Get_Square_BaseType (target);
-
-		bool blocked_by_district = false, blocked_by_district_for_wheeled = false; {
-			if (is->current_config.enable_districts) {
-				bool impassible, impassible_to_wheeled;
-				if (great_wall_blocks_civ (target, this->Body.CivID))
-					blocked_by_district = blocked_by_district_for_wheeled = true;
-				else if (get_tile_district_impassibility (target, &impassible, &impassible_to_wheeled)) {
-					blocked_by_district = impassible;
-					blocked_by_district_for_wheeled = impassible || impassible_to_wheeled;
-				}
-			}
-		}
-
 		FOR_UNITS_ON (uti, tile) {
 			Unit * escortee = get_unit_ptr (uti.unit->Body.escortee);
 			if (   (escortee != NULL)
@@ -22643,10 +22897,7 @@ patch_Unit_disembark_passengers (Unit * this, int edx, int tile_x, int tile_y)
 				|| (   is->current_config.disallow_trespassing
 				    && check_trespassing (uti.unit->Body.CivID, tile, target)
 				    && ! is_allowed_to_trespass (uti.unit))
-				|| Unit_is_terrain_impassable (uti.unit, __, target_terrain)
-				|| blocked_by_district
-				|| (   blocked_by_district_for_wheeled
-				    && Unit_has_ability (uti.unit, __, UTA_Wheeled))))
+				|| Unit_is_terrain_impassable (uti.unit, __, target_terrain)))
 				Unit_set_escortee (uti.unit, __, -1);
 		}
 	}
@@ -27653,17 +27904,6 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 	return tr;
 }
 
-void __fastcall
-patch_Unit_load_into_army_after_move_to_adj_tile (Unit * this, int edx, Unit * loadee)
-{
-	// Take care not to load an army into itself b/c that will cause the game to crash. The game may attempt to do that at the end of
-	// move_to_adjacent_tile b/c we return the unit itself as a transport target when we want to allow it to move onto coast.
-	if (is->coast_walk_transport_override && this == loadee)
-		return;
-
-	Unit_load_into_army (this, __, loadee);
-}
-
 int __fastcall
 patch_Unit_teleport (Unit * this, int edx, int tile_x, int tile_y, Unit * unit_telepad)
 {
@@ -27782,21 +28022,66 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 int __fastcall
 patch_Fighter_get_odds_for_main_combat_loop (Fighter * this, int edx, Unit * attacker, Unit * defender, bool bombarding, bool ignore_defensive_bonuses)
 {
-	// If the attacker was destroyed by defensive bombard, return a number that will ensure the defender wins the first round of combat, otherwise
-	// the zero HP attacker might go on to win an absurd victory. (The attacker in the overall combat is the defender during DB).
 	if (is->dbe.defender_was_destroyed)
 		return 1025;
 
-	else
-		return Fighter_get_combat_odds (this, __, attacker, defender, bombarding, ignore_defensive_bonuses);
+	struct c3x_config * cfg = &is->current_config;
+	if (cfg->enable_unit_counters && attacker != NULL && defender != NULL) {
+		Tile * def_tile = tile_at (this->defender_location_x,
+		                           this->defender_location_y);
+		int  aa, dd;
+		bool ignore_terrain;
+		apply_counter_rules (cfg, attacker, defender, def_tile,
+		                     &aa, &dd, &ignore_terrain);
+
+		is->counter_combat_ctx.active          = true;
+		is->counter_combat_ctx.attacker        = attacker;
+		is->counter_combat_ctx.defender        = defender;
+		is->counter_combat_ctx.attacker_atk_pct = aa;
+		is->counter_combat_ctx.defender_def_pct = dd;
+		is->counter_combat_ctx.ignore_terrain  = ignore_terrain;
+	}
+
+	int result = Fighter_get_combat_odds (this, __, attacker, defender, bombarding,
+	                                      ignore_defensive_bonuses || is->counter_combat_ctx.ignore_terrain);
+	is->counter_combat_ctx.active = false;
+	return result;
 }
 
+void
+apply_counter_rules_unused_placeholder () {}  // 占位，已移至正确位置
+
 byte __fastcall
-patch_Fighter_fight (Fighter * this, int edx, Unit * attacker, int attack_direction, Unit * defender_or_null)
+patch_Fighter_fight (Fighter * this, int edx, Unit * attacker,
+                     int attack_direction, Unit * defender_or_null)
 {
-	byte tr = Fighter_fight (this, __, attacker, attack_direction, defender_or_null);
+	byte tr = Fighter_fight (this, __, attacker, attack_direction,
+	                         defender_or_null);
 	is->dbe = (struct defensive_bombard_event) {0};
+	is->counter_combat_ctx.active = false;
 	return tr;
+}
+
+int __fastcall
+patch_Unit_get_attack_strength (Unit * this)
+{
+	int base = Unit_get_attack_strength (this);
+	if (! is->counter_combat_ctx.active)
+		return base;
+	if (this == is->counter_combat_ctx.attacker)
+		return base * is->counter_combat_ctx.attacker_atk_pct / 100;
+	return base;
+}
+
+int __fastcall
+patch_Unit_get_defense_strength (Unit * this)
+{
+	int base = Unit_get_defense_strength (this);
+	if (! is->counter_combat_ctx.active)
+		return base;
+	if (this == is->counter_combat_ctx.defender)
+		return base * is->counter_combat_ctx.defender_def_pct / 100;
+	return base;
 }
 
 void __fastcall
@@ -28064,29 +28349,6 @@ patch_Unit_can_disembark_anything (Unit * this, int edx, int tile_x, int tile_y)
 			}
 		if (stack_limited_for_all)
 			return false;
-	}
-
-	// Apply district restrictions on tile entry
-	if (base && is->current_config.enable_districts) {
-		if (great_wall_blocks_civ (target_tile, this->Body.CivID))
-			return false;
-
-		bool impassible = false, impassible_to_wheeled = false;
-		if (get_tile_district_impassibility (target_tile, &impassible, &impassible_to_wheeled)) {
-			if (impassible)
-				return false;
-
-			if (impassible_to_wheeled) {
-				bool any_non_wheeled_passengers = false;
-				FOR_UNITS_ON (uti, this_tile)
-					if ((uti.unit->Body.Container_Unit == this->Body.ID) && ! Unit_has_ability (uti.unit, __, UTA_Wheeled)) {
-						any_non_wheeled_passengers = true;
-						break;
-					}
-				if (! any_non_wheeled_passengers)
-					return false;
-			}
-		}
 	}
 
 	// Apply trespassing restriction. First check if this civ may move into (tile_x, tile_y) without trespassing. If it would be trespassing, then
@@ -29278,13 +29540,6 @@ patch_Map_place_scenario_things (Map * this)
 	is->is_placing_scenario_things = true;
 
 	Map_place_scenario_things (this);
-
-	if (is->current_config.initialize_preplaced_scenario_leaders_as_mgls && p_units->Units != NULL)
-		for (int n = 0; n <= p_units->LastIndex; n++) {
-			Unit * unit = get_unit_ptr (n);
-			if (unit != NULL && Unit_has_ability (unit, __, UTA_Leader) && unit->Body.leader_kind == 0)
-				unit->Body.leader_kind = LK_Military;
-		}
 
 	// If there are any mills in the config then recompute yields & happiness in all cities. This must be done because we avoid doing this as
 	// mills are added to cities while placing scenario things.
@@ -31818,13 +32073,11 @@ patch_find_nearest_city_for_ai_alliance_eval (int tile_x, int tile_y, int owner_
 int __fastcall
 patch_Unit_get_max_move_points (Unit * this)
 {
-	bool is_army = Unit_has_ability (this, __, UTA_Army);
-	if (is_army && is->current_config.patch_empty_army_movement) {
+	if (Unit_has_ability (this, __, UTA_Army) && is->current_config.patch_empty_army_movement) {
 		int slowest_member_mp = INT_MAX;
 		bool any_units_in_army = false;
 		FOR_UNITS_ON (uti, tile_at (this->Body.X, this->Body.Y)) {
-			// Must check 'uni.unit != this' to prevent recursive crash mentioned below
-			if (uti.unit != this && uti.unit->Body.Container_Unit == this->Body.ID) {
+			if (uti.unit->Body.Container_Unit == this->Body.ID) {
 				any_units_in_army = true;
 				slowest_member_mp = not_above (Unit_get_max_move_points (uti.unit), slowest_member_mp);
 			}
@@ -31833,15 +32086,6 @@ patch_Unit_get_max_move_points (Unit * this)
 			return slowest_member_mp + p_bic_data->General.RoadsMovementRate;
 		else
 			return get_max_move_points (&p_bic_data->UnitTypes[this->Body.UnitTypeID], this->Body.CivID);
-
-	// If the unit is an army and has been set as contained inside itself for a coast walk, the game will crash due to recursive calls computing
-	// the max MP of each member. In that case, temporarily restore its true container.
-	} else if (is_army && is->coast_walk_transport_override && this->Body.Container_Unit == this->Body.ID) {
-		this->Body.Container_Unit = is->coast_walk_prev_container;
-		int tr = Unit_get_max_move_points (this);
-		this->Body.Container_Unit = this->Body.ID;
-		return tr;
-
 	} else
 		return Unit_get_max_move_points (this);
 }
@@ -35499,7 +35743,7 @@ try_path_to_friendly_port_district (Unit * unit, bool require_damaged, bool requ
 					continue;
 			}
 
-			if (! is_below_stack_limit (tile, unit->Body.CivID, unit->Body.UnitTypeID))
+			if (! is_below_stack_limit (tile, unit->Body.CivID, UTC_Sea))
 				continue;
 
 			int path_len = 0;
@@ -35615,7 +35859,7 @@ patch_Unit_ai_move_naval_missile_transport (Unit * this)
 	if (! is->current_config.enable_districts || 
 		! is->current_config.enable_port_districts ||
 		! is->current_config.naval_units_use_port_districts_not_cities) {
-		Unit_ai_move_naval_missile_transport (this);
+		patch_Unit_ai_move_naval_missile_transport (this);
 		return;
 	}
 
@@ -35674,7 +35918,8 @@ patch_Unit_ai_move_air_bombard_unit (Unit * this)
 	int best_base_score = 0x7fffffff;
 	int base_x = -1, base_y = -1;
 	FOR_AERODROMES_AROUND (this) {
-		if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID, this->Body.UnitTypeID))
+		if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID,
+			p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
 			continue;
 
 		int count = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 6, -1, -1);
@@ -35729,7 +35974,8 @@ patch_Unit_ai_move_air_defense_unit (Unit * this)
 	int best_base_score = 0x7fffffff;
 	int base_x = -1, base_y = -1;
 	FOR_AERODROMES_AROUND (this) {
-		if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID, this->Body.UnitTypeID))
+		if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID,
+			p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
 			continue;
 
 		int count = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 7, -1, -1);
@@ -35800,11 +36046,12 @@ patch_Unit_ai_move_air_transport (Unit * this)
 		int best_score = -1;
 		int base_x = -1, base_y = -1;
 		FOR_AERODROMES_AROUND (this) {
-			if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID, this->Body.UnitTypeID))
+			if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID,
+				p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
 				continue;
 
 			int score = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 0, -1, -1) +
-				count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 1, -1, -1) + 1;
+			            count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 1, -1, -1) + 1;
 			if (count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 9, -1, -1) == 0)
 				score *= 2;
 			int cont_id = aerodrome_tile->vtable->m46_Get_ContinentID (aerodrome_tile);
@@ -36256,14 +36503,6 @@ patch_Main_Screen_Form_find_next_unit_for_cycling (Main_Screen_Form * this)
 		this->completed_unit_cycle = least_different_unit == NULL;
 		return least_different_unit;
 	}
-}
-
-void __fastcall
-patch_UnitIDList_insert_after_init (UnitIDList * this, int edx, int id, UnitIDItem * item)
-{
-	// If using non-standard unit cycling, avoid calling this method b/c it sometimes causes a crash
-	if (is->current_config.unit_cycle_search_criteria == UCSC_STANDARD)
-		UnitIDList_insert_after (this, __, id, item);
 }
 
 void __fastcall

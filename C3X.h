@@ -1,4 +1,3 @@
-
 #include <stdbool.h>
 
 #define NOVIRTUALKEYCODES // Keycodes defined in Civ3Conquests.h instead
@@ -10,8 +9,8 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
-#define MOD_VERSION 2700
-#define MOD_PREVIEW_VERSION 1
+#define MOD_VERSION 2600
+#define MOD_PREVIEW_VERSION 0
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -196,6 +195,38 @@ enum perfume_kind {
 	COUNT_PERFUME_KINDS
 };
 
+struct unit_counter_group {
+	char * name;
+	int *  type_ids;
+	int    count_type_ids;
+};
+
+// 攻击方/防守方匹配方式
+#define UCM_ANY   -1  // * 任意兵种
+#define UCM_GROUP -2  // 用 group_name 字段匹配
+
+struct counter_rule {
+	// 攻击方
+	int    attacker_match;    // UnitTypeID，或 UCM_ANY / UCM_GROUP
+	char * attacker_group;    // attacker_match == UCM_GROUP 时有效
+
+	// 防守方
+	int    defender_match;
+	char * defender_group;
+
+	// 环境条件（-1 / false 表示不限）
+	int    terrain_type;      // enum SquareTypes，-1 = 不限
+	bool   only_in_city;
+	int    district_id;       // -1 = 不限
+	bool   ignore_terrain;    // true = 将防守方 Defence 置 0
+
+	// 效果（百分比，100 = 无变化）
+	int    self_atk_pct;
+	int    self_def_pct;
+	int    enemy_atk_pct;
+	int    enemy_def_pct;
+};
+
 struct c3x_config {
 	bool enable_stack_bombard;
 	bool enable_disorder_warning;
@@ -350,7 +381,11 @@ struct c3x_config {
 	bool allow_sale_of_small_wonders;
 	enum no_ai_patrol_override override_no_ai_patrol;
 	enum barbarian_activity_override override_barbarian_activity_level_for_scenario_maps;
-	bool initialize_preplaced_scenario_leaders_as_mgls;
+	bool enable_unit_counters;
+	struct unit_counter_group * unit_counter_groups;
+	int count_unit_counter_groups;
+	struct counter_rule * counter_rules;
+	int count_counter_rules;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
@@ -1825,6 +1860,17 @@ struct injected_state {
 	struct unit_display_override {
 		int unit_id, tile_x, tile_y;
 	} unit_display_override;
+
+	// Set in patch_Fighter_get_odds_for_main_combat_loop, read by patch_Unit_get_attack/defense_strength.
+	// Stores counter multipliers for the current combat. Active only during Fighter_get_combat_odds call.
+	struct {
+		bool   active;
+		Unit * attacker;
+		Unit * defender;
+		int    attacker_atk_pct;  // 攻击方攻击力倍率（合并了 self-atk 正向和 enemy-atk 反向）
+		int    defender_def_pct;  // 防守方防御力倍率（合并了 enemy-def 正向和 self-def 反向）
+		bool   ignore_terrain;
+	} counter_combat_ctx;
 
 	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
 	Unit * zoc_interceptor;
