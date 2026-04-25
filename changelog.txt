@@ -4,6 +4,8 @@
 - Fix crash when an army unit steps onto a bridge
 - Fix crash caused by AI disembarking onto tile made impassible by districts
 - Fix possible crash when spawning unit during movement phase (e.g. popping a settler from a hut) with non-standard unit cycling turned on
+- Stop "name tile" option from appearing in right-click production selection menu
+- Ensure canal and bridge building properly follow config values
 - Stop allow_military_leaders_to_hurry_wonders from altering rules for partially initialized preplaced scenario leader units
 
 * RELEASE 27 PREVIEW 1
