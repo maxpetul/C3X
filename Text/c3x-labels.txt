@@ -154,6 +154,10 @@ In State 29
 In State 30
 In State 33
 
+; For unit stats on Civilopedia
+HP Bonus
+Worker Strength
+
 ; Civ Trait labels for find_civ_trait_id_by_name
 Agricultural
 Commercial

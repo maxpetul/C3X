@@ -300,6 +300,7 @@ struct c3x_config {
 	bool allow_multipage_civilopedia_descriptions;
 	enum unit_cycle_search_criteria unit_cycle_search_criteria;
 	bool reformat_turns_remaining_on_domestic_advisor_screen;
+	bool expand_civilopedia_unit_stats;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
@@ -627,6 +628,10 @@ enum c3x_label {
 	CL_IN_STATE_29,
 	CL_IN_STATE_30,
 	CL_IN_STATE_33,
+
+	// For unit stats on Civilopedia
+	CL_HP_BONUS,
+	CL_WORKER_STRENGTH,
 
 	CL_AGRICULTURAL,
 	CL_COMMERCIAL,
@@ -1967,6 +1972,11 @@ struct injected_state {
 		Button * effects_btn;
 		Button * previous_btn;
 	} cmpd;
+
+	// When expand_civilopedia_unit_stats is on, all the game's calls to draw_and_wrap_text to draw the second column of unit stats are
+	// intercepted to draw nothing and store their strings here. Then we possible add some entries of our own. The game will add up to 6 entries
+	// and we'll add up to 4.
+	char * pedia_unit_stats_second_column_strs[10];
 
 	// Day-Night cycle data
 	int current_day_night_cycle;

@@ -16722,6 +16722,11 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	// Insert amount added to building decorruption effect just for the capital
 	WITH_MEM_PROTECTION (ADDR_ADD_CAPITAL_CORRUPTION_BUILDING_EFFECT, 3, PAGE_EXECUTE_READWRITE)
 		*(ADDR_ADD_CAPITAL_CORRUPTION_BUILDING_EFFECT + 2) = clamp (0, 100, cfg->special_capital_decorruption_effect);
+
+	// Bypass air unit check when drawing pedia stats. If it passes, the check will draw the op. range instead of movement in the first column.
+	// replacing 0x75 (= jnz) with 0xEB (= uncond. jump)
+	WITH_MEM_PROTECTION (ADDR_AIR_UNIT_CHECK_TO_DRAW_PEDIA_STATS, 1, PAGE_EXECUTE_READWRITE)
+		*ADDR_AIR_UNIT_CHECK_TO_DRAW_PEDIA_STATS = is->current_config.expand_civilopedia_unit_stats ? 0xEB : 0x75;
 }
 
 void
@@ -17683,6 +17688,7 @@ patch_init_floating_point ()
 		{"accentuate_cities_on_minimap"                          , false, offsetof (struct c3x_config, accentuate_cities_on_minimap)},
 		{"allow_multipage_civilopedia_descriptions"              , true , offsetof (struct c3x_config, allow_multipage_civilopedia_descriptions)},
 		{"reformat_turns_remaining_on_domestic_advisor_screen"   , true , offsetof (struct c3x_config, reformat_turns_remaining_on_domestic_advisor_screen)},
+		{"expand_civilopedia_unit_stats"                         , true , offsetof (struct c3x_config, expand_civilopedia_unit_stats)},
 		{"enable_trade_net_x"                                    , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                            , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                    , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -18081,6 +18087,8 @@ patch_init_floating_point ()
 
 	is->saved_improv_counts = NULL;
 	is->saved_improv_counts_capacity = 0;
+
+	memset (is->pedia_unit_stats_second_column_strs, 0, sizeof is->pedia_unit_stats_second_column_strs);
 
 	memset (is->last_main_screen_key_up_events, 0, sizeof is->last_main_screen_key_up_events);
 
@@ -32423,10 +32431,100 @@ patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
 	draw_civilopedia_article (Civilopedia_Article_m01_Draw_GCON_or_RACE, this);
 }
 
+void
+print_pedia_unit_stats (PCX_Image * canvas, int x, char ** entries, int entry_count)
+{
+	// Same forumula as the base game. Shifts entries upward if 4 or more.
+	int y = (entry_count > 3) ? 4 * (3 * entry_count - 9) : 0;
+	y = 449 - y;
+
+	for (int n = 0; n < entry_count; n++)
+		y = PCX_Image_draw_and_wrap_text (canvas, __, entries[n], x, y, 150);
+}
+
 void __fastcall
 patch_Civilopedia_Article_m01_Draw_UNIT (Civilopedia_Article * this)
 {
+	// Make sure list of second column stat strings is clear before drawing
+	char ** entries = is->pedia_unit_stats_second_column_strs;
+	int capacity = ARRAY_LEN (is->pedia_unit_stats_second_column_strs);
+	if (is->current_config.expand_civilopedia_unit_stats)
+		for (int n = 0; n < capacity; n++) {
+			free (entries[n]);
+			entries[n] = NULL;
+		}
+
 	draw_civilopedia_article (Civilopedia_Article_m01_Draw_UNIT, this);
+
+	bool drew_stats = this->show_description == false || this->more_text_line_count == 0;
+	if (is->current_config.expand_civilopedia_unit_stats && drew_stats) {
+		// By this point entries have been filled in for the second column of unit stats (see ...draw_pedia_unit_stats_2nd_column), which has
+		// not actually been drawn.
+		int entry_count = 0;
+		for (int n = 0; n < capacity; n++)
+			if (entries[n] != NULL)
+				entry_count++;
+
+		char s[100] = {0};
+
+		// Add entry for op range if aircraft. The original game shows movement instead of op range in the first column but we patch that to
+		// show movement always.
+		if (entry_count < capacity && this->unit_type->Unit_Class == UTC_Air) {
+			// Reserve spot at entries[0] to prepend new item
+			for (int n = capacity - 1; n > 0; n--)
+				entries[n] = entries[n-1];
+			entry_count++;
+
+			snprintf (s, (sizeof s) - 1, "%s: %d", (*p_labels)[LBL_OPERATIONAL_RANGE], this->unit_type->OperationalRange);
+			entries[0] = strdup (s);
+		}
+
+		// Add bombard range if tactical nuke with bombard strength == 0 because the base game won't display it
+		if (entry_count < capacity &&
+		    this->unit_type->Unit_Class == UTC_Land &&
+		    this->unit_type->Bombard_Strength == 0 &&
+		    UnitType_has_ability (this->unit_type, __, UTA_Nuclear_Weapon) &&
+		    UnitType_has_ability (this->unit_type, __, UTA_Tacticle_Missile)) {
+			snprintf (s, (sizeof s) - 1, "%s: %d", (*p_labels)[LBL_BOMBARD_RANGE], this->unit_type->Bombard_Range);
+			entries[entry_count++] = strdup (s);
+		}
+
+		// Add HP Bonus
+		if (entry_count < capacity && this->unit_type->Hit_Point_Bonus != 0) {
+			snprintf (s, (sizeof s) - 1, "%s: %d", is->c3x_labels[CL_HP_BONUS], this->unit_type->Hit_Point_Bonus);
+			entries[entry_count++] = strdup (s);
+		}
+
+		// Add worker strength
+		int rounded_worker_strength = ((int)(this->unit_type->WorkerStrength * 10000.0f) + 50) / 100;
+		if (entry_count < capacity && rounded_worker_strength != 0) {
+			snprintf (s, (sizeof s) - 1, "%s: %d%%", is->c3x_labels[CL_WORKER_STRENGTH], rounded_worker_strength);
+			entries[entry_count++] = strdup (s);
+		}
+
+		if (entry_count <= 6)
+			print_pedia_unit_stats (&p_civilopedia_form->Base.Data.Canvas, 213, entries, entry_count);
+		else { // If more than 6 entries, split some off into a third column
+			int third_count = entry_count / 2,
+			    second_count = entry_count - third_count;
+			print_pedia_unit_stats (&p_civilopedia_form->Base.Data.Canvas, 198, entries, second_count);
+			print_pedia_unit_stats (&p_civilopedia_form->Base.Data.Canvas, 355, &entries[second_count], third_count);
+		}
+	}
+}
+
+int __fastcall
+patch_PCX_Image_draw_pedia_unit_stats_2nd_column (PCX_Image * this, int edx, char * str, int x, int y, int width)
+{
+	if (is->current_config.expand_civilopedia_unit_stats)
+		for (int n = 0; n < ARRAY_LEN (is->pedia_unit_stats_second_column_strs); n++)
+			if (is->pedia_unit_stats_second_column_strs[n] == NULL) {
+				is->pedia_unit_stats_second_column_strs[n] = strdup (str); // Record what would have been drawn here
+				str = " "; // Draw empty string. Can't skip draw call entirely b/c we need the return value
+				break;
+			}
+
+	return PCX_Image_draw_and_wrap_text (this, __, str, x, y, width);
 }
 
 void __fastcall
@@ -36454,6 +36552,7 @@ patch_Tile_check_water_for_canal_move_to_adjacent_tile_dest (Tile * this)
 
 	return this->vtable->m35_Check_Is_Water (this);
 }
+
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
