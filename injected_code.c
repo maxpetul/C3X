@@ -23109,11 +23109,12 @@ patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3
 
 				// Print entry text including dup count to new_text. Biggest complication here is that we want to print the dup count
 				// after any leading spaces to preserve indentation.
+				// Insert a few spaces at the end so widen_for_text widens a bit more. Otherwise, the ending paren may get cut off.
 				{
 					int num_spaces = 0;
 					while (item->Text[num_spaces] == ' ')
 						num_spaces++;
-					snprintf (new_text, new_text_len, "%.*s%dx %s", num_spaces, item->Text, is->unit_menu_duplicates[n] + 1, &item->Text[num_spaces]);
+					snprintf (new_text, new_text_len, "%.*s%dx %s   ", num_spaces, item->Text, is->unit_menu_duplicates[n] + 1, &item->Text[num_spaces]);
 					new_text[new_text_len - 1] = '\0';
 				}
 
