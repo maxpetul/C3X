@@ -28072,6 +28072,11 @@ patch_Fighter_get_odds_for_main_combat_loop (Fighter * this, int edx, Unit * att
 		return 1025;
 
 	struct c3x_config * cfg = &is->current_config;
+	// Only OR in counter-rule terrain skipping when we actually ran apply_counter_rules for this
+	// call. Otherwise counter_combat_ctx.ignore_terrain can be stale from an earlier probe (e.g.
+	// find_civ4_best_defender_against) or an earlier combat round — especially risky after
+	// merges that add new odds call sites.
+	bool ignore_terrain_for_odds = ignore_defensive_bonuses;
 	if (cfg->enable_unit_counters && attacker != NULL && defender != NULL) {
 		Tile * def_tile = tile_at (this->defender_location_x,
 		                           this->defender_location_y);
@@ -28086,10 +28091,11 @@ patch_Fighter_get_odds_for_main_combat_loop (Fighter * this, int edx, Unit * att
 		is->counter_combat_ctx.attacker_atk_pct = aa;
 		is->counter_combat_ctx.defender_def_pct = dd;
 		is->counter_combat_ctx.ignore_terrain  = ignore_terrain;
+		ignore_terrain_for_odds = ignore_defensive_bonuses || ignore_terrain;
 	}
 
 	int result = Fighter_get_combat_odds (this, __, attacker, defender, bombarding,
-	                                      ignore_defensive_bonuses || is->counter_combat_ctx.ignore_terrain);
+	                                      ignore_terrain_for_odds);
 	is->counter_combat_ctx.active = false;
 	return result;
 }
