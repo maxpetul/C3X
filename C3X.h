@@ -9,7 +9,7 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
-#define MOD_VERSION 2600
+#define MOD_VERSION 2700
 #define MOD_PREVIEW_VERSION 0
 
 #define COUNT_TILE_HIGHLIGHTS 11
@@ -386,6 +386,7 @@ struct c3x_config {
 	int count_unit_counter_groups;
 	struct counter_rule * counter_rules;
 	int count_counter_rules;
+	bool use_civ4_style_best_defender;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
