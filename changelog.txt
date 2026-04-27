@@ -1,10 +1,18 @@
+* RELEASE 27 PREVIEW 2
+- Show more unit stats on the Civilopedia page, option named expand_civilopedia_unit_stats
+  - Specifically, shows HP bonus, worker strength, movement on air units, and bombard range on tactical nukes
 - Option to initialize preplaced scenario leader units properly so they behave like normal military great leaders spawned during the game
   - Named initialize_preplaced_scenario_leaders_as_mgls
+- Add option allow_multiple_battle_created_units_per_player to remove the rule that stops battle-created units (typically MGLs) from spawning for players that already have one
 - Fix crash in modded naval missile transport unit AI that occurs when districts are turned off
 - Fix crash when an army unit steps onto a bridge
 - Fix crash caused by AI disembarking onto tile made impassible by districts
 - Fix possible crash when spawning unit during movement phase (e.g. popping a settler from a hut) with non-standard unit cycling turned on
+- Fix free buildings from small wonder palaces not appearing after the palace has been moved
+- Stop "name tile" option from appearing in right-click production selection menu
+- Ensure canal and bridge building properly follow config values
 - Stop allow_military_leaders_to_hurry_wonders from altering rules for partially initialized preplaced scenario leader units
+- Limit tile highlights to 6 pixels inside the tile borders so as not to obscure the map, also restore the red color for highlights
 
 * RELEASE 27 PREVIEW 1
 - Add some optional rule changes for helicopters (or any air units with transport capacity) controlled by special_helicopter_rules

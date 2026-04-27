@@ -7791,7 +7791,7 @@ find_special_district_index_by_name (char const * name)
 
 
 // ---------------------------------------------------------------
-// 兵种克制系统
+// Unit counter system
 // ---------------------------------------------------------------
 
 struct unit_counter_group *
@@ -7984,15 +7984,15 @@ apply_counter_rules (struct c3x_config * cfg,
 	for (int i = 0; i < cfg->count_counter_rules; i++) {
 		struct counter_rule * r = &cfg->counter_rules[i];
 
-		// 检查正向匹配（attacker=规则攻击方，defender=规则防守方）
-		// 生效字段：self-atk（攻击方攻击力）、enemy-def（防守方防御力）
+		// Check forward match (attacker=rule attacker side, defender=rule defender side)
+		// Applied fields: self-atk (attacker attack), enemy-def (defender defense)
 		bool forward = unit_matches_counter_side (cfg, a_type,
 		                   r->attacker_match, r->attacker_group) &&
 		               unit_matches_counter_side (cfg, d_type,
 		                   r->defender_match, r->defender_group);
 
-		// 检查反向匹配（attacker=规则防守方，defender=规则攻击方）
-		// 生效字段：self-def（规则攻击方现在是防守方）、enemy-atk（规则防守方现在是攻击方）
+		// Check reverse match (attacker=rule defender side, defender=rule attacker side)
+		// Applied fields: self-def (rule attacker side is now defending), enemy-atk (rule defender side is now attacking)
 		bool reverse = unit_matches_counter_side (cfg, a_type,
 		                   r->defender_match, r->defender_group) &&
 		               unit_matches_counter_side (cfg, d_type,
@@ -8001,7 +8001,7 @@ apply_counter_rules (struct c3x_config * cfg,
 		if (! forward && ! reverse)
 			continue;
 
-		// 环境条件以防守方所在格为准
+		// Environment checks are based on the defender's tile
 		if (r->only_in_city && ! in_city)
 			continue;
 		if (r->terrain_type != -1 &&
@@ -8014,12 +8014,12 @@ apply_counter_rules (struct c3x_config * cfg,
 			continue;
 
 		if (forward) {
-			aa = aa * r->self_atk_pct  / 100;  // self-atk：攻击方攻击力
-			dd = dd * r->enemy_def_pct / 100;  // enemy-def：防守方防御力
+			aa = aa * r->self_atk_pct  / 100;  // self-atk: attacker attack
+			dd = dd * r->enemy_def_pct / 100;  // enemy-def: defender defense
 		}
 		if (reverse) {
-			aa = aa * r->enemy_atk_pct / 100;  // enemy-atk：规则防守方现在作为攻击方
-			dd = dd * r->self_def_pct  / 100;  // self-def：规则攻击方现在作为防守方
+			aa = aa * r->enemy_atk_pct / 100;  // enemy-atk: rule defender side now acts as attacker
+			dd = dd * r->self_def_pct  / 100;  // self-def: rule attacker side now acts as defender
 		}
 		if (forward || reverse)
 			ignore = ignore || r->ignore_terrain;
@@ -16493,6 +16493,14 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 			int_to_bytes (ADDR_TRADABLE_UNITS_SIZE_TO_CLEAR, tradable_units_size);
 	}
 
+	// Remove the standard rule that blocks battle-created units while the player already has one
+	set_nopification (cfg->allow_multiple_battle_created_units_per_player, ADDR_EXISTING_BATTLE_CREATED_UNIT_CHECK, 6);
+
+	// Bypass air unit check when drawing pedia stats. If it passes, the check will draw the op. range instead of movement in the first column.
+	// replacing 0x75 (= jnz) with 0xEB (= uncond. jump)
+	WITH_MEM_PROTECTION (ADDR_AIR_UNIT_CHECK_TO_DRAW_PEDIA_STATS, 1, PAGE_EXECUTE_READWRITE)
+		*ADDR_AIR_UNIT_CHECK_TO_DRAW_PEDIA_STATS = is->current_config.expand_civilopedia_unit_stats ? 0xEB : 0x75;
+
 	// Remove era limit
 	// replacing 0x74 (= jump if zero [after cmp'ing era count with 4]) with 0xEB
 	WITH_MEM_PROTECTION (ADDR_ERA_COUNT_CHECK, 1, PAGE_EXECUTE_READWRITE)
@@ -17876,6 +17884,7 @@ patch_init_floating_point ()
 		{"allow_defensive_retreat_on_water"                      , false, offsetof (struct c3x_config, allow_defensive_retreat_on_water)},
 		{"promote_wonder_decorruption_effect"                    , false, offsetof (struct c3x_config, promote_wonder_decorruption_effect)},
 		{"allow_military_leaders_to_hurry_wonders"               , false, offsetof (struct c3x_config, allow_military_leaders_to_hurry_wonders)},
+		{"allow_multiple_battle_created_units_per_player"        , false, offsetof (struct c3x_config, allow_multiple_battle_created_units_per_player)},
 		{"aggressively_penalize_bankruptcy"                      , false, offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
 		{"no_penalty_exception_for_agri_fresh_water_city_tiles"  , false, offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
 		{"use_offensive_artillery_ai"                            , true , offsetof (struct c3x_config, use_offensive_artillery_ai)},
@@ -17940,6 +17949,7 @@ patch_init_floating_point ()
 		{"accentuate_cities_on_minimap"                          , false, offsetof (struct c3x_config, accentuate_cities_on_minimap)},
 		{"allow_multipage_civilopedia_descriptions"              , true , offsetof (struct c3x_config, allow_multipage_civilopedia_descriptions)},
 		{"reformat_turns_remaining_on_domestic_advisor_screen"   , true , offsetof (struct c3x_config, reformat_turns_remaining_on_domestic_advisor_screen)},
+		{"expand_civilopedia_unit_stats"                         , true , offsetof (struct c3x_config, expand_civilopedia_unit_stats)},
 		{"enable_trade_net_x"                                    , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                            , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                    , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -18007,6 +18017,7 @@ patch_init_floating_point ()
 		{"allow_adjacent_resources_of_different_types"           , false, offsetof (struct c3x_config, allow_adjacent_resources_of_different_types)},
 		{"allow_corruption_in_capital"                           , false, offsetof (struct c3x_config, allow_corruption_in_capital)},
 		{"allow_sale_of_small_wonders"                           , false, offsetof (struct c3x_config, allow_sale_of_small_wonders)},
+		{"initialize_preplaced_scenario_leaders_as_mgls"         , false, offsetof (struct c3x_config, initialize_preplaced_scenario_leaders_as_mgls)},
 		{"enable_unit_counters"									 , false, offsetof (struct c3x_config, enable_unit_counters)},
 		{"use_civ4_style_best_defender"							 , false, offsetof (struct c3x_config, use_civ4_style_best_defender)},
 	};
@@ -27928,6 +27939,17 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 	return tr;
 }
 
+void __fastcall
+patch_Unit_load_into_army_after_move_to_adj_tile (Unit * this, int edx, Unit * loadee)
+{
+	// Take care not to load an army into itself b/c that will cause the game to crash. The game may attempt to do that at the end of
+	// move_to_adjacent_tile b/c we return the unit itself as a transport target when we want to allow it to move onto coast.
+	if (is->coast_walk_transport_override && this == loadee)
+		return;
+
+	Unit_load_into_army (this, __, loadee);
+}
+
 int __fastcall
 patch_Unit_teleport (Unit * this, int edx, int tile_x, int tile_y, Unit * unit_telepad)
 {
@@ -32885,10 +32907,100 @@ patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
 	draw_civilopedia_article (Civilopedia_Article_m01_Draw_GCON_or_RACE, this);
 }
 
+void
+print_pedia_unit_stats (PCX_Image * canvas, int x, char ** entries, int entry_count)
+{
+	// Same forumula as the base game. Shifts entries upward if 4 or more.
+	int y = (entry_count > 3) ? 4 * (3 * entry_count - 9) : 0;
+	y = 449 - y;
+
+	for (int n = 0; n < entry_count; n++)
+		y = PCX_Image_draw_and_wrap_text (canvas, __, entries[n], x, y, 150);
+}
+
 void __fastcall
 patch_Civilopedia_Article_m01_Draw_UNIT (Civilopedia_Article * this)
 {
+	// Make sure list of second column stat strings is clear before drawing
+	char ** entries = is->pedia_unit_stats_second_column_strs;
+	int capacity = ARRAY_LEN (is->pedia_unit_stats_second_column_strs);
+	if (is->current_config.expand_civilopedia_unit_stats)
+		for (int n = 0; n < capacity; n++) {
+			free (entries[n]);
+			entries[n] = NULL;
+		}
+
 	draw_civilopedia_article (Civilopedia_Article_m01_Draw_UNIT, this);
+
+	bool drew_stats = this->show_description == false || this->more_text_line_count == 0;
+	if (is->current_config.expand_civilopedia_unit_stats && drew_stats) {
+		// By this point entries have been filled in for the second column of unit stats (see ...draw_pedia_unit_stats_2nd_column), which has
+		// not actually been drawn.
+		int entry_count = 0;
+		for (int n = 0; n < capacity; n++)
+			if (entries[n] != NULL)
+				entry_count++;
+
+		char s[100] = {0};
+
+		// Add entry for op range if aircraft. The original game shows movement instead of op range in the first column but we patch that to
+		// show movement always.
+		if (entry_count < capacity && this->unit_type->Unit_Class == UTC_Air) {
+			// Reserve spot at entries[0] to prepend new item
+			for (int n = capacity - 1; n > 0; n--)
+				entries[n] = entries[n-1];
+			entry_count++;
+
+			snprintf (s, (sizeof s) - 1, "%s: %d", (*p_labels)[LBL_OPERATIONAL_RANGE], this->unit_type->OperationalRange);
+			entries[0] = strdup (s);
+		}
+
+		// Add bombard range if tactical nuke with bombard strength == 0 because the base game won't display it
+		if (entry_count < capacity &&
+		    this->unit_type->Unit_Class == UTC_Land &&
+		    this->unit_type->Bombard_Strength == 0 &&
+		    UnitType_has_ability (this->unit_type, __, UTA_Nuclear_Weapon) &&
+		    UnitType_has_ability (this->unit_type, __, UTA_Tacticle_Missile)) {
+			snprintf (s, (sizeof s) - 1, "%s: %d", (*p_labels)[LBL_BOMBARD_RANGE], this->unit_type->Bombard_Range);
+			entries[entry_count++] = strdup (s);
+		}
+
+		// Add HP Bonus
+		if (entry_count < capacity && this->unit_type->Hit_Point_Bonus != 0) {
+			snprintf (s, (sizeof s) - 1, "%s: %d", is->c3x_labels[CL_HP_BONUS], this->unit_type->Hit_Point_Bonus);
+			entries[entry_count++] = strdup (s);
+		}
+
+		// Add worker strength
+		int rounded_worker_strength = ((int)(this->unit_type->WorkerStrength * 10000.0f) + 50) / 100;
+		if (entry_count < capacity && rounded_worker_strength != 0) {
+			snprintf (s, (sizeof s) - 1, "%s: %d%%", is->c3x_labels[CL_WORKER_STRENGTH], rounded_worker_strength);
+			entries[entry_count++] = strdup (s);
+		}
+
+		if (entry_count <= 6)
+			print_pedia_unit_stats (&p_civilopedia_form->Base.Data.Canvas, 213, entries, entry_count);
+		else { // If more than 6 entries, split some off into a third column
+			int third_count = entry_count / 2,
+			    second_count = entry_count - third_count;
+			print_pedia_unit_stats (&p_civilopedia_form->Base.Data.Canvas, 198, entries, second_count);
+			print_pedia_unit_stats (&p_civilopedia_form->Base.Data.Canvas, 355, &entries[second_count], third_count);
+		}
+	}
+}
+
+int __fastcall
+patch_PCX_Image_draw_pedia_unit_stats_2nd_column (PCX_Image * this, int edx, char * str, int x, int y, int width)
+{
+	if (is->current_config.expand_civilopedia_unit_stats)
+		for (int n = 0; n < ARRAY_LEN (is->pedia_unit_stats_second_column_strs); n++)
+			if (is->pedia_unit_stats_second_column_strs[n] == NULL) {
+				is->pedia_unit_stats_second_column_strs[n] = strdup (str); // Record what would have been drawn here
+				str = " "; // Draw empty string. Can't skip draw call entirely b/c we need the return value
+				break;
+			}
+
+	return PCX_Image_draw_and_wrap_text (this, __, str, x, y, width);
 }
 
 void __fastcall
@@ -36379,6 +36491,14 @@ patch_Leader_get_attitude_toward (Leader * this, int edx, int civ_id, int param_
 		}
 	}
 	return score;
+}
+
+void __fastcall
+patch_UnitIDList_insert_after_init (UnitIDList * this, int edx, int id, UnitIDItem * item)
+{
+	// If using non-standard unit cycling, avoid calling this method b/c it sometimes causes a crash
+	if (is->current_config.unit_cycle_search_criteria == UCSC_STANDARD)
+		UnitIDList_insert_after (this, __, id, item);
 }
 
 bool __fastcall

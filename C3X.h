@@ -10,7 +10,7 @@ typedef unsigned char byte;
 #include "Civ3Conquests.h"
 
 #define MOD_VERSION 2700
-#define MOD_PREVIEW_VERSION 0
+#define MOD_PREVIEW_VERSION 2
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -201,26 +201,26 @@ struct unit_counter_group {
 	int    count_type_ids;
 };
 
-// 攻击方/防守方匹配方式
-#define UCM_ANY   -1  // * 任意兵种
-#define UCM_GROUP -2  // 用 group_name 字段匹配
+// Attacker/defender match modes
+#define UCM_ANY   -1  // * Any unit type
+#define UCM_GROUP -2  // Match using the group_name field
 
 struct counter_rule {
-	// 攻击方
-	int    attacker_match;    // UnitTypeID，或 UCM_ANY / UCM_GROUP
-	char * attacker_group;    // attacker_match == UCM_GROUP 时有效
+	// Attacker side
+	int    attacker_match;    // UnitTypeID, or UCM_ANY / UCM_GROUP
+	char * attacker_group;    // Used when attacker_match == UCM_GROUP
 
-	// 防守方
+	// Defender side
 	int    defender_match;
 	char * defender_group;
 
-	// 环境条件（-1 / false 表示不限）
-	int    terrain_type;      // enum SquareTypes，-1 = 不限
+	// Environment conditions (-1 / false means no restriction)
+	int    terrain_type;      // enum SquareTypes, -1 = no restriction
 	bool   only_in_city;
-	int    district_id;       // -1 = 不限
-	bool   ignore_terrain;    // true = 将防守方 Defence 置 0
+	int    district_id;       // -1 = no restriction
+	bool   ignore_terrain;    // true = set defender terrain defense to 0
 
-	// 效果（百分比，100 = 无变化）
+	// Effects (percent values, 100 = no change)
 	int    self_atk_pct;
 	int    self_def_pct;
 	int    enemy_atk_pct;
@@ -292,6 +292,7 @@ struct c3x_config {
 	int ai_multi_start_extra_palaces_capacity;
 	bool promote_wonder_decorruption_effect;
 	bool allow_military_leaders_to_hurry_wonders;
+	bool allow_multiple_battle_created_units_per_player;
 	int ai_research_multiplier;
 	int ai_settler_perfume_on_founding;
 	int ai_settler_perfume_on_founding_duration;
@@ -330,6 +331,7 @@ struct c3x_config {
 	bool allow_multipage_civilopedia_descriptions;
 	enum unit_cycle_search_criteria unit_cycle_search_criteria;
 	bool reformat_turns_remaining_on_domestic_advisor_screen;
+	bool expand_civilopedia_unit_stats;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
@@ -381,6 +383,7 @@ struct c3x_config {
 	bool allow_sale_of_small_wonders;
 	enum no_ai_patrol_override override_no_ai_patrol;
 	enum barbarian_activity_override override_barbarian_activity_level_for_scenario_maps;
+	bool initialize_preplaced_scenario_leaders_as_mgls;
 	bool enable_unit_counters;
 	struct unit_counter_group * unit_counter_groups;
 	int count_unit_counter_groups;
@@ -662,6 +665,10 @@ enum c3x_label {
 	CL_IN_STATE_29,
 	CL_IN_STATE_30,
 	CL_IN_STATE_33,
+
+	// For unit stats on Civilopedia
+	CL_HP_BONUS,
+	CL_WORKER_STRENGTH,
 
 	CL_AGRICULTURAL,
 	CL_COMMERCIAL,
@@ -1868,8 +1875,8 @@ struct injected_state {
 		bool   active;
 		Unit * attacker;
 		Unit * defender;
-		int    attacker_atk_pct;  // 攻击方攻击力倍率（合并了 self-atk 正向和 enemy-atk 反向）
-		int    defender_def_pct;  // 防守方防御力倍率（合并了 enemy-def 正向和 self-def 反向）
+		int    attacker_atk_pct;  // Attacker attack multiplier (combines forward self-atk and reverse enemy-atk)
+		int    defender_def_pct;  // Defender defense multiplier (combines forward enemy-def and reverse self-def)
 		bool   ignore_terrain;
 	} counter_combat_ctx;
 
@@ -2013,6 +2020,11 @@ struct injected_state {
 		Button * effects_btn;
 		Button * previous_btn;
 	} cmpd;
+
+	// When expand_civilopedia_unit_stats is on, all the game's calls to draw_and_wrap_text to draw the second column of unit stats are
+	// intercepted to draw nothing and store their strings here. Then we possible add some entries of our own. The game will add up to 6 entries
+	// and we'll add up to 4.
+	char * pedia_unit_stats_second_column_strs[10];
 
 	// Day-Night cycle data
 	int current_day_night_cycle;
