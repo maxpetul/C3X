@@ -214,10 +214,11 @@ struct counter_rule {
 	int    defender_match;
 	char * defender_group;
 
-	// Environment conditions (-1 / false means no restriction)
-	int    terrain_type;      // enum SquareTypes, -1 = no restriction
+	// Environment conditions (0 / false means no restriction)
+	unsigned int terrain_mask; // SquareTypes mask, 0 = no restriction
 	bool   only_in_city;
 	int    district_id;       // -1 = no restriction
+	char * district_name;     // Resolved after district configs are loaded
 	bool   ignore_terrain;    // true = set defender terrain defense to 0
 
 	// Effects (percent values, 100 = no change)

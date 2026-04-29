@@ -759,6 +759,27 @@ reset_to_base_config ()
 		cc->great_wall_auto_build_wonder_name = NULL;
 	}
 
+	if (cc->unit_counter_groups != NULL) {
+		for (int n = 0; n < cc->count_unit_counter_groups; n++) {
+			free (cc->unit_counter_groups[n].name);
+			free (cc->unit_counter_groups[n].type_ids);
+		}
+		free (cc->unit_counter_groups);
+		cc->unit_counter_groups = NULL;
+		cc->count_unit_counter_groups = 0;
+	}
+
+	if (cc->counter_rules != NULL) {
+		for (int n = 0; n < cc->count_counter_rules; n++) {
+			free (cc->counter_rules[n].attacker_group);
+			free (cc->counter_rules[n].defender_group);
+			free (cc->counter_rules[n].district_name);
+		}
+		free (cc->counter_rules);
+		cc->counter_rules = NULL;
+		cc->count_counter_rules = 0;
+	}
+
 	// Free unit limits table
 	FOR_TABLE_ENTRIES (tei, &cc->unit_limits)
 		free ((void *)tei.value);
@@ -7794,6 +7815,33 @@ find_special_district_index_by_name (char const * name)
 // Unit counter system
 // ---------------------------------------------------------------
 
+bool
+read_counter_rule_terrain_mask (struct string_slice const * terrain_name, unsigned int * out_mask)
+{
+	if ((terrain_name == NULL) || (out_mask == NULL))
+		return false;
+
+	struct string_slice trimmed = trim_string_slice (terrain_name, 1);
+	if (trimmed.len <= 0)
+		return false;
+
+	if (slice_matches_str (&trimmed, "lake") || slice_matches_str (&trimmed, "lakes")) {
+		*out_mask = district_buildable_lake_mask_bit ();
+		return true;
+	}
+
+	enum SquareTypes parsed;
+	if (! read_tile_terrain_type_value (&trimmed, &parsed))
+		return false;
+
+	if (parsed == (enum SquareTypes)SQ_INVALID)
+		*out_mask = all_square_types_mask () | district_buildable_lake_mask_bit ();
+	else
+		*out_mask = square_type_mask_bit (parsed);
+
+	return *out_mask != 0;
+}
+
 struct unit_counter_group *
 find_unit_counter_group_by_name (struct c3x_config * cfg, char const * name)
 {
@@ -7892,8 +7940,9 @@ parse_counter_rule (char ** p_cursor,
 	*r = (struct counter_rule) {
 		.attacker_match = UCM_ANY,
 		.defender_match = UCM_ANY,
-		.terrain_type   = -1,
+		.terrain_mask   = 0,
 		.district_id    = -1,
+		.district_name  = NULL,
 		.self_atk_pct   = 100,
 		.self_def_pct   = 100,
 		.enemy_atk_pct  = 100,
@@ -7942,8 +7991,7 @@ parse_counter_rule (char ** p_cursor,
 			struct string_slice terrain_name;
 			if (! parse_string (&cur, &terrain_name))
 				return RPR_PARSE_ERROR;
-			if (! read_tile_terrain_type_value (&terrain_name,
-			        (enum SquareTypes *)&r->terrain_type)) {
+			if (! read_counter_rule_terrain_mask (&terrain_name, &r->terrain_mask)) {
 				add_unrecognized_line (p_unrecognized_lines, &terrain_name);
 				return RPR_UNRECOGNIZED;
 			}
@@ -7951,14 +7999,9 @@ parse_counter_rule (char ** p_cursor,
 			struct string_slice district_name;
 			if (! parse_string (&cur, &district_name))
 				return RPR_PARSE_ERROR;
-			char * dname = extract_slice (&district_name);
-			int idx = find_special_district_index_by_name (dname);
-			free (dname);
-			if (idx < 0) {
-				add_unrecognized_line (p_unrecognized_lines, &district_name);
-				return RPR_UNRECOGNIZED;
-			}
-			r->district_id = idx;
+			free (r->district_name);
+			r->district_name = extract_slice (&district_name);
+			r->district_id = -1;
 		} else {
 			break;
 		}
@@ -8004,12 +8047,12 @@ apply_counter_rules (struct c3x_config * cfg,
 		// Environment checks are based on the defender's tile
 		if (r->only_in_city && ! in_city)
 			continue;
-		if (r->terrain_type != -1 &&
-		    ! tile_matches_square_type (def_tile,
-		          (enum SquareTypes)r->terrain_type))
+		if (r->terrain_mask != 0 &&
+		    ! tile_matches_square_type_mask (def_tile, r->terrain_mask))
 			continue;
-		if (r->district_id != -1 &&
-		    ! (cfg->enable_districts &&
+		if (r->district_name != NULL &&
+		    ! ((r->district_id != -1) &&
+		       cfg->enable_districts &&
 		       district_is_complete (def_tile, r->district_id)))
 			continue;
 
@@ -11492,6 +11535,29 @@ find_district_index_by_name (char const * name)
 	return -1;
 }
 
+void
+resolve_counter_rule_districts (struct error_line ** parse_errors)
+{
+	struct c3x_config * cfg = &is->current_config;
+
+	for (int i = 0; i < cfg->count_counter_rules; i++) {
+		struct counter_rule * rule = &cfg->counter_rules[i];
+		rule->district_id = -1;
+
+		if ((rule->district_name == NULL) || (rule->district_name[0] == '\0'))
+			continue;
+
+		int district_id = find_district_index_by_name (rule->district_name);
+		if (district_id >= 0) {
+			rule->district_id = district_id;
+		} else {
+			struct error_line * err = add_error_line (parse_errors);
+			snprintf (err->text, sizeof err->text, "^  counter_rule district \"%s\" not found", rule->district_name);
+			err->text[(sizeof err->text) - 1] = '\0';
+		}
+	}
+}
+
 int
 find_wonder_district_index_by_name (char const * name)
 {
@@ -11878,6 +11944,8 @@ void parse_building_and_tech_ids ()
 		resolve_district_bonus_building_entries (&is->district_configs[i].happiness_bonus_extras, district_name, "happiness_bonus", &district_parse_errors);
 		resolve_district_bonus_building_entries (&is->district_configs[i].defense_bonus_extras, district_name, "defense_bonus_percent", &district_parse_errors);
 	}
+
+	resolve_counter_rule_districts (&district_parse_errors);
 
 	// Map wonder names to their improvement IDs for rendering under-construction wonders
 	for (int wi = 0; wi < is->wonder_district_count; wi++) {
@@ -12840,6 +12908,7 @@ reset_district_state (bool reset_tile_map)
 {
 	clear_all_tracked_workers ();
 	deinit_district_images ();
+	deinit_district_command_buttons ();
 	clear_highlighted_worker_tiles_for_districts ();
 
 	FOR_TABLE_ENTRIES (tei, &is->district_building_prereqs) {
@@ -19174,7 +19243,10 @@ init_district_command_buttons ()
 		}
 
 		// For each district type
-		for (int dc = 0; dc < is->district_count; dc++) {
+		int district_count = is->district_count;
+		if (district_count > COUNT_DISTRICT_TYPES)
+			district_count = COUNT_DISTRICT_TYPES;
+		for (int dc = 0; dc < district_count; dc++) {
 			int x = 32 * is->district_configs[dc].btn_tile_sheet_column,
 			    y = 32 * is->district_configs[dc].btn_tile_sheet_row;
 			Sprite_slice_pcx (&is->district_btn_img_sets[dc].imgs[n], __, &pcx, x, y, 32, 32, 1, 0);
@@ -21533,6 +21605,7 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 
 	// This scenario might use different mod art assets than the old one
 	deinit_stackable_command_buttons ();
+	deinit_district_command_buttons ();
 	deinit_disabled_command_buttons ();
 	deinit_trade_scroll_buttons ();
 	deinit_unit_rcm_icons ();
