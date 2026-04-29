@@ -608,6 +608,8 @@ inlead,	   0x5BEB60,	0x5CD780,	0x5BE870,	"Unit_can_heal_at",				"bool (__fastcal
 inlead,	   0x5BECE0,	0x5CD900,	0x5BE9F0,	"Unit_heal_at_start_of_turn",			"void (__fastcall *) (Unit * this)"
 define,	   0x469590,	0x46BD40,	0x469610,	"check_online_skip_flag",			"bool (__stdcall *) (int unit_id)"
 inlead,	   0x448BF0,	0x44AB10,	0x448C70,	"Leader_ai_eval_technology",			"int (__fastcall *) (Leader * this, int edx, int id, bool param_2, bool param_3)"
+inlead,	   0x43B540,	0x43D150,	0x43B5C0,	"Leader_ai_eval_strategic_resource",		"int (__fastcall *) (Leader * this, int edx, int id, bool param_2, bool param_3)"
+inlead,	   0x43B730,	0x43D360,	0x43B7B0,	"Leader_ai_eval_luxury_resource",		"int (__fastcall *) (Leader * this, int edx, int id, bool param_2, bool param_3)"
 inlead,	   0x4446C0,	0x4464C0,	0x444740,	"Leader_ai_eval_government",			"int (__fastcall *) (Leader * this, int edx, int id)"
 define,	   0x474140,	0x476F70,	0x4741C0,	"mp_despawn",					"void (__fastcall *) (void * this, int edx, int unit_id, int civ_id_responsible, byte param_3, byte param_4, byte param_5, byte param_6)"
 repl call, 0x5B483F,	0x5C3199,	0x5B454F,	"Unit_despawn_after_killed_by_nuke",		""

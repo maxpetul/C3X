@@ -191,6 +191,7 @@ enum ai_auto_build_great_wall_strategy {
 enum perfume_kind {
 	PK_PRODUCTION = 0,
 	PK_TECHNOLOGY,
+	PK_RESOURCE,
 	PK_GOVERNMENT,
 
 	COUNT_PERFUME_KINDS
