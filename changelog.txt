@@ -1,4 +1,5 @@
 - Add ability to apply perfume to resources under option named resource_perfume
+- Option do_not_place_barbarian_huts_on_impassable_tiles
 
 * RELEASE 27 PREVIEW 2
 - Show more unit stats on the Civilopedia page, option named expand_civilopedia_unit_stats

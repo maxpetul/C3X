@@ -126,6 +126,7 @@ define,    0x50BF10,	0x516008,	0x50BFB0,	"ADDR_SETUP_MODIFY_GOLD_OFFER_RETURN",	
 define,    14,		14,		14,		"TRADE_GOLD_SETTER_IS_LUMP_SUM_OFFSET", 	"int"
 define,	   0x50BEBD,	0x515FB4,	0x50BF5D,	"ADDR_PRINT_GOLD_AMOUNT_1",			"byte *"
 define,	   0x50BC75,	0x515D4D,	0x50BD15,	"ADDR_PRINT_GOLD_AMOUNT_2",			"byte *"
+inlead,	   0x5F2C60,	0x602B30,	0x5F2B90,	"Map_impl_check_goody_hut_location",		"bool (__fastcall *) (Map * this, int edx, int tile_x, int tile_y)"
 inlead,    0x5F3160,	0x603000,	0x5F3090,	"Map_check_city_location",			"CityLocValidity (__fastcall *) (Map *this, int edx, int tile_x, int tile_y, int civ_id, bool check_for_city_on_tile)"
 repl vptr, 0x66C1E8,	0x6892D8,	0x66C1E8,	"DiploForm_m68_Show_Dialog",			"int (__fastcall *) (DiploForm * this, int edx, int param_1, void * param_2, void * param_3)"
 repl vptr, 0x66C220,	0x689310,	0x66C220,	"DiploForm_m82_handle_key_event",		"void (__fastcall *) (DiploForm * this, int edx, int virtual_key_code, int is_down)"
