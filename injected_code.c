@@ -17719,7 +17719,7 @@ patch_init_floating_point ()
 		{"allow_upgrades_in_any_city"                            , false, offsetof (struct c3x_config, allow_upgrades_in_any_city)},
 		{"do_not_generate_volcanos"                              , false, offsetof (struct c3x_config, do_not_generate_volcanos)},
 		{"do_not_pollute_impassable_tiles"                       , false, offsetof (struct c3x_config, do_not_pollute_impassable_tiles)},
-		{"do_not_place_barbarian_huts_on_impassable_tiles"       , false, offsetof (struct c3x_config, do_not_place_barbarian_huts_on_impassable_tiles)},
+		{"do_not_place_barb_huts_or_camps_on_impassable_tiles"   , false, offsetof (struct c3x_config, do_not_place_barb_huts_or_camps_on_impassable_tiles)},
 		{"show_hp_of_stealth_attack_options"                     , false, offsetof (struct c3x_config, show_hp_of_stealth_attack_options)},
 		{"exclude_invisible_units_from_stealth_attack"           , false, offsetof (struct c3x_config, exclude_invisible_units_from_stealth_attack)},
 		{"exclude_passengers_from_stealth_attack"                , false, offsetof (struct c3x_config, exclude_passengers_from_stealth_attack)},
@@ -29457,13 +29457,25 @@ patch_Tile_set_flag_for_eruption_damage (Tile * this, int edx, int param_1, int 
 bool __fastcall
 patch_Map_impl_check_goody_hut_location (Map * this, int edx, int tile_x, int tile_y)
 {
-	if (is->current_config.do_not_place_barbarian_huts_on_impassable_tiles) {
-		Tile * tile = tile_at (tile_x, tile_y);
-		if (tile != NULL && p_bic_data->TileTypes[tile->vtable->m50_Get_Square_BaseType (tile)].Flags.Impassable)
-			return false;
-	}
+	Tile * tile;
+	if (is->current_config.do_not_place_barb_huts_or_camps_on_impassable_tiles &&
+	    (tile = tile_at (tile_x, tile_y)) != NULL &&
+	    p_bic_data->TileTypes[tile->vtable->m50_Get_Square_BaseType (tile)].Flags.Impassable)
+		return false;
 
 	return Map_impl_check_goody_hut_location (this, __, tile_x, tile_y);
+}
+
+bool __fastcall
+patch_Map_impl_check_barbarian_camp_location (Map * this, int edx, int tile_x, int tile_y)
+{
+	Tile * tile;
+	if (is->current_config.do_not_place_barb_huts_or_camps_on_impassable_tiles &&
+	    (tile = tile_at (tile_x, tile_y)) != NULL &&
+	    p_bic_data->TileTypes[tile->vtable->m50_Get_Square_BaseType (tile)].Flags.Impassable)
+		return false;
+
+	return Map_impl_check_barbarian_camp_location (this, __, tile_x, tile_y);
 }
 
 bool __fastcall
