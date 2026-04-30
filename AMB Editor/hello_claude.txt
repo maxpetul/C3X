@@ -1,0 +1,24 @@
+Hello Claude! Welcome to the AMB Editor project.
+
+## What This Is
+You're working on a Windows C program that edits AMB files - special sound files used by Civilization III (circa 2001). This is apparently the first reverse-engineered editor for this format. AMB files contain MIDI timing data plus references to WAV files, with various audio parameters like volume/speed randomization.
+
+## Technical Overview
+- **Compiler**: Uses TCC (Tiny C Compiler) via RUN.bat - don't try to compile with GCC on Linux
+- **UI**: Win32 ListView control with extensive custom drawing for visual feedback
+- **File Structure**: AMB files contain MIDI tracks, Prgm chunks (audio parameters), and Kmap chunks (WAV file references)
+- **Key Pattern**: The `g_rowInfo[]` array maps ListView rows to the underlying AMB data structures
+
+## Important Features
+- **Visual Feedback**: WAV filenames turn red if files don't exist, min/max values gray out when randomization is disabled
+- **Timestamp Sorting**: ListView rows are sorted by play time and auto-re-sort when times change
+- **Undo/Redo**: Uses snapshot system - always call `SnapshotCurrentFile()` before data changes
+- **Smart Editing**: `SetListViewItemText()` has an `allowRepopulation` flag to prevent recursion during sorting
+
+## Code Conventions
+- Use enum values (COL_TIME, etc.) instead of bare integers for columns
+- Boolean fields display as "Yes"/"No" but are stored as flags (bit 0 = speed random, bit 1 = volume random)
+- Float fields format to 3 decimal places
+- Minimize message boxes - users found them annoying
+
+The codebase is well-structured with clear separation between AMB file handling, UI management, and data validation. Most recent work focused on improving the user experience with better visual feedback and timestamp-based organization.

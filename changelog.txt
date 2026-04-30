@@ -1,8 +1,426 @@
-* RELEASE 12B
+- Add ability to apply perfume to resources under option named resource_perfume
+- Option do_not_place_barb_huts_or_camps_on_impassable_tiles
+
+* RELEASE 27 PREVIEW 2
+- Show more unit stats on the Civilopedia page, option named expand_civilopedia_unit_stats
+  - Specifically, shows HP bonus, worker strength, movement on air units, and bombard range on tactical nukes
+- Option to initialize preplaced scenario leader units properly so they behave like normal military great leaders spawned during the game
+  - Named initialize_preplaced_scenario_leaders_as_mgls
+- Add option allow_multiple_battle_created_units_per_player to remove the rule that stops battle-created units (typically MGLs) from spawning for players that already have one
+- Fix crash in modded naval missile transport unit AI that occurs when districts are turned off
+- Fix crash when an army unit steps onto a bridge
+- Fix crash caused by AI disembarking onto tile made impassible by districts
+- Fix possible crash when spawning unit during movement phase (e.g. popping a settler from a hut) with non-standard unit cycling turned on
+- Fix free buildings from small wonder palaces not appearing after the palace has been moved
+- Stop "name tile" option from appearing in right-click production selection menu
+- Ensure canal and bridge building properly follow config values
+- Stop allow_military_leaders_to_hurry_wonders from altering rules for partially initialized preplaced scenario leader units
+- Limit tile highlights to 6 pixels inside the tile borders so as not to obscure the map, also restore the red color for highlights
+
+* RELEASE 27 PREVIEW 1
+- Add some optional rule changes for helicopters (or any air units with transport capacity) controlled by special_helicopter_rules
+  - Helicopters may be rebased or loaded onto carriers
+  - Paratroopers inside a helicopter on a carrier may perform airdrops
+  - Units inside a helicopter can be prevented from defending their tile, performing defensive bombard, or intercepting air units
+  - Units inside a helicopter can be guaranteed to be destroyed when the helicopter is destroyed or captured
+- Can select a different method for unit autoselection that searches for similar units near where the last selected unit started or ended up
+  - Option named unit_cycle_search_criteria
+- Can specify a victory animation for air units in aircraft_victory_animation option
+- Option to prevent stealth attacks from targeting units contained in other units (named exclude_passengers_from_stealth_attack)
+- Any unit types listed in exclude_types_from_units_per_tile_limit will be exempted from the stack limit and not count toward it
+- If any unit types are listed in limit_defensive_retreat_on_water_to_types option, only those will be allowed to retreat defensively on water
+- Any unit types listed in can_bombard_only_sea_tiles will be prevented from bombarding land tiles
+- Can set a value for the barbarian activity level to be used for new games created from scenarios with custom maps, overriding the conquests.ini settings
+  - Option named override_barbarian_activity_level_for_scenario_maps
+- Can override the value of the NoAIPatrol setting from conquests.ini, option named override_no_ai_patrol
+- Option show_armies_performing_defensive_bombard that fixes defensive bombard animations being skipped when the bombarding unit is in an army
+- Improve readability of turns remaining on city builds displayed on the domestic advisor screen
+  - Option named reformat_turns_remaining_on_domestic_advisor_screen
+- Options to modify the special corruption rules for capital cities
+  - allow_corruption_in_capital removes the rule fixing corruption at zero
+  - special_capital_decorruption_effect sets the building-like decorruption bonus
+- Two new special retreat rules
+  - if-not-slower allows units to retreat as long as they're at least as fast as their opponent
+  - if-fast-and-not-slower is like if-not-slower except it does not allow 1-move units to retreat
+- For config file loading, use the text encoding that the game retrieves and records internally instead of assuming Windows-1252
+- aggressively_penalize_bankruptcy now alternates between selling buildings or disbanding units first for bankrupt AI players and every third turn cuts their research spending
+- Fix crash caused by failure to find default option for popup asking player to select new build in city that completed its previous one
+- Fix erratic behavior caused by improvement-based work area rules being initialized incorrectly when read from the config
+- Except nuclear weapons from disallow_useless_bombard_vs_airfields
+- Prevent immobile units from retreating when any non-standard retreat rule is set
+- Fix improper movement along limited railroads or fast roads after reloading game with same standard scenario
+- Fix doubly contained units not always appearing right after their container on the right-click menu
+- Fix crash caused by modded empty armies with non-zero attack/defense being allowed to enter combat and dividing by their unit count
+- Districts expansion
+  - 11 new districts: Ski Resort, Port, Bridge, Central Rail Hub, Data Center, Energy Grid, Great Wall, Canal, Offshore Extraction Zone, Park, Water Park
+  - 7 new natural wonders: Wadi Rum, Eyjafjallajokull, Ha Long Bay, Lofoten Skerries, Geirangerfjord, Delicate Arch, Savanna (mostly a desert/tundra theme this time)
+  - 3 new wonders: Great Lighthouse, Colossus, Hoover Dam
+  - Add support for maritime districts
+  - Move Research Lab from Campus to Data Center dependency
+  - Add Great Wall auto-build around borders event after Great Wall wonder is completed
+  - Add support for Named Tiles, which shows custom verbiage on a given tile (can be set in-game or via scenario.districts.txt)
+  - Fix bug with districts not rendering on right-click tile detail modal
+  - Fix bug with workers "building" a natural wonder if user clicks "Move all units of type" button
+  - Fix bug with custom scenario district art not loading from scenario folder
+  - Add support for alternative directions of Wonders, based on city vs. wonder tile location
+  - Add negative district bonuses
+  - Add custom logic for river- & port-related rendering
+  - Add granular configuration control over where districts can be built by tile and adjacent tile types
+  - Add support for districts being dependent on wonders & natural wonders
+  - Add support for districts enabled by alliances with other civs that can build them
+  - Add support for restrictions of who can build districts by civ name, trait, culture, government
+  - Allow multiple advance prerequisites
+  - Touch up art for Industrial Zones, Newton's University, Holy Site, Bach's Cathedral
+  - Add support for buildings being buildable if one of multiple possible districts is built
+  - Add support for districts generating resources
+  - Add support for districts requiring resources, both in cities or on a tile
+  - Add optional flag for districts to serve as alternative irrigation source
+  - Add patches to enable buildings dependent on adjacent water sources to be enabled if water in work area (eg, Ports can be built if city has water in work radius), except for Aqueducts & Coastal Fortresses, which still require adjacency
+  - Add flag for districts with dependent buildings to be custom tile improvements, which encourages the AI to evaluate whether to build them on each tile, like irrigation and mines
+  - Add much smarter AI for distribution hubs, with ai_distribution_hub_build_strategy = auto (AI assess civ-wide and city level needs to determine how best to use tiles and distro hubs to build)
+  - Add more balance distribution hub yields, with amount of shields/food each city receives decreasing as the number of recipient cities grows
+  - Add AI build strategy and analysis of where to place canals and bridges
+  - Add cap on max distribution hubs relative to number of cities
+  - Add flag for show_ai_city_location_desirability_if_settler, which automatically shows city desirability over tiles if a settler is selected.
+  - Add flag for auto_zoom_city_screen_for_large_work_areas, which prevents the city screen from auto-zooming out if the city_work_radius is >= 4
+  - Add support for extraterritorial colonies, where colonies can be built in another civ's territory or be built beforehand but not disappear as borders grow, at a relation penalty
+  - Add happiness_bonus to district yields
+  - Add display_name, in case name shown to user is different
+  - Add optional custom height/width & x/y offsets for district art
+  - Add error messaging to main screen if buildings / techs aren't parsed correctly, like other config options (in R26 this silently fails)
+  - Distro hub yields on city screen are drawn even if outside city work radius (useful as in R26 they aren't drawn if outside the work radius, even if city is receiving distro hub yields)
+  - Make tile highlights green, not red
+  - Replace all redundant, hard to read district tile loops with proper macros
+  - Add custom logic for air unit position and bombing if using aerodromes.
+  - Add support for alternative rendering logic (in districts config, render_strategy = "by-building") for handling districts whose buildings are not dependent on each other.
+  - Add custom logic for naval units to heal in ports and pillage enemy ports.
+  - Add custom logic for unit movement on bridges, canals, great wall
+  - Allow flexible additive bonuses for districts in config based on nearby cities' available buildings and district tile & overlay types
+  - Allow naval units to pillage (maritime districts)
+
+* RELEASE 26
+- Add some options to make land transports viable, controlled by land_transport_rules setting
+  - LTs may be loaded into naval transports
+  - Empty LTs may join armies
+  - Units inside an LT may be prevented from defending their tile, performing defensive bombard, or intercepting air units
+  - Units inside an LT can be destroyed when the LT itself is destroyed or captured
+- Add resource placement settings
+  - allow_adjacent_resources_of_different_types relaxes a rule preventing resources from appearing next to others of a different type
+  - luxury_randomized_appearance_rate_percent controls the overall appearance rate for luxuries that do not have a fixed rate set
+  - tiles_per_non_luxury_resource controls the overall appearance rate of bonus resources
+- Add option allow_sale_of_small_wonders
+- Add option allow_unload_from_army
+- Option to prevent land anti-air units from intercepting overflying aircraft while they're loaded in a naval transport
+  - Named no_land_anti_air_from_inside_naval_transport
+- Option to prevent units from being enslaved after being destroyed by lethal bombard named prevent_enslaving_by_bombardment
+- Fix era-specific civ formal names not appearing on espionage screen
+- Put rule stopping land units inside transports from exerting zone of control behind special ZoC setting "not-from-inside"
+  - Previously this rule change could not be turned off by the config
+- Polish districts
+  - Prevent districts from being built on natural wonders (regression bug)
+  - Fix minimum tile count distance between natural wonders
+  - Ensure cities receive natural wonder yields even if districts are disabled
+  - Ensure district/natural wonder yields are shown immediately upon founding a city
+  - Prevent founding of cities on natural wonders
+  - Destroy small wonders in conquered cities if the conqueror already possesses the small wonder
+  - Add config option for 'neighborhood needed' message shown (neighborhood_needed_message_frequency)
+  - Show message when a city receives a building from other city by mutual district (configurable by show_message_when_building_received_by_mutual_district)
+  - Cities that receive a building they are already currently building change production to defensive unit (to avoid wasting shields)
+  - Hide settlers' gray "city too close to found" button if on a natural wonder
+
+* RELEASE 26 PREVIEW 2
+- Allow city work areas to vary based on their buildings
+- Polish districts
+  - Ensure user & scenario district settings override the base settings
+  - Pre-placed district coordinates file renamed to scenario.districts.txt for consistency
+  - Add districts config name check on game load to show warning if IDs or names are different
+  - Show buildings grayed out in production selection when their tech prereq is met but district prereq is not
+  - Fix worker automate button crashing the game
+  - Ensure AI can't build on natural wonders
+  - Ensure natural wonders can't be placed on starting positions
+  - Add support for natural wonder placement in swamp, hills
+  - Ensure natural wonders can be used while districts are disabled
+  - Simplify distro hub logic and ensure surrounding tiles are always unworkable, even after conquest
+  - Prevent AI placing distro hubs next to cities
+  - Lengthen right-click menu item string for longer district names
+  - Ensure scenario config files must be in scenario folder
+  - Prevent districts from being built on volcanos
+  - Ensure neighborhood needed message only shown if population is growing
+
+* RELEASE 26 PREVIEW 1
+- Enable districts, an elaborate change to the game's economy inspired by Civ 6.
+  - For details, see the default config or this thread: https://forums.civfanatics.com/threads/c3x-districts.700590/
+
+* RELEASE 25
+- Lift city limit and allow it to be configured up to 2048
+  - Setting named city_limit, included in new "Limits Removed" section with other limit increases/removals
+- Enable tile graphics to cycle over day and night, see "Day/Night Cycle" section of default config for details
+- Allow Civilopedia descriptions for units, civilizations, and game concepts to span multiple pages
+  - Controlled by config option allow_multipage_civilopedia_descriptions
+- Can adjust time to double building culture, setting named years_to_double_building_culture
+- Option to prevent units from upgrading past an intermediate type that does not have the upgrade ability
+  - Setting named prevent_old_units_from_upgrading_past_ability_block
+- Can adjust times to generate tourism gold, setting named tourism_time_scale_percent
+- Option to put all human players in contact with each other at the start of a hotseat game
+  - Setting named introduce_all_human_players_at_start_of_hotseat_game
+- Double size of minimap when running in high definition (>= 1920 horizontal pixels), setting named double_minimap_size
+- Option to show some popup messages as online-multiplayer-style notifications
+  - Setting named convert_some_popups_into_online_mp_messages, off by default, see config for which popups are affected
+- Option to switch debug mode on or off for games in progress
+  - Setting named enable_debug_mode_switch, off by default, see config for how to use in-game
+- Fix AI players being able to sacrifice units that don't have the sacrifice special ability set on their type
+- Fix AI players being able to build armies with leader units that don't have the "build army" special ability set on their type
+- Option to tint coast and sea tiles on minimap based on cultural borders
+  - Setting named show_territory_colors_on_water_tiles_in_minimap, off by default
+- Do not charge maintenance for buildings provided for free by shared wonder effects
+- Extend promote_forbidden_palace_decorruption to cover great wonders as well and rename it to promote_wonder_decorruption_effect
+- Option to draw small shadows underneath city dots on the minimap to make them more visible
+  - Setting named accentuate_cities_on_minimap, off by default because it doesn't quite work properly
+- Fix inability to trade units beyond the first 8192
+- Fix support-free units being disbanded on bankruptcy while aggressively_penalize_bankruptcy is set
+- Fix possible crash in base game leader unit AI
+- Group non-combat artillery and flak units of different experience levels together on right-click menu
+
+* RELEASE 24
+- Option to share wonders among human players in hotseat mode, setting named share_wonders_in_hotseat
+- AI routine for "caravan units", which are modded units whose purpose is to be disbanded for shields
+  - Controlled by config option enable_caravan_unit_ai
+- Experimental option to move the game's trade net object to a different location in memory named move_trade_net_object
+- Delete any AI units that somehow end up off the map to fix a rare crash, setting named delete_off_map_ai_units
+- Fix pathfinder bug (see config for details), setting named patch_premature_truncation_of_found_paths
+- Fix crash due to division by zero when cities have zero production, setting named patch_zero_production_crash
+- Fix icons for different kinds of specialist yields obscuring each other, setting named fix_overlapping_specialist_yield_icons
+- Correct typo in name of share_visibility_in_hotseat setting. The old, incorrect name still works as an alias.
+
+* RELEASE 23
+- Include AMB editor
+- Option to throttle AI's expansion by temporarily applying perfume to settlers each time it founds a city
+  - Controlled by two settings named ai_settler_perfume_on_founding(_duration)
+- Disallow trespassing setting kicks trespassers out of each player's territory at the start of their turn and after signing peace
+- Option to block the galley chaining exploit by preventing units from loading into two different transports on the same turn
+  - Option named limit_unit_loading_to_one_transport_per_turn
+- Adjustable rebase range as multiple of operational range, setting named rebase_range_multiplier
+- Option not to draw capital cities larger than they really are, named do_not_make_capital_cities_appear_larger
+- Fix division by zero in AI logic to evaluate proposed alliances
+- Fix possible crash when unit performing stack bombard is destroyed
+- Prevent airdrops from violating the trespassing restriction
+- Fix city screen zooming out for adjacent tiles that aren't actually workable due to maximum work radius
+- Fix empty army movement
+
+* RELEASE 22
+- Can adjust the size of the area cities can work
+  - Setting named city_work_radius, standard radius is 2, can be set 1 - 7
+  - work_area_limit option allows the workable areas to be limited based on cities' cultural levels
+- Option do_not_unassign_workers_from_polluted_tiles (off by default)
+- Fix AI players sometimes spawning nonsensical units when hitting a unit limit
+- Pressing the Z key on the city screen toggles the zoom level of the map display
+
+* RELEASE 21
+- Allow perfume amounts to be specified as percentages
+- Option to limit how many units can share each tile, named limit_units_per_tile
+- Adjustable chance for max one HP units to be destroyed by nuclear strikes
+  - Controlled by config option chance_for_nukes_to_destroy_max_one_hp_units
+- Add limited_railroads_work_like_fast_roads option which does just that
+- Option to allow sale of buildings like aqueducts that uncap population growth, named allow_sale_of_aqueducts_and_hospitals
+- Option stopping non-sea detector units from revealing invisible sea units and vice-versa, named no_cross_shore_detection
+- Do not apply all-units special retreat rule to immobile units
+- Group foreign units on the right-click menu based only on their surface characteristics
+- Fix charm flag controlling PTW arty targeting not working for reloaded games
+- Fix building unit prereqs interfering with unit limits
+- Fix double despawn of barb unit entering city after hit by lethal ZoC
+- Fix incorrect ETAs shown for one tile paths when railroad movement is limited
+
+* RELEASE 20
+- Remove city improvement limit
+  - Controlled by config option remove_city_improvement_limit
+- Polish precision striking by cruise missiles
+  - Now plays the correct animations and despawns the unit afterward
+  - Controlled by the polish_precision_striking config option, which used to be named polish_non_air_precision_striking
+- Enable cruise missiles to perform stealth attack bombard
+- Add ability to perfume technologies and governments
+  - Options named technology_perfume and government_perfume, respectively
+  - The perfume_specs option from before has been renamed to production_perfume but the old name still works as an alias
+- Fix bug related to "Disables Diseases From Flood Plains" tech flag
+  - Option named patch_disease_stopping_tech_flag_bug, off by default b/c this fix causes a lot more disease under the standard rules
+- Option to show unit hitpoints on the stealth attack target selection popup (named show_hp_of_stealth_attack_options in config)
+- Option to have a warning when the building you've selected to build would replace another already built in the city
+  - Named warn_when_chosen_building_would_replace_another in config, off by default
+- Option to prevent stealth attacks from targeting units that are invisible and unrevealed (named exclude_invisible_units_from_stealth_attack)
+- Display negative yields from generated resources
+- Option to show more strategic resources (up to 13) in the box on the top left of the city screen by packing them in more tightly
+  - Named compact_strategic_resource_display_on_city_screen, off by default
+- Option to make planting forests produce LM forest terrain (named convert_to_landmark_after_planting_forest)
+- Stop barbarian spawns from bankrupting the barbarian player (matters only if barbs are allowed to capture cities)
+- Option stopping pollution of impassable tiles also covers volcanic eruptions
+- Make barbarians defend cities they've captured as if they were camps
+- Load a third config file, custom.c3x_config.ini, if present
+- Fix AIs not switching off a unit build when it can't complete due to a limit
+- Fix free unit glitch from switching production to a building through the unit limit reached popup
+- Stop units from airdropping multiple times in one turn
+  - This only matters when dont_end_units_turn_after_airdrop has been activated
+- Do not group together units with different names on right-click menu
+- Record which units have used extra defensive bombards in save files
+- Rebuild the trade network after loading save data for improvements beyond the limit
+- Fix describe_states_of_units_on_menu setting being ignored
+- Fix tile visibility check in stealth attack bombard
+- Fix yields from resource generating buildings not always appearing after a new scenario is loaded
+- Touch up action descriptions for auto precision striking and fortified exhausted units
+- Correct description of lethal zone of control setting in default config
+
+* RELEASE 19
+- Option to stop pollution from appearing on impassable tiles
+- Rework UnitRCMIcons.pcx so busy & combat units can be given special icons
+- Fix bombers not doing stack bombard and not showing as attack-capable on right-click menu
+- Fix crash when opening right-click menu with fleeing automated workers
+- Fix lethal ZoC setting allowing coastal fortresses to knock the last hit point off passing units
+- Fix dont_escort_unflagged_units option interfering with group movement of units
+- Put right-click menu sword icon on non-empty armies
+- Describe the action of passenger units as "Transported" instead of "Fortified"
+- Describe the action of units waiting to fortify as "Fortified" instead of leaving it unreplaced
+
+* RELEASE 18B
+- Fix Wake/Activate replacement not working on Steam version
+
+* RELEASE 18
+- Unit limits
+- Expand AI two-city start to any number of cities
+  - Config option has been renamed to ai_multi_city_start
+- AI's starter cities in multi-city start can begin with improvements, inc. "extra palaces" which respawn like the real palace
+- Right-click menu enhancements
+  - Place icons next to units showing movement and combat status
+  - Replace Wake/Activate with descriptions of what the units are doing
+  - Gray out units if they have no remaining moves
+  - Stop grouping automated and non-automated workers
+- Can set multiplier on AI research rate (replaces halve_ai_research_rate)
+- Option to allow upgrades in any city
+- Option to stop the map generator from placing volcanos
+- Apply GridOn setting from conquests.ini after loading a save
+- Fix resource generation not always updated after an input was gained or lost due to city improv change
+- Rework some code related to resource generation and trade to improve stability and efficiency
+
+* RELEASE 17C
+- Fix crashes and strange behavior caused by use-after-free bug in config loader
+
+* RELEASE 17
+- Optimize computation of trade networks
+  - For details, see the info text file in the Trade Net X folder
+- Civ and leader names can vary by era
+- Option to measure turn times
+- Zone of control changes
+  - Allow land-to-sea and sea-to-land attacks, only using bombard stat
+  - May be lethal
+  - May be exerted by air units
+  - Show attack animation even when attacker is not at the top of its stack
+- Defensive bombard changes
+  - May be lethal
+  - May be performed by air units
+  - Invisible, undetected units may be made immune
+  - May be performed multiple times per turn with blitz
+  - Naval units in a city may perform defensive bombard vs land attackers
+- Enable resource generating buildings to add the resource's yields to their city
+- Display icons for generated resources on top of the generating building
+- Allow precision strikes to target tile improvements
+- Option not to end a unit's turn after it bombards a barricade
+- Fix freezes caused by undisembarkable escorting unit
+  - Covered by the disembark immobile bug fix option, which has been renamed
+- Fix graphical issues when running on Wine
+- Option to allow defensive retreat on water tiles
+- Can increase unit maintenance costs based on their build costs
+- Adjustable AI worker requirement
+- Option to stop AI from escorting units without the "requires escort" flag
+- Fix a rare edge case where stack bombard would continue attacking an empty tile
+- Option to pack the list of luxuries more tightly into the box on the city screen
+- Apply perfume to all unit types & buildings with the specified name
+  - Fixes perfume only applying to one sub-type when a unit type has multiple AI strategies
+- Option to allow airdrops without airports
+- Fix max_ai_naval_escorts setting interfering with group movement of naval units belonging to human players
+- Option to allow bombardment of other improvements on a tile with an occupied airfield
+- Option to boost OCN increase from forbidden palaces in non-communal governments
+- Fix modified sea retreat rules interfering with naval combat animations
+- Overhaul implementation of shared visibility for simplicity and correctness
+- Fix possible freeze when a trade deal is broken for a resource that's an input to a resource generating building
+- Display total city count (disabled by default, appears on demographics screen)
+- Allow list items to be placed on separate lines for perfume_specs and buildings_generating_resources
+- Improve accuracy of line numbers on error messages
+
+* RELEASE 16
+- Barbarian city capture & production (experimental)
+- Option to share visibility among all human players in a hotseat game
+- Can use charm flag to control PTW-like artillery targeting
+- Option to allow land units to bombard aircraft and naval units in cities
+- Option to ignore king flag on defense, so kings aren't always last to defend in a stack
+- Limit AI artillery units to one escort (w/ offensive artillery AI)
+- Harbor/airport city icons indicate unit effects not trade abilities
+- Separate land & sea retreat rules
+- Fix incorrect ETAs in go-to mode when railroad movement is limited
+- Can limit the number of escorts the AI assigns to its naval transports and carriers
+- Fix barbarian diagonal bug
+- Fix cached building maintenance amounts not being updated when buildings are obsoleted
+- Optimize improvement loops
+- Option to show untradable techs on trade screen
+- Disallow useless bombard attacks vs airfields
+- Option to remove Elvis Easter egg
+- Gray out build city button when too close to another city and min separation has been increased
+- Mitigate issue with pathfinding, limited railroad movement, and units with many moves
+  - Mitigation applies if GCD(road movement rate, railroad limit) > 1
+- Fix freeze related to trespassing restriction and AI disembarking
+- Rework sub bug fix in order not to interfere with AI pathing vs enemy units
+- Re-enable main GUI before showing hotseat AI replay
+- Prevent music from being reset during hotseat AI replay
+- Make config options more intuitive: anarchy length reduction, minimum city separation, AI naval escort cap
+- Load mod button images from scenario folder if present
+- Update UI after stack bombarding (fixes bombard button not disappearing for multi-move units w/o blitz)
+- Fix potential trade net issue in games with a very large number of tiles and resource generating buildings
+- Reduce default ai_build_artillery_ratio from 20 to 16
+- Match only complete names from config
+- Improve config read error messages
+
+* RELEASE 15
+- Option to replay AI moves for human players in hotseat mode
+- Enable stealth attacks via bombardment
+- Artillery can be set to use PTW-like targeting against cities
+- Recon missions can be made vulnerable to interception
+- Option to charge one move for recon missions and interception
+- Allow players to opt out of stealth attacks
+- Polish precision striking by land or sea units
+  - Use regular bombard animation instead of flying animation
+  - Use bombard range instead of operational range
+  - Cannot be intercepted
+- Message appears after bomber dodges interception by air defense buildings
+- Restore unit directions on game load
+- Option to immunize aircraft against bombardment
+- Disallow stealth attack against single unit by default
+  - Fixes a compatibility issue with the EFZI mod
+- L key unloads unit over activating AI city loc highlighter
+- Show AI strategy in production ranking for unit types with multiple strategies
+- Tweak messages on bankruptcy popups
+
+* RELEASE 14
+- Automatically cut research spending to avoid bankruptcy
+- Option to aggressively penalize bankrupt players
+  - Sells non-gold-generating buildings, non-free units, and switches city production to Wealth
+- Remove pause for "we love the king" messages
+- Holding shift while a stack bombard is going will temporarily turn off combat animations
+- Fix units could trespass by attacking an enemy unit across a restricted border
+- Widen C3X error, info, and warning popups
+- Warn if two-city start contains adjacent cities or missing FP cities
+- Gold amount autofill activates when editing an amount on the table
+- Option to remove exception to tile penalty for city tiles with fresh water and Agri trait
+- Suppress "maximum hypertext links exceeded" popup
+- NoRaze restriction applies to the human player as well as AIs
+- Civilopedia indicates when units go obsolete but cannot be upgraded
+
+* RELEASE 13
 - AI two-city start
 - Remove cap on turn limit
 - Option to strengthen forbidden palace decorruption effect to match the palace's
 - Option to allow military great leaders to hurry wonders
+- Option to reduce AI research rate by half
+- Resource generation from buildings can be set to ignore revealing tech
+- Address some issues with text encoding
+  - Includes fix for encoding error on Windows 8.1
+- Apply building prereqs to all unit types with the same name
+  - Fixes prereq sometimes not applying to AIs
 
 * RELEASE 12
 - Support for the executable from PCGames.de

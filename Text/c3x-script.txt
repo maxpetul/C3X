@@ -30,12 +30,15 @@ Nevermind
 #active 1
 
 #C3X_ERROR
+#xs 400
 #caption C3X Error
 
 #C3X_WARNING
+#xs 400
 #caption C3X Warning
 
 #C3X_INFO
+#xs 400
 #caption C3X Info
 
 #C3X_AI_PROD_RANKING
@@ -48,5 +51,175 @@ This is the point value the AI assigns to each available build in this city:
 #text
 A highlight will be applied to all tiles showing how desirable they are as city locations for the AI from the perspective of the selected player.
 ^Viewing from the perspective of another player requires debug mode.
+
+#C3X_FORCE_SOLD_SINGLE_IMPROV
+#map_center 0
+#xs 400
+#wave 24
+#advisor Domestic Angry
+#text
+$CITY0's governor was forced to sell the $IMPROVEMENT1 there because we could no longer afford to pay its $LINK<maintenance=GCON_Maintenance>. We should $LINK<manage=GCON_Commerce> our $LINK<treasury=GCON_Treasury> better!
+
+#C3X_FORCE_SOLD_MULTIPLE_IMPROVS
+#xs 400
+#wave 24
+#advisor Domestic Angry
+#text
+Our governors have been forced to {sell $NUM0 city improvements} because we could no longer afford to pay their $LINK<maintenance=GCON_Maintenance>. We should $LINK<manage=GCON_Commerce> our $LINK<treasury=GCON_Treasury> better!
+^What was sold:
+
+#C3X_FORCE_DISBANDED_MULTIPLE_UNITS
+#xs 320
+#wave 24
+#advisor Military Angry
+#text
+{$NUM0 of our units have committed desertion} because we could no longer afford to $LINK<feed=GCON_Unit_Support> them! We should $LINK<manage=GCON_Commerce> our $LINK<treasury=GCON_Treasury> better!
+
+#C3X_FORCE_DISBANDED_SINGLE_UNIT
+#xs 320
+#wave 24
+#advisor Military Angry
+#text
+One $UNIT0 committed desertion because we could no longer afford to $LINK<feed=GCON_Unit_Support> them! We should $LINK<manage=GCON_Commerce> our $LINK<treasury=GCON_Treasury> better!
+
+#C3X_FORCE_CUT_RESEARCH_SPENDING
+#xs 320
+#wave 24
+#advisor Science Angry
+#text
+We don't have enough funds to support our current research, and have been forced to reduce our science $LINK<spending=GCON_Research>! We should $LINK<manage=GCON_Commerce> our $LINK<treasury=GCON_Treasury> better!
+
+#C3X_FORCE_BUILD_WEALTH
+#xs 320
+#wave 24
+#advisor Domestic Angry
+#text
+Our treasury is depleted! Some of our cities can no longer afford production, and have been allocated to only producing $LINK<$WEALTH0=$PEDIAKEY1> to help offset costs! We should $LINK<manage=GCON_Commerce> our $LINK<treasury=GCON_Treasury> better!
+
+#C3X_CANT_RAZE
+#caption Can't do that, chief!
+#text
+Razing cities is prohibited by the rules of this scenario.
+
+#C3X_CANT_PILLAGE
+#caption Can't do that, chief!
+#text
+Pillaging Wonder Districts is prohibited by the rules of this scenario.
+
+#C3X_LIMITED_UNIT_CHANGE
+#map_center 0
+#advisor Military
+#text
+$CITY0 can no longer work on a $UNIT1 because our civilization can only command at most $NUM2 $<#2:unit:units> of that type. Production has been switched to $UNIT3.
+#itemlist
+Zoom to City.
+Sounds Good.
+
+#C3X_WARN_ABOUT_BUILDING_REPLACEMENT
+#advisor Domestic Happy
+Constructing the $IMPROVEMENT0 in this city would replace its $IMPROVEMENT1.
+#itemlist
+That's fine.
+Nevermind then.
+
+#C3X_SHARED_WONDER_CHANGE
+#map_center 0
+#advisor Domestic
+$CITY0 can no longer work on $IMPROVEMENT1 because we are already receiving its effects from the $CIVNOUN2. Production has been switched to $BUILD3.
+#itemlist
+Zoom to City.
+Sounds Good.
+
+#C3X_DISTRICT_WONDER_DESTROYED
+#advisor Domestic Surprised
+#text
+It seems $IMPROVEMENT0 has been destroyed and is gone forever! What a terrible loss.
+
+#C3X_DISTRICT_WONDER_DESTROYED_REBUILD
+#advisor Domestic
+#text
+It seems $IMPROVEMENT0 has been destroyed! Maybe we should rebuild it...
+
+#C3X_CONFIRM_DEBUG_ACTIVATION
+Activate debug mode?
+#itemlist
+Yes
+No
+#active 1
+
+#C3X_CONFIRM_CANCEL_BUILD_DISTRICT
+#advisor Domestic
+This worker has been ordered to build a $DISTRICT0 and will be done in $NUM1 turns. Do you want them to stop?
+#itemlist
+Yes. There is more important work to do.
+No. Carry on.
+
+#C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT
+#advisor Domestic Angry
+A $DISTRICT0 already exists here. Removing it will destroy buildings dependent on it. Are you sure you want to proceed?
+#itemlist
+Yes. There are better uses for this area.
+No, nevermind.
+
+#C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT_SAFE
+#advisor Domestic
+A $DISTRICT0 exists here, but either it has no dependent buildings or another $DISTRICT1 is nearby, so no buildings will be lost. Do you want to proceed?
+#itemlist
+Yes. There are better uses for this area.
+No, nevermind.
+
+#C3X_CONFIRM_BUILD_DISTRICT_OVER_IMPROVEMENT
+#advisor Domestic
+An improvement already exists here. Are you sure you want to remove it and build a $DISTRICT0?
+#itemlist
+Yes. There are better uses for this area.
+No, nevermind.
+
+#C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT
+#advisor Domestic Angry
+A $DISTRICT0 exists here with dependent buildings. Are you sure you want to proceed? Doing so will remove any dependent buildings.
+#itemlist
+Yes. There are better uses for this area.
+No, nevermind.
+
+#C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT_SAFE
+#advisor Domestic
+A $DISTRICT0 exists here, but either it has no dependent buildings or another $DISTRICT1 is nearby, so no buildings will be lost. Do you want to proceed?
+#itemlist
+Yes. There are better uses for this area.
+No, nevermind.
+
+#C3X_BEGIN_GREAT_WALL_AUTO_BUILD
+#advisor Military Happy
+#text
+Our $DISTRICT0 is ready! Let's review our borders to determine where to place it.
+
+#C3X_CONFIRM_BUILD_GREAT_WALL
+#advisor Military
+Shall we extend our $DISTRICT0 here?
+#itemlist
+Yes, we must protect our people.
+No, don't build it here.
+
+#C3X_CONFIRM_BUILD_GREAT_WALL_OVER_IMPROVEMENT
+#advisor Military
+We've found an improvement already exists here. Should we replace it with a $DISTRICT0?
+#itemlist
+Yes, we must protect our people.
+No, leave it alone.
+
+#C3X_CONFIRM_BUILD_GREAT_WALL_OVER_DISTRICT
+#advisor Military
+We've found a $DISTRICT1 already exists here with dependent buildings. Should we replace the $DISTRICT1 with a $DISTRICT0? Doing so will remove any dependent buildings.
+#itemlist
+Yes, we must protect our people.
+No, leave it alone.
+
+#C3X_CONFIRM_BUILD_GREAT_WALL_OVER_DISTRICT_SAFE
+#advisor Military
+We've found a $DISTRICT1 already exists here but has no dependent buildings. Should we replace the $DISTRICT1 with a $DISTRICT0?
+#itemlist
+Yes, we must protect our people.
+No, leave it alone.
 
 # ; This line must remain at end of file

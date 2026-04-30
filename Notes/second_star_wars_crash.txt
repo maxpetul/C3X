@@ -1,0 +1,33 @@
+About Star Wars crash (the second one):
+Context_Menu::find_index_of_item is called this this == NULL
+Call stack:
+  0x61C379   in process_text_snippet
+  0x610F90   in do_set_text_key_and_flags
+  0x49F0D4   in impl_set_text_key_and_flags
+  0x22241323 in patch_PopupForm_set_text_key_and_flags
+Call stack goes up to call to set_text_key_and_flags called from mod code, maybe for prod limits?
+Setting breakpoint at 0x61A110 doesn't hit
+Crash seems to come during set_text_key_and_flags call for IMPROVEMENT_COMPLETE at 0x4B892E
+  City in question: Tatooine
+  Build completed: Barracks
+  ...either it does not crash here or I set something up wrong
+     YES, ran C3X from master instead of R25 with his config
+Testing popup in RE specimen:
+  0xCC3658 has something in it
+Hypothesis: set_popup_droplink_param is not called, causing crash b/c process text snippet expects ptr to droplink object to be there in global array
+  Confirmed no call to method before crash; yes call before prev working popup and working popup in RE spec
+  No call b/c order type is 0 and order ID is garbage
+  Confirmed: city that crashes is Shinbone w/ order type 0 and ID garbage
+Points where order type is set:
+  0x4ABF11 in City::set_production
+    Sets to 0
+    called from 0x437011 (in City::m22)
+      called from 0x4B96C6 (in City::add_building_if_done)
+  0x4ABF11 again
+    Sets to 0 (again)
+    called from 0x4371B6 (in City::m22)
+       called from 0x4B96C6 (still)
+  So looks like City::m22 can't find any valid build options?
+    Attempt to fix this by patching call to m22 to pick any option if the base method doesn't find one for whatever reason
+    Also queueing up Wealth (or eq.) should fix the crash. Verify that and tell ajb
+      Confirmed queueing up Sector Commerce works

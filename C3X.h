@@ -1,4 +1,6 @@
 
+#include <stdbool.h>
+
 #define NOVIRTUALKEYCODES // Keycodes defined in Civ3Conquests.h instead
 #include "windows.h"
 
@@ -8,10 +10,22 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
-#define MOD_VERSION 1201
+#define MOD_VERSION 2700
+#define MOD_PREVIEW_VERSION 2
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
+
+#define COUNT_SPECIAL_DISTRICT_TYPES 10
+#define USED_SPECIAL_DISTRICT_TYPES 11
+#define MAX_DYNAMIC_DISTRICT_TYPES 22
+#define COUNT_DISTRICT_TYPES (COUNT_SPECIAL_DISTRICT_TYPES + MAX_DYNAMIC_DISTRICT_TYPES)
+#define MAX_WONDER_DISTRICT_TYPES 32
+#define MAX_NATURAL_WONDER_DISTRICT_TYPES 32
+#define MAX_DISTRICT_VARIANT_COUNT 5
+#define MAX_DISTRICT_ERA_COUNT 4
+#define MAX_DISTRICT_COLUMN_COUNT 10
+#define C3X_DISTRICT_COMMAND_BASE (-11000000)
 
 // Initialize to zero. Implementation is in common.c
 struct table {
@@ -20,50 +34,206 @@ struct table {
 	size_t len;
 };
 
-struct perfume_spec {
-	City_Order target_order;
-	int amount;
+// Initialize to zero. Implementation in common.c
+struct buffer {
+	byte * contents;
+	int length;
+	int capacity;
 };
 
 // A mill is a city improvement that spawns a resource. These are read from the "buildings_generating_resources" key in the config but are called
 // "mills" internally for brevity.
+enum mill_flag {
+	MF_LOCAL          = 1,
+	MF_NO_TECH_REQ    = 2,
+	MF_YIELDS         = 4,
+	MF_SHOW_BONUS     = 8,
+	MF_HIDE_NON_BONUS = 16
+};
 struct mill {
-	int improv_id;
-	int resource_id;
-	int is_local;
+	short improv_id;
+	short resource_id;
+	short flags;
+};
+
+#define ERA_ALIAS_LIST_CAPACITY 4 // Must not exceed 32 so we can store all genders as bits in an int
+
+// A list of per-era aliases for a civ's noun, adjective, or formal name.
+struct civ_era_alias_list {
+	char * key;
+	char * aliases[ERA_ALIAS_LIST_CAPACITY];
+};
+
+// A list of per-era aliases for a civ's leader's name, including genders and (optionally) titles.
+struct leader_era_alias_list {
+	char * key;
+	char * aliases[ERA_ALIAS_LIST_CAPACITY];
+	int gender_bits; // Gender of each alias. Like LeaderGender in the Race object, 0 for male and 1 for female.
+	char * titles[ERA_ALIAS_LIST_CAPACITY]; // Title for each alias. May be NULL.
+};
+
+struct unit_type_limit {
+	int per_civ;
+	int per_city;
+	int cities_per;
+};
+
+struct work_area_improvement {
+	short improv_id;
+	int work_area_radius_limit;
+	int work_area_radius_bonus;
 };
 
 enum retreat_rules {
 	RR_STANDARD = 0,
 	RR_NONE,
 	RR_ALL_UNITS,
-	RR_IF_FASTER
+	RR_IF_FASTER,
+	RR_IF_NOT_SLOWER,
+	RR_IF_FAST_AND_NOT_SLOWER,
+};
+
+enum line_drawing_override {
+	LDO_NEVER = 0,
+	LDO_WINE,
+	LDO_ALWAYS
+};
+
+enum minimap_doubling_mode {
+	MDM_NEVER = 0,
+	MDM_HIGH_DEF,
+	MDM_ALWAYS
+};
+
+enum unit_cycle_search_criteria {
+	UCSC_STANDARD = 0,
+	UCSC_SIMILAR_NEAR_START,
+	UCSC_SIMILAR_NEAR_DESTINATION
+};
+
+enum no_ai_patrol_override {
+	NAPO_ZERO = 0,
+	NAPO_ONE,
+	NAPO_NONE
+};
+
+enum barbarian_activity_override {
+	BAO_NONE = -2,
+
+	// The values for these levels must match what the game uses internally for Map.World.Final_Barbarians_Activity
+	BAO_NO_BARBARIANS = -1,
+	BAO_SEDENTARY = 0,
+	BAO_ROAMING = 1,
+	BAO_RESTLESS = 2,
+	BAO_RAGING = 3,
+	BAO_RANDOM = 4
+};
+
+enum special_defensive_bombard_rules {
+	SDBR_LETHAL         =  1,
+	SDBR_NOT_INVISIBLE  =  2,
+	SDBR_AERIAL         =  4,
+	SDBR_BLITZ          =  8,
+	SDBR_DOCKED_VS_LAND = 16,
+};
+
+enum special_zone_of_control_rules {
+	SZOCR_LETHAL          = 1,
+	SZOCR_AERIAL          = 2,
+	SZOCR_AMPHIBIOUS      = 4,
+	SZOCR_NOT_FROM_INSIDE = 8,
+};
+
+enum land_transport_rules {
+	LTR_LOAD_ONTO_BOAT         = 1,
+	LTR_JOIN_ARMY              = 2,
+	LTR_NO_DEFENSE_FROM_INSIDE = 4,
+	LTR_NO_ESCAPE              = 8,
+};
+
+enum special_helicopter_rules {
+	SHR_ALLOW_ON_CARRIERS      = 1,
+	SHR_PASSENGER_AIRDROP      = 2,
+	SHR_NO_DEFENSE_FROM_INSIDE = 4,
+	SHR_NO_ESCAPE              = 8,
+};
+
+enum work_area_limit {
+	WAL_NONE = 0,
+	WAL_CULTURAL,
+	WAL_CULTURAL_MIN_2,
+	WAL_CULTURAL_OR_ADJACENT
+};
+
+enum day_night_cycle_mode {
+	DNCM_OFF = 0,
+	DNCM_TIMER,
+	DNCM_USER_TIME,
+	DNCM_EVERY_TURN,
+	DNCM_SPECIFIED
+};
+
+enum distribution_hub_yield_division_mode {
+	DHYDM_FLAT = 0,
+	DHYDM_SCALE_BY_CITY_COUNT
+};
+
+enum ai_distribution_hub_build_strategy {
+	ADHBS_AUTO = 0,
+	ADHBS_BY_CITY_COUNT
+};
+
+enum ai_auto_build_great_wall_strategy {
+	AAGWS_ALL_BORDERS = 0,
+	AAGWS_OTHER_CIV_BORDERED_ONLY
+};
+
+enum perfume_kind {
+	PK_PRODUCTION = 0,
+	PK_TECHNOLOGY,
+	PK_RESOURCE,
+	PK_GOVERNMENT,
+
+	COUNT_PERFUME_KINDS
 };
 
 struct c3x_config {
-	char enable_stack_bombard;
-	char enable_disorder_warning;
-	char allow_stealth_attack_against_single_unit;
-	char show_detailed_city_production_info;
+	bool enable_stack_bombard;
+	bool enable_disorder_warning;
+	bool allow_stealth_attack_against_single_unit;
+	bool show_detailed_city_production_info;
 	int limit_railroad_movement;
-	char enable_free_buildings_from_small_wonders;
-	char enable_stack_unit_commands;
-	char skip_repeated_tile_improv_replacement_asks;
-	char autofill_best_gold_amount_when_trading;
-	int adjust_minimum_city_separation;
-	char disallow_founding_next_to_foreign_city;
-	char enable_trade_screen_scroll;
-	char group_units_on_right_click_menu;
-	int anarchy_length_reduction_percent;
-	char show_golden_age_turns_remaining;
-	char reverse_specialist_order_with_shift;
-	char dont_give_king_names_in_non_regicide_games;
-	char disable_worker_automation;
-	char enable_land_sea_intersections;
-	char disallow_trespassing;
-	char show_detailed_tile_info;
-	struct perfume_spec * perfume_specs;
-	int count_perfume_specs;
+	bool limited_railroads_work_like_fast_roads;
+	int limit_units_per_tile[3]; // Limits for land, sea, and air units respectively
+	bool exclude_cities_from_units_per_tile_limit;
+	struct table exclude_types_from_units_per_tile_limit;
+	bool enable_free_buildings_from_small_wonders;
+	bool enable_stack_unit_commands;
+	bool skip_repeated_tile_improv_replacement_asks;
+	bool autofill_best_gold_amount_when_trading;
+	int minimum_city_separation;
+	bool disallow_founding_next_to_foreign_city;
+	bool enable_trade_screen_scroll;
+	bool group_units_on_right_click_menu;
+	bool gray_out_units_on_menu_with_no_remaining_moves;
+	bool put_movement_icons_on_units_on_menu;
+	bool describe_states_of_units_on_menu;
+	int anarchy_length_percent;
+	bool show_golden_age_turns_remaining;
+	bool show_zoc_attacks_from_mid_stack;
+	bool show_armies_performing_defensive_bombard;
+	bool cut_research_spending_to_avoid_bankruptcy;
+	bool dont_pause_for_love_the_king_messages;
+	bool reverse_specialist_order_with_shift;
+	bool toggle_zoom_with_z_on_city_screen;
+	bool enable_mouse_wheel_zoom;
+	bool dont_give_king_names_in_non_regicide_games;
+	bool no_elvis_easter_egg;
+	bool disable_worker_automation;
+	bool enable_land_sea_intersections;
+	bool disallow_trespassing;
+	bool show_detailed_tile_info;
+	struct table perfume_specs[COUNT_PERFUME_KINDS]; // Each table maps strings to i31b's. Each i31b combines an amount and whether it's a percent
 	struct table building_unit_prereqs; // A mapping from int keys to int values. The keys are unit type IDs. If an ID is present as a key in the
 					    // table that means that unit type has one or more prereq buildings. The associated value is either a
 					    // pointer to a list of MAX_BUILDING_PREREQS_FOR_UNITS improvement IDs or a single encoded improv ID. The
@@ -72,40 +242,246 @@ struct c3x_config {
 					    // by checking the LSB (1 => encoded improv ID, 0 => list pointer).
 	struct mill * mills;
 	int count_mills;
-	char warn_about_unrecognized_names;
-	char enable_ai_production_ranking;
-	char enable_ai_city_location_desirability_display;
-	char zero_corruption_when_off;
-	char disallow_land_units_from_affecting_water_tiles;
-	char dont_end_units_turn_after_airdrop;
-	char enable_negative_pop_pollution;
-	enum retreat_rules retreat_rules;
-	char enable_ai_two_city_start;
-	char promote_forbidden_palace_decorruption;
-	char allow_military_leaders_to_hurry_wonders;
+	bool warn_about_unrecognized_names;
+	bool enable_ai_production_ranking;
+	bool enable_ai_city_location_desirability_display;
+	bool show_ai_city_location_desirability_if_settler;
+	bool zero_corruption_when_off;
+	bool disallow_land_units_from_affecting_water_tiles;
+	bool dont_end_units_turn_after_airdrop;
+	bool allow_airdrop_without_airport;
+	bool enable_negative_pop_pollution;
+	enum retreat_rules land_retreat_rules;
+	enum retreat_rules sea_retreat_rules;
+	bool allow_defensive_retreat_on_water;
+	struct table limit_defensive_retreat_on_water_to_types; // Table mapping unit type IDs to 1's; used as a hash set
+	int ai_multi_city_start;
+	int max_tries_to_place_fp_city;
+	int * ai_multi_start_extra_palaces;
+	int count_ai_multi_start_extra_palaces;
+	int ai_multi_start_extra_palaces_capacity;
+	bool promote_wonder_decorruption_effect;
+	bool allow_military_leaders_to_hurry_wonders;
+	bool allow_multiple_battle_created_units_per_player;
+	int ai_research_multiplier;
+	int ai_settler_perfume_on_founding;
+	int ai_settler_perfume_on_founding_duration;
+	bool aggressively_penalize_bankruptcy;
+	bool no_penalty_exception_for_agri_fresh_water_city_tiles;
+	bool suppress_hypertext_links_exceeded_popup;
+	bool indicate_non_upgradability_in_pedia;
+	bool show_message_after_dodging_sam;
+	bool include_stealth_attack_cancel_option;
+	bool intercept_recon_missions;
+	bool charge_one_move_for_recon_and_interception;
+	bool polish_precision_striking;
+	bool enable_stealth_attack_via_bombardment;
+	bool immunize_aircraft_against_bombardment;
+	bool replay_ai_moves_in_hotseat_games;
+	struct table ptw_arty_types; // Table mapping unit type IDs to 1's; used as a hash set
+	struct table can_bombard_only_sea_tiles; // Table mapping unit type IDs to 1's; used as a hash set
+	bool restore_unit_directions_on_game_load;
+	bool apply_grid_ini_setting_on_game_load;
+	bool charm_flag_triggers_ptw_like_targeting;
+	bool city_icons_show_unit_effects_not_trade;
+	bool ignore_king_ability_for_defense_priority;
+	bool show_untradable_techs_on_trade_screen;
+	bool disallow_useless_bombard_vs_airfields;
+	enum line_drawing_override draw_lines_using_gdi_plus;
+	bool compact_luxury_display_on_city_screen;
+	bool compact_strategic_resource_display_on_city_screen;
+	bool warn_when_chosen_building_would_replace_another;
+	bool do_not_unassign_workers_from_polluted_tiles;
+	bool do_not_make_capital_cities_appear_larger;
+	bool show_territory_colors_on_water_tiles_in_minimap;
+	bool convert_some_popups_into_online_mp_messages;
+	bool enable_debug_mode_switch;
+	bool accentuate_cities_on_minimap;
+	enum minimap_doubling_mode double_minimap_size;
+	bool allow_multipage_civilopedia_descriptions;
+	enum unit_cycle_search_criteria unit_cycle_search_criteria;
+	bool reformat_turns_remaining_on_domestic_advisor_screen;
+	bool expand_civilopedia_unit_stats;
+	bool enable_city_capture_by_barbarians;
+	bool share_visibility_in_hotseat;
+	bool share_wonders_in_hotseat;
+	bool allow_precision_strikes_against_tile_improvements;
+	bool dont_end_units_turn_after_bombarding_barricade;
+	bool remove_land_artillery_target_restrictions;
+	bool allow_bombard_of_other_improvs_on_occupied_airfield;
+	bool show_total_city_count;
+	bool strengthen_forbidden_palace_ocn_effect;
+	int extra_unit_maintenance_per_shields;
+	enum special_zone_of_control_rules special_zone_of_control_rules;
+	enum special_defensive_bombard_rules special_defensive_bombard_rules;
+	struct civ_era_alias_list * civ_era_alias_lists;
+	int count_civ_era_alias_lists;
+	struct leader_era_alias_list * leader_era_alias_lists;
+	int count_leader_era_alias_lists;
+	struct table unit_limits; // Maps unit type names (strings) to pointers to limit objects (struct unit_type_limit *)
+	bool allow_upgrades_in_any_city;
+	bool do_not_generate_volcanos;
+	bool do_not_pollute_impassable_tiles;
+	bool do_not_place_barb_huts_or_camps_on_impassable_tiles;
+	bool show_hp_of_stealth_attack_options;
+	bool exclude_invisible_units_from_stealth_attack;
+	bool exclude_passengers_from_stealth_attack;
+	bool convert_to_landmark_after_planting_forest;
+	int chance_for_nukes_to_destroy_max_one_hp_units;
+	bool allow_sale_of_aqueducts_and_hospitals;
+	bool no_cross_shore_detection;
+	int city_work_radius;
+	bool auto_zoom_city_screen_for_large_work_areas;
+	enum work_area_limit work_area_limit;
+	struct work_area_improvement * work_area_improvements;
+	int count_work_area_improvements;
+	int rebase_range_multiplier;
+	bool limit_unit_loading_to_one_transport_per_turn;
+	bool prevent_old_units_from_upgrading_past_ability_block;
+	bool introduce_all_human_players_at_start_of_hotseat_game;
+	bool allow_unload_from_army;
+	enum land_transport_rules land_transport_rules;
+	bool allow_adjacent_resources_of_different_types;
+	bool allow_corruption_in_capital;
+	int special_capital_decorruption_effect;
+	int luxury_randomized_appearance_rate_percent;
+	int tiles_per_non_luxury_resource;
+	bool no_land_anti_air_from_inside_naval_transport;
+	enum special_helicopter_rules special_helicopter_rules;
+	bool prevent_enslaving_by_bombardment;
+	int years_to_double_building_culture;
+	int tourism_time_scale_percent;
+	bool allow_sale_of_small_wonders;
+	enum no_ai_patrol_override override_no_ai_patrol;
+	enum barbarian_activity_override override_barbarian_activity_level_for_scenario_maps;
+	bool initialize_preplaced_scenario_leaders_as_mgls;
 
-	char use_offensive_artillery_ai;
+	bool enable_trade_net_x;
+	bool optimize_improvement_loops;
+	bool measure_turn_times;
+
+	bool use_offensive_artillery_ai;
+	bool dont_escort_unflagged_units;
 	int ai_build_artillery_ratio;
 	int ai_artillery_value_damage_percent;
 	int ai_build_bomber_ratio;
-	char replace_leader_unit_ai;
-	char fix_ai_army_composition;
-	char enable_pop_unit_ai;
+	bool replace_leader_unit_ai;
+	bool fix_ai_army_composition;
+	bool enable_pop_unit_ai;
+	bool enable_caravan_unit_ai;
+	int max_ai_naval_escorts;
+	int ai_worker_requirement_percent;
 
-	char remove_unit_limit;
-	char remove_era_limit;
-	char remove_cap_on_turn_limit;
+	bool remove_unit_limit;
+	bool remove_city_improvement_limit;
+	int city_limit;
+	bool remove_cap_on_turn_limit;
+	bool remove_era_limit;
 
-	char patch_submarine_bug;
-	char patch_science_age_bug;
-	char patch_pedia_texture_bug;
-	char patch_disembark_immobile_bug;
-	char patch_houseboat_bug;
-	char patch_intercept_lost_turn_bug;
-	char patch_phantom_resource_bug;
+	bool patch_submarine_bug;
+	bool patch_science_age_bug;
+	bool patch_pedia_texture_bug;
+	bool patch_blocked_disembark_freeze;
+	bool patch_houseboat_bug;
+	bool patch_intercept_lost_turn_bug;
+	bool patch_phantom_resource_bug;
+	bool patch_maintenance_persisting_for_obsolete_buildings;
+	bool patch_barbarian_diagonal_bug;
+	bool patch_disease_stopping_tech_flag_bug;
+	bool patch_division_by_zero_in_ai_alliance_eval;
+	bool patch_empty_army_movement;
+	bool patch_empty_army_combat_crash;
+	bool delete_off_map_ai_units;
+	bool fix_overlapping_specialist_yield_icons;
+	bool patch_premature_truncation_of_found_paths;
+	bool patch_zero_production_crash;
+	bool patch_ai_can_form_army_without_special_ability;
+	bool patch_ai_can_sacrifice_without_special_ability;
+	bool patch_crash_in_leader_unit_ai;
+	bool patch_failure_to_find_new_city_build;
+	bool patch_passengers_out_of_order_on_menu;
 
-	char prevent_autorazing;
-	char prevent_razing_by_ai_players;
+	bool prevent_autorazing;
+	bool prevent_razing_by_players;
+
+	bool allow_extraterritorial_colonies;
+	int per_extraterritorial_colony_relation_penalty;
+
+	bool draw_forests_over_roads_and_railroads;
+
+	bool enable_named_tiles;
+
+	char * aircraft_victory_animation; // NULL if set to "none" in config
+
+	int day_night_cycle_mode;
+	int elapsed_minutes_per_day_night_hour_transition;
+	int fixed_hours_per_turn_for_day_night_cycle;
+	int pinned_hour_for_day_night_cycle;
+
+	bool enable_natural_wonders;
+	bool add_natural_wonders_to_scenarios_if_none;
+	bool show_natural_wonder_name_on_map;
+	int minimum_natural_wonder_separation;
+
+	bool enable_districts;
+	bool enable_neighborhood_districts;
+	bool enable_wonder_districts;
+	bool enable_distribution_hub_districts;
+	bool enable_aerodrome_districts;
+	bool enable_port_districts;
+	bool enable_bridge_districts;
+	bool enable_canal_districts;
+	bool enable_central_rail_hub_districts;
+	bool enable_energy_grid_districts;
+	bool enable_great_wall_districts;
+
+	bool cities_with_mutual_district_receive_buildings;
+	bool cities_with_mutual_district_receive_wonders;
+	bool show_message_when_building_received_by_mutual_district;
+	bool show_message_when_building_lost_to_destroyed_district;
+
+	bool air_units_use_aerodrome_districts_not_cities;
+	bool naval_units_use_port_districts_not_cities;
+
+	int maximum_pop_before_neighborhood_needed;
+	int per_neighborhood_pop_growth_enabled;
+	int neighborhood_needed_message_frequency;
+	bool destroying_neighborhood_reduces_pop;
+	
+	bool completed_wonder_districts_can_be_destroyed;
+	bool destroyed_wonders_can_be_built_again;
+
+	int distribution_hub_yield_division_mode;
+	int distribution_hub_food_yield_divisor;
+	int distribution_hub_shield_yield_divisor;
+	int ai_distribution_hub_build_strategy;
+	int ai_ideal_distribution_hub_count_per_100_cities;
+	int max_distribution_hub_count_per_100_cities;
+	int central_rail_hub_distribution_food_bonus_percent;
+	int central_rail_hub_distribution_shield_bonus_percent;
+
+	bool workers_can_enter_coast;
+	bool expand_water_tile_checks_to_city_work_area;
+	int max_contiguous_bridge_districts;
+	int max_contiguous_canal_districts;
+	int ai_canal_eval_min_bisected_land_tiles;
+	int ai_bridge_canal_eval_block_size;
+	int ai_bridge_eval_lake_tile_threshold;
+	bool ai_can_replace_existing_districts_with_canals;
+	bool ai_builds_bridges;
+	bool ai_builds_canals;
+
+	bool ai_defends_districts;
+	int ai_city_district_max_build_wait_turns;
+
+	bool disable_great_wall_city_defense_bonus;
+	bool great_wall_districts_impassible_by_others;
+	bool auto_build_great_wall_around_territory;
+	char * great_wall_auto_build_wonder_name;
+	int great_wall_auto_build_wonder_improv_id;
+	int ai_auto_build_great_wall_strategy;
+
+	bool enable_city_work_radii_highlights;
 };
 
 enum stackable_command {
@@ -174,6 +550,100 @@ enum c3x_label {
 	CL_VERSION,
 	CL_CONFIG_FILES_LOADED,
 	CL_CREATING_CITIES,
+	CL_MCS_FAILED_SANITY_CHECK,
+	CL_MCS_ADJACENT_CITIES,
+	CL_MCS_MISSING_CITIES,
+	CL_OBSOLETED_BY,
+	CL_NO_STEALTH_ATTACK,
+	CL_DODGED_SAM,
+	CL_PREVIEW,
+	CL_CITY_TOO_CLOSE_BUTTON_TOOLTIP,
+	CL_TOTAL_CITIES,
+
+	// Offense, Defense, Artillery, etc.
+	CL_FIRST_UNIT_STRAT,
+	CL_LAST_UNIT_STRAT = CL_FIRST_UNIT_STRAT + 19,
+
+	// Unit actions for right-click menu
+	CL_IDLE,
+	CL_FORTIFIED,
+	CL_SENTRY,
+	CL_MINING,
+	CL_IRRIGATING,
+	CL_BUILDING_FORTRESS,
+	CL_BUILDING_ROAD,
+	CL_BUILDING_RAILROAD,
+	CL_PLANTING_FOREST,
+	CL_CLEARING_FOREST,
+	CL_CLEARING_WETLANDS,
+	CL_CLEARING_DAMAGE,
+	CL_BUILDING_AIRFIELD,
+	CL_BUILDING_RADAR_TOWER,
+	CL_BUILDING_OUTPOST,
+	CL_BUILDING_BARRICADE,
+	CL_BUILDING_COLONY,
+	CL_INTERCEPTING,
+	CL_MOVING,
+	CL_AUTOMATED,
+	CL_EXPLORING,
+	CL_BOMBARDING,
+
+	// Generic "Building" phrase for Districts right-click menu
+	CL_BUILDING,
+
+	// Districts-related texts
+	CL_REQUIRES,
+	CL_TO_GROW,
+	CL_DISTRICT_DESTROYED_BY_VOLCANO,
+	CL_CONSTRUCTION_HALTED_DUE_TO_MISSING_DISTRICT,
+	CL_LOST_POPULATION_DUE_TO_DESTROYED_NEIGHBORHOOD,
+
+	CL_RECEIVED,
+	CL_FROM_SHARED,
+	CL_WITH,
+
+	CL_APOSTROPHE_S,
+	CL_AND,
+	CL_OTHER_BUILDINGS_HAVE_BEEN,
+	CL_LOST_DUE_TO_DESTROYED,
+
+	// Districts config mismatch checked on game load
+	CL_DISTRICT_ID,
+	CL_DISTRICT_IN_SAVE_BUT_MISSING_NOW,
+	CL_DISTRICT_NAME_MISMATCH,
+	CL_SAVE_FILE_HAD,
+	CL_CURRENT_CONFIG_HAS_ONLY,
+	CL_WARNING_DISTRICTS_CONFIG_MISMATCH,
+	CL_MAY_BE_OTHER_ERRORS_AS_WELL,
+	CL_DISTRICTS_IN_SAVE_FILE,
+	CL_CURRENTLY_CONFIGURED_DISTRICTS,
+
+	// Tile naming
+	CL_NAME_TILE,
+	CL_RENAME_TILE,
+
+	// "Action" for passenger units
+	CL_TRANSPORTED,
+
+	CL_IN_STATE_27,
+	CL_IN_STATE_28,
+	CL_IN_STATE_29,
+	CL_IN_STATE_30,
+	CL_IN_STATE_33,
+
+	// For unit stats on Civilopedia
+	CL_HP_BONUS,
+	CL_WORKER_STRENGTH,
+
+	CL_AGRICULTURAL,
+	CL_COMMERCIAL,
+	CL_EXPANSIONIST,
+	CL_INDUSTRIOUS,
+	CL_MILITARISTIC,
+	CL_RELIGIOUS,
+	CL_SCIENTIFIC,
+	CL_SEAFARING,
+
 	COUNT_C3X_LABELS
 };
 
@@ -186,6 +656,745 @@ struct ai_prod_valuation {
 	int order_type;
 	int order_id;
 	int point_value;
+};
+
+enum unit_rcm_icon {
+	URCMI_UNMOVED = 0,
+	URCMI_MOVED_CAN_ATTACK,
+	URCMI_MOVED_NO_ATTACK,
+	URCMI_CANT_MOVE,
+
+	COUNT_UNIT_RCM_ICONS
+};
+
+enum unit_rcm_icon_set {
+	URCMIS_ATTACKER = 0,
+	URCMIS_NONCOMBAT,
+	URCMIS_BUSY_ATTACKER,
+	URCMIS_BUSY_NONCOMBAT,
+
+	COUNT_UNIT_RCM_ICON_SETS
+};
+
+enum city_gain_reason {
+	CGR_FOUNDED = 0,
+	CGR_CONQUERED,
+	CGR_CONVERTED, // covers culture flips & bribes
+	CGR_TRADED,
+	CGR_POPPED_FROM_HUT,
+	CGR_PLACED_FOR_AI_RESPAWN,
+	CGR_PLACED_FOR_SCENARIO,
+	CGR_PLACED_FOR_AI_MULTI_CITY_START,
+};
+
+enum city_loss_reason {
+	CLR_DESTROYED = 0, // means city was razed for any reason (inc. by conqueror)
+	CLR_CONQUERED,
+	CLR_CONVERTED, // covers culture flips & bribes
+	CLR_TRADED
+};
+
+enum {
+	MAX_DISTRICT_DEPENDENTS = 64
+};
+
+enum {
+	DEFAULT_DISTRICT_BUILDABLE_MASK = (1 << SQ_Desert) | (1 << SQ_Plains) | (1 << SQ_Grassland) | (1 << SQ_Tundra) | (1 << SQ_FloodPlain) | (1 << SQ_Hills)
+};
+
+enum {
+	MAX_DISTRICT_BONUS_ENTRIES = 16
+};
+
+enum district_bonus_entry_type {
+	DBET_TILE = 0,
+	DBET_BUILDING = 1
+};
+
+enum great_wall_auto_build_state {
+	GWABS_NOT_STARTED = 0,
+	GWABS_RUNNING,
+	GWABS_DONE
+};
+
+struct district_bonus_entry {
+	enum district_bonus_entry_type type;
+	int bonus;
+	enum SquareTypes tile_type;
+	int building_id;
+	char const * building_name;
+};
+
+struct district_bonus_list {
+	int count;
+	struct district_bonus_entry entries[MAX_DISTRICT_BONUS_ENTRIES];
+};
+
+enum district_render_strategy {
+	DRS_BY_COUNT = 0,
+	DRS_BY_BUILDING = 1
+};
+
+enum district_ai_build_strategy {
+	DABS_DISTRICT = 0,
+	DABS_TILE_IMPROVEMENT = 1
+};
+
+struct district_config {
+	enum Unit_Command_Values command;
+	char const * name;
+	char const * display_name;
+	char const * tooltip;
+	char const * advance_prereqs[MAX_DISTRICT_DEPENDENTS];
+	int advance_prereq_count;
+	char const * obsoleted_by;
+	char const * resource_prereqs[MAX_DISTRICT_DEPENDENTS];
+	char const * resource_prereq_on_tile;
+	char const * dependent_improvements[MAX_DISTRICT_DEPENDENTS];
+	char const * wonder_prereqs[MAX_DISTRICT_DEPENDENTS];
+	char const * natural_wonder_prereqs[MAX_DISTRICT_DEPENDENTS];
+	char const * buildable_on_districts[MAX_DISTRICT_DEPENDENTS];
+	char const * buildable_adjacent_to_districts[MAX_DISTRICT_DEPENDENTS];
+	char const * img_paths[10];
+	unsigned int buildable_square_types_mask;
+	unsigned int buildable_adjacent_to_square_types_mask;
+	unsigned int buildable_without_removal_mask;
+	unsigned int buildable_on_overlays_mask;
+	unsigned int buildable_adjacent_to_overlays_mask;
+	bool buildable_on_rivers;
+	bool buildable_adjacent_to_allows_city;
+	bool allow_multiple;
+	bool vary_img_by_era;
+	bool vary_img_by_culture;
+	enum district_render_strategy render_strategy;
+	enum district_ai_build_strategy ai_build_strategy;
+	bool is_dynamic;
+	bool align_to_coast;
+	bool draw_over_resources;
+	bool allow_irrigation_from;
+	bool auto_add_road;
+	bool auto_add_railroad;
+	int custom_width;
+	int custom_height;
+	int x_offset;
+	int y_offset;
+	int resource_prereq_count;
+	int dependent_improvement_max_index;
+	int wonder_prereq_count;
+	int natural_wonder_prereq_count;
+	int buildable_on_district_count;
+	int buildable_adjacent_to_district_count;
+	int img_path_count;
+	int img_column_count;
+	bool has_img_column_count_override;
+	int btn_tile_sheet_column;
+	int btn_tile_sheet_row;
+	int culture_bonus;
+	int science_bonus;
+	int food_bonus;
+	int gold_bonus;
+	int shield_bonus;
+	int happiness_bonus;
+	struct district_bonus_list culture_bonus_extras;
+	struct district_bonus_list science_bonus_extras;
+	struct district_bonus_list food_bonus_extras;
+	struct district_bonus_list gold_bonus_extras;
+	struct district_bonus_list shield_bonus_extras;
+	struct district_bonus_list happiness_bonus_extras;
+	struct district_bonus_list defense_bonus_extras;
+	int defense_bonus_percent;
+	bool heal_units_in_one_turn;
+	bool impassible;
+	bool impassible_to_wheeled;
+	char const * generated_resource;
+	int generated_resource_id;
+	short generated_resource_flags;
+	int buildable_on_district_ids[MAX_DISTRICT_DEPENDENTS];
+	int buildable_on_district_id_count;
+	bool has_buildable_on_districts;
+	int buildable_adjacent_to_district_ids[MAX_DISTRICT_DEPENDENTS];
+	int buildable_adjacent_to_district_id_count;
+	bool has_buildable_adjacent_to;
+	bool has_buildable_adjacent_to_districts;
+	bool has_buildable_without_removal;
+	bool has_buildable_on_overlays;
+	bool has_buildable_adjacent_to_overlays;
+	bool has_buildable_on_rivers;
+	char const * buildable_by_civs[32];
+	int buildable_by_civ_count;
+	bool has_buildable_by_civs;
+	int buildable_by_civ_traits_ids[8];
+	int buildable_by_civ_traits_id_count;
+	bool has_buildable_by_civ_traits;
+	int buildable_by_civ_govs_ids[5];
+	int buildable_by_civ_govs_id_count;
+	bool has_buildable_by_civ_govs;
+	int buildable_by_civ_cultures_ids[5];
+	int buildable_by_civ_cultures_id_count;
+	bool has_buildable_by_civ_cultures;
+	bool buildable_by_war_allies;
+	bool buildable_by_pact_allies;
+};
+
+struct wonder_district_config {
+	char const * wonder_name;
+	char const * img_path;
+	int index,
+		img_row,
+		img_column,
+		img_construct_row,
+		img_construct_column,
+		img_alt_dir_construct_row,
+		img_alt_dir_construct_column,
+		img_alt_dir_row,
+		img_alt_dir_column,
+		custom_width,
+		custom_height;
+	unsigned int buildable_square_types_mask;
+	unsigned int buildable_adjacent_to_square_types_mask;
+	unsigned int buildable_adjacent_to_overlays_mask;
+	bool buildable_on_rivers;
+	bool buildable_adjacent_to_allows_city;
+	char const * buildable_by_civs[32];
+	int buildable_by_civ_count;
+	bool has_buildable_by_civs;
+	int buildable_by_civ_traits_ids[8];
+	int buildable_by_civ_traits_id_count;
+	bool has_buildable_by_civ_traits;
+	int buildable_by_civ_govs_ids[5];
+	int buildable_by_civ_govs_id_count;
+	bool has_buildable_by_civ_govs;
+	int buildable_by_civ_cultures_ids[5];
+	int buildable_by_civ_cultures_id_count;
+	bool has_buildable_by_civ_cultures;
+	bool enable_img_alt_dir;
+	bool is_dynamic;
+	bool has_buildable_adjacent_to;
+	bool has_buildable_adjacent_to_overlays;
+};
+
+enum square_type_extras {
+	SQ_INVALID = -1,
+	SQ_RIVER = SQ_Ocean + 1,
+	SQ_SNOW_VOLCANO,
+	SQ_SNOW_FOREST,
+	SQ_SNOW_MOUNTAIN
+};
+
+enum district_overlay_mask_bits {
+	DOM_MINE        = 1u << 0,
+	DOM_IRRIGATION  = 1u << 1,
+	DOM_FORTRESS    = 1u << 2,
+	DOM_BARRICADE   = 1u << 3,
+	DOM_OUTPOST     = 1u << 4,
+	DOM_RADAR_TOWER = 1u << 5,
+	DOM_JUNGLE      = 1u << 6,
+	DOM_FOREST      = 1u << 7,
+	DOM_SWAMP       = 1u << 8,
+	DOM_RIVER       = 1u << 9,
+	DOM_AIRFIELD    = 1u << 10
+};
+
+struct natural_wonder_district_config {
+	char const * name;
+	char const * img_path;
+	enum SquareTypes terrain_type;
+	enum SquareTypes adjacent_to;
+	enum direction adjacency_dir;
+	int index;
+	int img_row;
+	int img_column;
+	int culture_bonus;
+	int science_bonus;
+	int food_bonus;
+	int gold_bonus;
+	int shield_bonus;
+	int happiness_bonus;
+	bool impassible;
+	bool impassible_to_wheeled;
+	bool is_dynamic;
+};
+
+struct natural_wonder_candidate {
+	Tile * tile;
+	short x, y;
+};
+
+struct natural_wonder_candidate_list {
+	struct natural_wonder_candidate * entries;
+	int count;
+	int capacity;
+};
+
+struct wonder_location {
+	short x;
+	short y;
+};
+
+const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYPES] = {
+	{
+		.command = UCV_Build_Neighborhood, .name = "Neighborhood", .tooltip = "Build Neighborhood", .display_name = "Neighborhood",
+		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = true, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 0, .dependent_improvements = {0},
+		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
+		.img_path_count = 5, .img_column_count = 4, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
+		.culture_bonus = 1, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 25,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+
+	},
+	{
+		.command = UCV_Build_WonderDistrict, .name = "Wonder District", .tooltip = "Build Wonder District", .display_name = "Wonder District",
+		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 0, .dependent_improvements = {0},
+		.img_paths = {"WonderDistrict.pcx"},
+		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Coast) | (1 << SQ_Mountains)),
+		.img_path_count = 1, .img_column_count = 1, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+
+	},
+	{
+		.command = UCV_Build_DistributionHub, .name = "Distribution Hub", .tooltip = "Build Distribution Hub", .display_name = "Distribution Hub",
+		.advance_prereqs = {"Construction"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 0, .dependent_improvements = {0},
+		.img_paths = {"DistributionHub.pcx"},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
+		.img_path_count = 1, .img_column_count = 1, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+
+	},
+	{
+		.command = UCV_Build_Aerodrome, .name = "Aerodrome", .tooltip = "Build Aerodrome", .display_name = "Aerodrome",
+		.advance_prereqs = {"Flight"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 1,
+		.img_paths = {"Aerodrome.pcx"}, .dependent_improvements = {"Airport"},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
+		.img_path_count = 1, .img_column_count = 2, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	},
+	{
+		.command = -1, .name = "Natural Wonder", .tooltip = NULL, .display_name = "Natural Wonder",
+		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 0, .dependent_improvements = {0},
+		.img_paths = {0},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
+		.img_path_count = 0, .img_column_count = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	},
+	{
+		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port", .display_name = "Port",
+		.advance_prereqs = {"Map Making"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 2, .align_to_coast = true,
+		.img_paths = {"Port_NW.pcx", "Port_NE.pcx", "Port_SE.pcx", "Port_SW.pcx"}, .dependent_improvements = {"Harbor", "Commercial Dock"},
+		.buildable_square_types_mask = (1 << SQ_Coast),
+		.img_path_count = 4, .img_column_count = 4, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .align_to_coast = true,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	},
+	{
+		.command = UCV_Build_CentralRailHub, .name = "Central Rail Hub", .tooltip = "Build Central Rail Hub", .display_name = "Central Rail Hub",
+		.advance_prereqs = {"Steam Power"}, .advance_prereq_count = 1, .resource_prereqs = {"Iron", "Coal"}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 2, .dependent_improvement_max_index = 0,
+		.img_paths = {"CentralRailHub_AMER.pcx", "CentralRailHub_EURO.pcx", "CentralRailHub_ROMAN.pcx", "CentralRailHub_MIDEAST.pcx", "CentralRailHub_ASIAN.pcx"},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK, .auto_add_road = true, .auto_add_railroad = true,
+		.img_path_count = 5, .img_column_count = 2, .btn_tile_sheet_column = 5, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	},
+	{
+		.command = UCV_Build_EnergyGrid, .name = "Energy Grid", .tooltip = "Build Energy Grid", .display_name = "Energy Grid",
+		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 4,
+		.img_paths = {"EnergyGrid.pcx"}, .dependent_improvements = {"Coal Plant", "Hydro Plant", "Nuclear Plant", "Solar Plant"},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK, .custom_height = 84,
+		.img_path_count = 1, .img_column_count = 5, .btn_tile_sheet_column = 6, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 2, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	},
+	{
+		.command = UCV_Build_Bridge, .name = "Bridge", .tooltip = "Build Bridge", .display_name = "Bridge",
+		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 0,
+		.img_paths = {"Bridge.pcx"}, .dependent_improvements = {0}, .custom_width = 176, .custom_height = 112, .y_offset = 24, .x_offset = 0,
+		.buildable_square_types_mask = (1 << SQ_Coast), .auto_add_road = true,
+		.img_path_count = 1, .img_column_count = 9, .btn_tile_sheet_column = 7, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	},
+	{
+		.command = UCV_Build_Canal, .name = "Canal", .tooltip = "Build Canal", .display_name = "Canal",
+		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 0,
+		.img_paths = {"Canal.pcx"}, .dependent_improvements = {0}, .custom_width = 176, .custom_height = 112, .y_offset = 24, .x_offset = 0,
+		.buildable_square_types_mask = (1 << SQ_Desert) | (1 << SQ_Plains) | (1 << SQ_Grassland) | (1 << SQ_Tundra) | (1 << SQ_FloodPlain), 
+		.img_path_count = 1, .img_column_count = 9, .btn_tile_sheet_column = 8, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	},
+	{
+		.command = UCV_Build_GreatWall, .name = "Great Wall", .tooltip = "Build Great Wall", .display_name = "Great Wall",
+		.advance_prereqs = {0}, .advance_prereq_count = 0, .obsoleted_by = "Metallurgy", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 0,
+		.img_paths = {"GreatWall.pcx"}, .dependent_improvements = {0}, .custom_height = 88, .wonder_prereqs = {"The Great Wall"}, .wonder_prereq_count = 1,
+		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Mountains) | (1 << SQ_Forest) | (1 << SQ_Swamp) | (1 << SQ_Jungle) | (1 << SQ_Volcano)), .draw_over_resources = true,
+		.img_path_count = 1, .img_column_count = 9, .btn_tile_sheet_column = 9, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 50,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	}
+};
+
+struct parsed_district_definition {
+	char * name;
+	char * display_name;
+	char * tooltip;
+	char * advance_prereqs[5];
+	int advance_prereq_count;
+	char * obsoleted_by;
+	char * resource_prereqs[5];
+	char * resource_prereq_on_tile;
+	char * dependent_improvements[5];
+	char * wonder_prereqs[5];
+	char * natural_wonder_prereqs[5];
+	char * buildable_on_districts[5];
+	char * buildable_adjacent_to_districts[5];
+	char * img_paths[5];
+	int resource_prereq_count;
+	int dependent_improvement_max_index;
+	int wonder_prereq_count;
+	int natural_wonder_prereq_count;
+	int buildable_on_district_count;
+	int buildable_adjacent_to_district_count;
+	int img_path_count;
+	int img_column_count;
+	bool allow_multiple;
+	bool vary_img_by_era;
+	bool vary_img_by_culture;
+	enum district_render_strategy render_strategy;
+	enum district_ai_build_strategy ai_build_strategy;
+	bool align_to_coast;
+	bool draw_over_resources;
+	bool allow_irrigation_from;
+	bool auto_add_road;
+	bool auto_add_railroad;
+	bool impassible;
+	bool impassible_to_wheeled;
+	int custom_width;
+	int custom_height;
+	int x_offset;
+	int y_offset;
+	int btn_tile_sheet_column;
+	int btn_tile_sheet_row;
+	int defense_bonus_percent;
+	bool heal_units_in_one_turn;
+	int culture_bonus;
+	int science_bonus;
+	int food_bonus;
+	int gold_bonus;
+	int shield_bonus;
+	int happiness_bonus;
+	struct district_bonus_list culture_bonus_extras;
+	struct district_bonus_list science_bonus_extras;
+	struct district_bonus_list food_bonus_extras;
+	struct district_bonus_list gold_bonus_extras;
+	struct district_bonus_list shield_bonus_extras;
+	struct district_bonus_list happiness_bonus_extras;
+	struct district_bonus_list defense_bonus_extras;
+	unsigned int buildable_square_types_mask;
+	unsigned int buildable_adjacent_to_square_types_mask;
+	unsigned int buildable_without_removal_mask;
+	unsigned int buildable_on_overlays_mask;
+	unsigned int buildable_adjacent_to_overlays_mask;
+	bool buildable_on_rivers;
+	bool buildable_adjacent_to_allows_city;
+	char * buildable_by_civs[32];
+	int buildable_by_civ_count;
+	bool buildable_by_war_allies;
+	bool buildable_by_pact_allies;
+	bool has_name;
+	bool has_tooltip;
+	bool has_advance_prereqs;
+	bool has_obsoleted_by;
+	bool has_resource_prereqs;
+	bool has_dependent_improvements;
+	bool has_wonder_prereqs;
+	bool has_natural_wonder_prereqs;
+	bool has_display_name;
+	bool has_img_paths;
+	bool has_img_column_count;
+	bool has_allow_multiple;
+	bool has_vary_img_by_era;
+	bool has_vary_img_by_culture;
+	bool has_render_strategy;
+	bool has_ai_build_strategy;
+	bool has_align_to_coast;
+	bool has_draw_over_resources;
+	bool has_custom_width;
+	bool has_custom_height;
+	bool has_x_offset;
+	bool has_y_offset;
+	bool has_btn_tile_sheet_column;
+	bool has_btn_tile_sheet_row;
+	bool has_defense_bonus_percent;
+	bool has_heal_units_in_one_turn;
+	bool has_culture_bonus;
+	bool has_science_bonus;
+	bool has_food_bonus;
+	bool has_gold_bonus;
+	bool has_shield_bonus;
+	bool has_happiness_bonus;
+	bool has_buildable_on;
+	bool has_buildable_adjacent_to;
+	bool has_buildable_without_removal;
+	bool has_buildable_on_overlays;
+	bool has_buildable_adjacent_to_overlays;
+	bool has_buildable_on_rivers;
+	bool has_resource_prereq_on_tile;
+	bool has_buildable_by_civs;
+	bool has_buildable_by_war_allies;
+	bool has_buildable_by_pact_allies;
+	char * generated_resource;
+	short generated_resource_flags;
+	bool has_generated_resource;
+	char * buildable_by_civ_traits[10];
+	int buildable_by_civ_traits_count;
+	int buildable_by_civ_traits_ids[10];
+	int buildable_by_civ_traits_id_count;
+	bool has_buildable_by_civ_traits;
+	char * buildable_by_civ_govs[10];
+	int buildable_by_civ_govs_count;
+	int buildable_by_civ_govs_ids[32];
+	int buildable_by_civ_govs_id_count;
+	bool has_buildable_by_civ_govs;
+	char * buildable_by_civ_cultures[5];
+	int buildable_by_civ_cultures_count;
+	int buildable_by_civ_cultures_ids[5];
+	int buildable_by_civ_cultures_id_count;
+	bool has_buildable_by_civ_cultures;
+	bool has_buildable_on_districts;
+	bool has_buildable_adjacent_to_districts;
+	bool has_allow_irrigation_from;
+	bool has_auto_add_road;
+	bool has_auto_add_railroad;
+	bool has_impassible;
+	bool has_impassible_to_wheeled;
+};
+
+struct parsed_wonder_definition {
+	char * name;
+	char * img_path;
+	int img_row;
+	int img_column;
+	int img_construct_row;
+	int img_construct_column;
+	int img_alt_dir_construct_row;
+	int img_alt_dir_construct_column;
+	int img_alt_dir_row;
+	int img_alt_dir_column;
+	int custom_width;
+	int custom_height;
+	bool enable_img_alt_dir;
+	unsigned int buildable_square_types_mask;
+	unsigned int buildable_adjacent_to_square_types_mask;
+	unsigned int buildable_adjacent_to_overlays_mask;
+	bool buildable_on_rivers;
+	bool buildable_adjacent_to_allows_city;
+	char * buildable_by_civs[32];
+	int buildable_by_civ_count;
+	char * buildable_by_civ_traits[10];
+	int buildable_by_civ_traits_count;
+	int buildable_by_civ_traits_ids[10];
+	int buildable_by_civ_traits_id_count;
+	char * buildable_by_civ_govs[10];
+	int buildable_by_civ_govs_count;
+	int buildable_by_civ_govs_ids[32];
+	int buildable_by_civ_govs_id_count;
+	char * buildable_by_civ_cultures[5];
+	int buildable_by_civ_cultures_count;
+	int buildable_by_civ_cultures_ids[5];
+	int buildable_by_civ_cultures_id_count;
+	bool has_name;
+	bool has_img_path;
+	bool has_img_row;
+	bool has_img_column;
+	bool has_img_construct_row;
+	bool has_img_construct_column;
+	bool has_img_alt_dir_construct_row;
+	bool has_img_alt_dir_construct_column;
+	bool has_img_alt_dir_row;
+	bool has_img_alt_dir_column;
+	bool has_custom_width;
+	bool has_custom_height;
+	bool has_enable_img_alt_dir;
+	bool has_buildable_on;
+	bool has_buildable_adjacent_to;
+	bool has_buildable_adjacent_to_overlays;
+	bool has_buildable_on_rivers;
+	bool has_buildable_by_civs;
+	bool has_buildable_by_civ_traits;
+	bool has_buildable_by_civ_govs;
+	bool has_buildable_by_civ_cultures;
+};
+
+struct parsed_natural_wonder_definition {
+	char * name;
+	char * img_path;
+	enum SquareTypes terrain_type;
+	enum SquareTypes adjacent_to;
+	enum direction adjacency_dir;
+	int img_row;
+	int img_column;
+	int culture_bonus;
+	int science_bonus;
+	int food_bonus;
+	int gold_bonus;
+	int shield_bonus;
+	int happiness_bonus;
+	bool impassible;
+	bool impassible_to_wheeled;
+	bool has_name;
+	bool has_img_path;
+	bool has_img_row;
+	bool has_img_column;
+	bool has_terrain_type;
+	bool has_adjacent_to;
+	bool has_adjacency_dir;
+	bool has_culture_bonus;
+	bool has_science_bonus;
+	bool has_food_bonus;
+	bool has_gold_bonus;
+	bool has_shield_bonus;
+	bool has_happiness_bonus;
+	bool has_impassible;
+	bool has_impassible_to_wheeled;
+};
+
+struct scenario_district_entry {
+	int tile_x;
+	int tile_y;
+	int has_coordinates;
+	char * district_name;
+	int has_district_name;
+	char * wonder_city_name;
+	int has_wonder_city;
+	char * wonder_name;
+	int has_wonder_name;
+};
+
+struct scenario_named_tile_entry {
+	int tile_x;
+	int tile_y;
+	int has_coordinates;
+	char * name;
+	int has_name;
+};
+
+struct distribution_hub_record {
+	Tile * tile;
+	int tile_x;
+	int tile_y;
+	int civ_id;
+	int food_yield;
+	int shield_yield;
+	int raw_food_yield;
+	int raw_shield_yield;
+};
+
+struct ai_best_feasible_order {
+	City_Order order;
+	int value;
+};
+
+struct district_building_prereq_list {
+	int count;
+	int district_ids[MAX_DISTRICT_DEPENDENTS];
+};
+
+struct pending_district_request {
+	City * city;
+	int city_id;
+	int civ_id;
+	int district_id;
+	int assigned_worker_id;
+	int target_x;
+	int target_y;
+	int worker_assigned_turn;
+};
+
+struct ai_candidate_bridge_or_canal_entry {
+	int district_id;
+	short owner_civ_id;
+	short * tile_x;
+	short * tile_y;
+	short tile_count;
+	short assigned_tile_index;
+	int assigned_worker_id;
+	bool completed;
+	struct pending_district_request pending_req;
+	int tile_capacity;
+};
+
+struct district_worker_record {
+	Unit * worker;
+	int unit_id;
+	int continent_id;
+	struct pending_district_request * pending_req;
+};
+
+enum wonder_district_state {
+	WDS_UNUSED = 0,         // Wonder district built, no wonder assigned
+	WDS_UNDER_CONSTRUCTION, // Reserved by a city for wonder construction
+	WDS_COMPLETED,          // Wonder completed on this district
+	WDS_RUINED              // (Future) Wonder was destroyed
+};
+
+struct wonder_district_info {
+	enum wonder_district_state state;
+	City * city;          // City that reserved/completed (NULL if unused)
+	int city_id;
+	int wonder_index;     // Wonder index (-1 if unused/reserved, valid if completed)
+};
+
+struct natural_wonder_district_info {
+	int natural_wonder_id;
+};
+
+enum district_state {
+	DS_UNDER_CONSTRUCTION = 0,
+	DS_COMPLETED = 1
+};
+
+struct district_instance {
+	enum district_state state;
+	int district_id;    // Index into district_configs array
+	int tile_x;
+	int tile_y;
+	int built_by_civ_id;
+	int completed_turn;
+	struct wonder_district_info wonder_info; // Only used if district_id is a wonder district
+	struct natural_wonder_district_info natural_wonder_info; // Only used if district_id is a natural wonder district
+};
+
+enum extra_resource_tile_type {
+	ERT_MILL_RESOURCE = 0,
+	ERT_DISTRICT_RESOURCE
+};
+
+struct extra_resource_tile {
+	Tile * tile;
+	enum extra_resource_tile_type type;
+	union {
+		struct {
+			City * city;
+			struct mill * mill;
+		} mill_info;
+		struct {
+			struct district_instance * inst;
+			struct district_config * cfg;
+		} district_info;
+	};
+};
+
+struct named_tile_entry {
+	int tile_x;
+	int tile_y;
+	char name[100];
+};
+
+struct highlighted_city_radius_tile_info {
+	int highlight_level;
 };
 
 struct injected_state {
@@ -201,17 +1410,25 @@ struct injected_state {
 	enum init_state sc_img_state;
 	enum init_state tile_highlight_state;
 	enum init_state mod_info_button_images_state;
-
-	struct c3x_config base_config;
+	enum init_state disabled_command_img_state;
+	enum init_state unit_rcm_icon_state;
+	enum init_state red_food_icon_state;
+	enum init_state distribution_hub_icons_img_state;
+	enum init_state tile_already_worked_zoomed_out_sprite_init_state;
+	enum init_state day_night_cycle_img_state;
+	enum init_state large_minimap_frame_img_state;
 
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
 	// ==========
 
+	struct c3x_config base_config;
+
 	// Windows modules
 	HMODULE kernel32;
 	HMODULE user32;
 	HMODULE msvcrt;
+	HMODULE msimg32;
 
 	// Win32 API functions
 	WINBOOL (WINAPI * VirtualProtect) (LPVOID, SIZE_T, DWORD, PDWORD);
@@ -219,12 +1436,20 @@ struct injected_state {
 	HANDLE (WINAPI * CreateFileA) (LPCSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
 	DWORD (WINAPI * GetFileSize) (HANDLE, LPDWORD);
 	WINBOOL (WINAPI * ReadFile) (HANDLE, LPVOID, DWORD, LPDWORD, LPOVERLAPPED);
+	HMODULE (WINAPI * LoadLibraryA) (LPCSTR);
+	BOOL (WINAPI * FreeLibrary) (HMODULE);
 	int (WINAPI * MultiByteToWideChar) (UINT, DWORD, LPCCH, int, LPWSTR, int);
 	int (WINAPI * WideCharToMultiByte) (UINT, DWORD, LPCWCH, int, LPSTR, int, LPCCH, LPBOOL);
 	int (WINAPI * GetLastError) ();
+	BOOL (WINAPI * QueryPerformanceCounter) (LARGE_INTEGER *);
+	BOOL (WINAPI * QueryPerformanceFrequency) (LARGE_INTEGER *);
+	void (WINAPI * GetLocalTime) (LPSYSTEMTIME);
 
 	// Win32 funcs from user32.dll
 	int (WINAPI * MessageBoxA) (HWND, LPCSTR, LPCSTR, UINT);
+
+	// Win32 funcs from Msimg32.dll
+	BOOL (WINAPI * TransparentBlt) (HDC, int, int, int, int, HDC, int, int, int, int, UINT);
 
 	// C standard library functions
 	int (* snprintf) (char *, size_t, char const *, ...);
@@ -233,14 +1458,66 @@ struct injected_state {
 	void * (* realloc) (void *, size_t);
 	void (* free) (void *);
 	long (* strtol) (char const *, char **, int);
+	float (* strtof) (char const *, char **);
+	int (* strcmp) (char const *, char const *);
 	int (* strncmp) (char const *, char const *, size_t);
+	int (* _stricmp) (char const *, char const *);
 	size_t (* strlen) (char const *);
 	char * (* strncpy) (char *, char const *, size_t);
+	char * (* strcpy) (char *, char const *);
 	char * (* strdup) (char const *);
 	char * (* strstr) (char const *, char const *);
 	void (* qsort) (void *, size_t, size_t, int (*) (void const *, void const *));
 	int (* memcmp) (void const *, void const *, size_t);
 	void * (* memcpy) (void *, void const *, size_t);
+	void * (* memmove) (void *, void const *, size_t);
+	int (* tolower) (int);
+	int (* toupper) (int);
+
+	Unit * sb_next_up; // The unit currently doing a stack bombard or NULL otherwise. Gets set to NULL if the unit is despawned.
+
+	Trade_Net * trade_net; // Pointer to the trade net object. If it hasn't been moved by the mod, this equals p_original_trade_net.
+	int city_limit; // Stores the current actual city limit. Not necessarily the same as the stride of the trade net matrix or the config setting.
+
+	enum init_state trade_net_addrs_load_state;
+	int * trade_net_addrs;
+
+	HMODULE trade_net_x;
+	void (__stdcall * set_exe_version) (int);
+	void * (__stdcall * create_tnx_cache) (Map *);
+	void (__stdcall * destroy_tnx_cache) (void *);
+	void (__stdcall * set_up_before_building_network) (void *);
+	int (__stdcall * get_move_cost_for_sea_trade) (Trade_Net * trade_net, void * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags, int neighbor_index, Trade_Net_Distance_Info * dist_info);
+	void (__stdcall * flood_fill_road_network) (void * tnx_cache, int from_x, int from_y, int civ_id);
+	bool (__stdcall * try_drawing_sea_trade_route) (Trade_Net * trade_net, void * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags);
+
+	void * tnx_cache; // Cache object used by Trade Net X. Initially NULL, must be recreated every time a new map is loaded.
+	enum init_state tnx_init_state;
+	bool is_computing_city_connections; // Set to true only while Trade_Net::recompute_city_connections is running
+	bool keep_tnx_cache;
+
+	// This flag gets set whenever a trade deal is signed or broken for a resource that's an input to a mill. It's necessary to call
+	// recompute_resources in that case since a mill may have been de/activated by the change. We can't call it right when the change happens as
+	// that can crash the game for reasons I don't completely understand. I believe it's because the recomputation can't be done while some other
+	// econ logic is running. Instead, we set this variable then recompute before obsolete data would be an issue. Specifically, this is done:
+	//   - When any player or AI begins their production phase
+	//   - When the player zooms to any city
+	//   - When the player opens the shift + right-click production chooser menu
+	//   - When the player visits any advisor
+	//   - When the player selects any unit
+	bool must_recompute_resources_for_mill_inputs;
+
+	bool is_placing_scenario_things; // Set to true only while Map::place_scenario_things is running
+
+	bool paused_for_popup; // Set to true while a popup, map message, or the diplo screen is open
+	long long time_spent_paused_during_popup; // Tracks time spent waiting for the three things above
+
+	// This variable is increased with the time elapsed during every call to Trade_Net::recompute_city_connections. Time is measured using
+	// Windows performance counter.
+	long long time_spent_computing_city_connections;
+	int count_calls_to_recompute_city_connections;
+
+	long long time_spent_filling_roads;
 
 	struct c3x_config current_config;
 
@@ -251,25 +1528,48 @@ struct injected_state {
 		struct loaded_config_name * next;
 	} * loaded_config_names;
 
+	char current_districts_config_path[MAX_PATH];
+
 	char mod_script_path[MAX_PATH];
 
 	char * c3x_labels[COUNT_C3X_LABELS];
 
-	int have_job_and_loc_to_skip; // 0 or 1 if the variable below has anything actionable in it. Gets cleared to 0 after
-	// every turn.
+	int have_job_and_loc_to_skip; // 0 or 1 if the variable below has anything actionable in it. Gets cleared to 0 after every turn.
 	struct worker_job_and_location to_skip;
 
-	byte houseboat_patch_area_original_contents[50];
+	struct table saved_code_areas;
 
 	int * unit_menu_duplicates; // NULL initialized, allocated to an array of 0x100 ints when needed
+	bool named_tile_menu_active;
+	int named_tile_menu_tile_x;
+	int named_tile_menu_tile_y;
 
 	// List of temporary ints. Initializes to NULL/0/0, used with functions "memoize" and "clear_memo"
 	int * memo;
 	int memo_len;
 	int memo_capacity;
 
+	// Array mapping cultural neighbor indices to the standard indices that correspond to the same tiles. Generated at program start.
+	byte * cultural_ni_to_standard;
+
+	// Array mapping standard neighbor indices to the smallest work radius that includes the corresponding tile. Ex., if a given n.i. corresponds
+	// to one of the adjacent tiles, maps to 1, if it's in the fat cross but not adjacent, maps to 2, and so forth, out into the extended area.
+	char ni_to_work_radius[256];
+
+	// The maximum number of tiles workable by cities including the city tile itself (21 under standard game rules). Updated whenever the
+	// city_work_radius config value gets changed.
+	int workable_tile_count;
+
 	// The civ ID of the player from whose perspective we're currently showing city loc desirability, or -1 if none. Initialized to -1.
 	int city_loc_display_perspective;
+
+	// These are all bit fields that run parallel to player bits. Each bit indicates whether or not that name was replaced with an era-specific
+	// version for that player. This allows us to tell the difference between custom names set by human players and replacements made by the mod.
+	int aliased_civ_noun_bits;
+	int aliased_civ_adjective_bits;
+	int aliased_civ_formal_name_bits;
+	int aliased_leader_name_bits;
+	int aliased_leader_title_bits;
 
 	// Stores resource access bits for resources beyond the first 32, used to fix the phantom resource bug. Initialized to NULL/0 and allocated as
 	// necessary by get_extra_resource_bits. Contains an array of groups of unsigned ints. There is one group per city (allocated lazily so you
@@ -278,14 +1578,58 @@ struct injected_state {
 	unsigned * extra_available_resources;
 	int extra_available_resources_capacity; // In number of cities.
 
+	// These lists store interception events per-player during the interturn so we can clear the interception state on fighters that have done so
+	// at the beginning of their next turn. The point of this is to imitate the base game behavior where fighters that perform an interception are
+	// knocked out of the interception state. We can't knock them out immediately b/c that will prevent them from doing multiple interceptions per
+	// turn, so instead we record the event in these lists and reset their state later.
+	struct interceptor_reset_list {
+		struct interception {
+			int unit_id;
+			int x, y;
+		} * items;
+		int count;
+		int capacity;
+	} interceptor_reset_lists[32];
+
+	// Records the turn number on which each player has most recently founded a city. This is intended to be used for the temp settler perfume
+	// after founding feature so it may not be set if that feature is not activated or applicable. Defaults to -1.
+	int turn_no_of_last_founding_for_settler_perfume[32];
+
+	// Stores the byte offsets into the c3x_config struct of all boolean/integer config options, accessible using the options' names as
+	// strings. Used when reading in a config INI file.
+	struct table boolean_config_offsets;
+	struct table integer_config_offsets;
+
+	// Maps unit types IDs to AI strategy indices (0 = offense, 1 = defense, 2 = artillery, etc.). If a unit type ID is in this table, that means
+	// it's one of several duplicate types created to spread multiple AI strategies out so each type has only one.
+	struct table unit_type_alt_strategies;
+
+	// Stores a linked list of unit type duplicates. Maps unit type IDs to the next duplicate ID. Use list_unit_type_duplicates to get the list of
+	// the duplicates of a particular type as an array.
+	struct table unit_type_duplicates;
+
+	// Tracks the number of "extra" defensive bombards units have performed, by their IDs. If the "blitz" special defensive bombard rule is
+	// activated, units with blitz get an extra chance to perform DB for each movement point they have beyond the first.
+	struct table extra_defensive_bombards;
+
+	// Table mapping unit IDs to how many times that unit has airdropped on the current turn. This is used to prevent units from airdropping
+	// multiple times. That doesn't matter for the base game but stops the dont-end-turn-after-airdrop setting from letting units airdrop an
+	// unlimited number of times.
+	struct table airdrops_this_turn;
+
+	// Stores city improvement bits for improvs beyond the first 256
+	struct table extra_city_improvs;
+
+	// These variables store the number of units of each type that each player has
+	int unit_type_count_init_bits; // Player bits tracking which unit type count tables have been initialized.
+	struct table unit_type_counts[32]; // One table per player. Each one maps unit type ids (ints) to counts (ints)
+
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {
 	// ==========
 
-	PCX_Image sc_button_sheets[4];
-
 	struct sc_button_image_set {
-		Tile_Image_Info imgs[4];
+		Sprite imgs[4];
 	} sc_button_image_sets[COUNT_STACKABLE_COMMANDS];
 
 	int sb_activated_by_button; // Gets set to 1 when the player clicks on the SB button so that perform_action_on_tile knows
@@ -308,24 +1652,54 @@ struct injected_state {
 	// enough time on this already. That click interceptor sets a flag value of 2 to indicate this annoying state.
 
 	// ==========
+	// } This field is only valid after init_disabled_command_buttons has been called and disabled_command_img_state equals IS_OK {
+	// ==========
+
+	Sprite disabled_build_city_button_img;
+
+	// ==========
+	// } This field is only valid after init_unit_rcm_icons has been called and unit_rcm_icon_state equals IS_OK {
+	// ==========
+
+	// Sprites are stored together as sets, so the first COUNT_UNIT_RCM_ICONS elements are those from the first set, then the same number from the
+	// second set, etc.
+	Sprite unit_rcm_icons[COUNT_UNIT_RCM_ICONS * COUNT_UNIT_RCM_ICON_SETS];
+
+	// ==========
 	// } These fields are valid only after init_tile_highlights as been called. {
 	// ==========
 
-	PCX_Image tile_highlight_sheet;
-	Tile_Image_Info tile_highlights[COUNT_TILE_HIGHLIGHTS];
+	Sprite tile_highlights[COUNT_TILE_HIGHLIGHTS];
 
 	// ==========
 	// } This one is valid only if init_mod_info_button_images has been called and mod_info_button_images_state equals IS_OK {
 	// ==========
 
-	Tile_Image_Info mod_info_button_images[3];
+	Sprite mod_info_button_images[3];
+
+	// ==========
+	// } This one is valid only if init_red_food_icon has been called and red_food_icon_state equals IS_OK {
+	// ==========
+
+	Sprite red_food_icon;
+
+	// ==========
+	// } These are valid only if init_large_minimap_frame has been called and large_minimap_frame_img_state equals IS_OK {
+	// ==========
+
+	Sprite double_size_box_left_color_pcx, double_size_box_left_alpha_pcx;
 
 	// ==========
 	// } These fields are temporary/situational {
 	// ==========
 
-	int saved_road_movement_rate; // Valid when railroad movement limit is applied (limit_railroad_movement > 0) and BIC
-	// data has been loaded
+	int saved_road_movement_rate; // Valid when railroad movement limit is applied (limit_railroad_movement > 0) and BIC data has been loaded
+	int road_mp_cost; // The cost of moving one tile along a road, in MP. Valid after BIC data was loaded.
+	int railroad_mp_cost_per_move; // The cost of moving one tile along a railroad, in MP, per move available to the unit. This is measured per
+				       // move since the cost of moving along a railroad is scaled by the total number of moves available to the
+				       // unit. Valid after BIC data was loaded.
+
+	int saved_barb_culture_group; // Valid when barb city capturing is enabled and BIC data has been loaded
 
 	Leader * leader_param_for_patch_get_wonder_city_id; // Valid in patch_get_wonder_city_id when called from
 	// Leader_recompute_auto_improvements
@@ -340,6 +1714,7 @@ struct injected_state {
 	// was closed in order to scroll to the civ with the set ID. -1 indicates no scrolling.
 	Button * trade_scroll_button_left; // initialized to NULL
 	Button * trade_scroll_button_right; // initialized to NULL
+	Sprite * trade_scroll_button_images; // inited to NULL, array of 6 images: normal, rollover, and highlight for left & right
 	enum init_state trade_scroll_button_state;
 	int eligible_for_trade_scroll;
 
@@ -352,9 +1727,15 @@ struct injected_state {
 	// first inside the loop over improvements then again inside a loop over unit types. The var is used by the intercept consideration functions
 	// which run at the end of each loop iteration.
 	City_Order ai_considering_order;
+	int handling_ai_district_fallback;
 
 	// Used in the code that adds additional info to the tile info box
+	bool tile_info_open;
 	int viewing_tile_info_x, viewing_tile_info_y;
+
+	// Used in patch_Tile_m43_Get_field_30_for_city_loc_eval to change how the AI evaluates overlap between cities
+	int ai_evaling_city_loc_x, ai_evaling_city_loc_y;
+	int ai_evaling_city_field_30_get_counter;
 
 	// Stores a list of the production options in a given city and the point value the AI would assign to each. The list is populated by
 	// rank_ai_production_options, items are added by record_improv_val which gets called by some code injected into one of the loops in
@@ -363,16 +1744,524 @@ struct injected_state {
 	int count_ai_prod_valuations;
 	int ai_prod_valuations_capacity;
 
-	// Used for generating resources from buildings
-	struct mill_tile {
-		Tile * tile;
-		City * city;
-		struct mill * mill;
-	} * mill_tiles;
-	int count_mill_tiles;
-	int mill_tiles_capacity;
-	struct mill_tile * got_mill_tile;
+	// Used for generating resources from buildings and districts
+	struct extra_resource_tile * resource_tiles;
+	int count_resource_tiles;
+	int resource_tiles_capacity;
+	struct extra_resource_tile * got_resource_tile;
 	int saved_tile_count; // Stores the actual tile count in case p_bic_data->Map.TileCount was temporarily overwritten. Set to -1 when empty.
+	byte * mill_input_resource_bits; // Array of bits, one for each resource. Stores whether or not each one is an input to any mill.
+
+	// Used for displaying yields from generated resources on the city screen
+	int tourism_icon_counter; // Incremented each time a tourism yield icon (normally commerce) is drawn. Reset between improvs.
+	int convert_displayed_tourism_to_food, convert_displayed_tourism_to_shields; // Number of commerce tourism icons to convert to food, shields
+	int combined_tourism_and_mill_commerce; // Number of commerce tourism icons to display inc. from mills, maybe negative
+
+	int drawing_icons_for_improv_id; // Stores the improv ID whose icons we're drawing. -1 while not drawing.
+
+	PCX_Image * resources_sheet; // Sprite sheet of resource icons, i.e. resources.pcx
+
+	Sprite tile_already_worked_zoomed_out_sprite; // Valid only if init state is OK
+
+	// Only for use by patch_City_Form_draw_yields_on_worked_tiles and patch_Sprite_draw_already_worked_tile_img
+	bool do_not_draw_already_worked_tile_img;
+
+	// Stores the trade offer object being modified when the user right-clicks on a gold offer/ask on the trade table. Gets set by a special
+	// function call replacement (see apply_machine_code_edits for details).
+	TradeOffer * modifying_gold_trade;
+
+	// Initialized to NULL and reset to NULL after Unit::bombard_tile returns. Gets set just before the call to Unit::play_bombard_fire_animation
+	// from inside bombard_tile. The value is the unit on the bombarded tile specifically targeted by the attack, if applicable.
+	Unit * bombard_stealth_target;
+
+	// Set to zero when Unit::select_stealth_attack_target is called then checked inside in the call to PopupSelection::add_item and set to
+	// 1. This variable lets the add_item replacement function run special code for only the first item added, in order to insert an additional
+	// first option to cancel the stealth attack.
+	int added_any_stealth_target;
+
+	// Initialized to zero. Temporarily set to 1 across a call to patch_Unit_select_stealth_attack_target to request that the selected target must
+	// be suitable for attack via bombardment.
+	int selecting_stealth_target_for_bombard;
+
+	// Set in rand_int_to_dodge_city_aa and read immediately after in Unit_get_defense_to_dodge_city_aa. Allows us to determine whether the dodge
+	// roll was successful in order to popup the message.
+	int result_of_roll_to_dodge_city_aa;
+
+	// Initialized to NULL. If set to non-NULL, the next call to show_map_message will consume that value and use it as the text on the
+	// message. Used to implement show_map_specific_text.
+	char const * map_message_text_override;
+
+	// Initialized to NULL. If set to non-NULL, the next call to do_load_game will consume this value and use it as the file path of the game to
+	// load instead of opening the file picker.
+	char const * load_file_path_override;
+
+	// A set of player bits indicating which players should see a replay of the AI's moves. Normally all zero, gets filled in by
+	// patch_perform_interturn_in_main_loop only when/as appropriate. As replays are played (in patch_show_movement_phase_popup), the
+	// corresponding bits are cleared.
+	int replay_for_players;
+
+	// Used by patch_perform_interturn_in_main_loop to determine which players need to see the replay. Clear before interturn processing, then
+	// every time an AI unit moves onto or bombards a tile, any players that have vision on that tile will have their bit set in this var.
+	int players_saw_ai_unit;
+
+	// Initialized to 0. If set to non-zero, the next call to do_load_game will consume the value and skip the intro popup.
+	int suppress_intro_after_load_popup;
+
+	struct improv_id_list {
+		int * items;
+		int count;
+		int capacity;
+	} water_trade_improvs, air_trade_improvs, combat_defense_improvs;
+
+	// Used by the fix for the barbarian diagonal bug
+	int barb_diag_patch_dy_fix;
+
+	// Initialized to 0. If 1, barbarian activity is force activated b/c there are barb cities on the map that need to do production.
+	int force_barb_activity_for_cities;
+
+	// Used as a stand-in for an actual tile where needed. In particular, this object is returned from various get_tile and tile_at replacements
+	// when we need to override the visibility data to implement hotseat shared vis.
+	Tile * dummy_tile;
+
+	// When the game checks visibility for a tile, it accesses all four visibility fields with separate calls to Map::get_tile and/or tile_at. We
+	// replace the first call, maybe altering its return to implement shared visibility, cache the return in this variable, then re-use the cached
+	// value for the next three calls.
+	Tile * tile_returned_for_visibility_check;
+
+	// Initialized to all -1. If set, the unit with the specified ID will always be the top unit displayed on the specified tile. If the unit is
+	// not on that tile, there is no effect. This is only intended to be used on a temporary basis.
+	struct unit_display_override {
+		int unit_id, tile_x, tile_y;
+	} unit_display_override;
+
+	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
+	Unit * zoc_interceptor;
+
+	// Set when Fighter::apply_zone_of_control is called to store the defending unit, used by the injected filter and Unit::move_to_adjacent_tile.
+	// Cleared at each call to move_to_adjacent_tile and by Unit::despawn.
+	Unit * zoc_defender;
+
+	// Set to the bombarding unit while Unit::bombard_tile is running. NULL otherwise.
+	Unit * bombarding_unit;
+
+	// Normally set to NULL. When a unit bombards a tile (the tile itself, not something on it), set to point to that unit during the call to
+	// Unit::attack_tile. Used to stop the unit from losing all of its movement if configured.
+	Unit * unit_bombard_attacking_tile;
+
+	// Set to the coords of the tile being attacked while Unit::attack_tile is running, -1 otherwise.
+	int attacking_tile_x, attacking_tile_y;
+
+	// Cleared to false when Fighter::apply_zone_of_control is called. The interceptor must be unfortified to ensure it plays its animation. If
+	// that happens, this flag is set so that apply_zone_of_control knows to refortify the unit after the ZoC process is done.
+	bool refortify_interceptor_after_zoc;
+
+	// These flags are used to turn off lethal ZoC for units that capture an enemy on the tile they're moving into. Without this rule, the unit
+	// might get killed by ZoC but the captured units will remain on a tile that was never actually entered (that tile might have an enemy city
+	// for extra weirdness). Here's how it works:
+	//  1. The moving_unit_to_adjacent_tile flag is set when Unit::move_to_adjacent_tile is called.
+	//  2. If that flag is set and a unit is captured (detected by intercepting the calls to Leader::spawn_unit inside Unit::do_capture_units)
+	//     then temporarily_disallow_lethal_zoc is set.
+	//  3. If temporar... is set, the code to filter ZoC interceptors acts as if lethal ZoC were turned off.
+	//  4. Both flags are cleared when Unit::move_to_adjacent_tile returns.
+	bool temporarily_disallow_lethal_zoc;
+	bool moving_unit_to_adjacent_tile;
+
+	// Tracks temporary transport bypass when letting workers step onto coast tiles without a boat
+	Unit * coast_walk_unit;
+	bool coast_walk_transport_override;
+	enum UnitStateType coast_walk_prev_state;
+	int coast_walk_prev_container;
+	bool coast_walk_restore_goto_path;
+	int coast_walk_prev_path_len;
+	int coast_walk_prev_path_dest_x;
+	int coast_walk_prev_path_dest_y;
+	Unit * move_spend_override_unit;
+	int move_spend_override_value;
+
+	// Used to record info about a defensive bomardment event during Fighter::fight. Gets set by Fighter::damage_by_defensive_bombardment and
+	// cleared when Fighter::fight returns.
+	struct defensive_bombard_event {
+		Unit * bombarder;
+		Unit * defender;
+		bool damage_done, defender_was_destroyed, saved_animation_setting;
+	} dbe;
+
+	// Set to true IFF we're showing a replay of AI moves in hotseat mode
+	bool showing_hotseat_replay;
+
+	// Set to true only during the first call to get_tile_occupier_id from Trade_Net::get_movement_cost. While this is set, we need to edit unit
+	// visibility to patch the submarine bug.
+	bool getting_tile_occupier_for_ai_pathfinding;
+
+	bool running_on_wine; // Set to 1 IFF we're running in Wine, as opposed to actual Windows
+
+	// gdi_plus.init_state is valid any time after patch_init_floating_point. All the other fields are only valid after set_up_gdi_plus has been
+	// called and gdi_plus.init_state equals IS_OK.
+	struct gdi_plus {
+		enum init_state init_state;
+		HMODULE module;
+		ULONG_PTR token;
+		void * gp_graphics;
+
+		int (__stdcall * CreateFromHDC) (HDC hdc, void ** p_gp_graphics);
+		int (__stdcall * DeleteGraphics) (void * gp_graphics);
+		int (__stdcall * SetSmoothingMode) (void * graphics, int smoothing_mode);
+		int (__stdcall * SetPenDashStyle) (void * gp_pen, int dash_style);
+		int (__stdcall * CreatePen1) (unsigned int argb_color, float width, int gp_unit, void ** p_gp_pen);
+		int (__stdcall * DeletePen) (void * gp_pen);
+		int (__stdcall * DrawLineI) (void * gp_graphics, void * gp_pen, int x1, int y1, int x2, int y2);
+	} gdi_plus;
+
+	// These variables track the states of some OpenGL parameters. They're updated whenever methods like OpenGLRenderer::set_color are called.
+	unsigned int ogl_color;
+	int ogl_line_width;
+	bool ogl_line_stipple_enabled;
+
+	// Records how many units of each type we're going to upgrade to during an upgrade-all. This info will be used to impose the unit type limit
+	// during the upgrade. Keep in mind units all get upgraded from the same type but might end up as different types after upgrade-all.
+	struct penciled_in_upgrade {
+		int unit_type_id;
+		int count;
+	} * penciled_in_upgrades;
+	int penciled_in_upgrade_count;
+	int penciled_in_upgrade_capacity;
+
+	// While in Leader::do_capture_city, the city in question is stored in this var. Otherwise it's NULL.
+	City * currently_capturing_city;
+
+	// While a game is being saved or loaded, this variable points to the save file's MappedFile object. Otherwise it's NULL.
+	MappedFile * accessing_save_file;
+
+	// Used in patch_work_simple_job. If a method sets this variable while that method is running then at the end it sets the given tile as LM.
+	Tile * lmify_tile_after_working_simple_job;
+
+	// Reset to zero every time City_Form::draw is called. Incremented everything a strategic resource is drawn on the city screen.
+	int drawn_strat_resource_count;
+
+	int * charmed_types_converted_to_ptw_arty;
+	int count_charmed_types_converted_to_ptw_arty;
+	int charmed_types_converted_to_ptw_arty_capacity;
+
+	// While Unit::is_visible_to_civ is running, this var is set to the unit in question. Otherwise it's NULL.
+	Unit * checking_visibility_for_unit;
+
+	// Normally false. When true, calls to bounce_trespassing_units won't kick out invisible units even if they're revealed.
+	bool do_not_bounce_invisible_units;
+
+	// Normally false. When true, Unit::despawn also despawns any passenger units inside instead of making exceptions in some cases.
+	bool always_despawn_passengers;
+
+	// Normally false. When true, calls to Unit::score_kill will not enslave.
+	bool do_not_enslave_units;
+
+	// If limit_unit_loading_to_one_transport_per_turn is on, maps unit IDs to the ID of the transport unit they're tied to for the current turn.
+	struct table unit_transport_ties;
+
+	// Initialized to NULL/0, used in patch_City_add_happiness_from_buildings
+	short * saved_improv_counts;
+	int saved_improv_counts_capacity;
+
+	// Used to de-overlap specialist yield icons (option name fix_overlapping_specialist_yield_icons)
+	int specialist_icon_drawing_running_x;
+
+	// Initialized to 0, used to draw multipage descriptions in the Civilopedia
+	struct civilopedia_multipage_description {
+		bool drawing_lines;
+		int line_count;
+		int shown_page; // zero-based
+		int last_page; // also zero-based
+		Civilopedia_Article * article;
+		Button * effects_btn;
+		Button * previous_btn;
+	} cmpd;
+
+	// When expand_civilopedia_unit_stats is on, all the game's calls to draw_and_wrap_text to draw the second column of unit stats are
+	// intercepted to draw nothing and store their strings here. Then we possible add some entries of our own. The game will add up to 6 entries
+	// and we'll add up to 4.
+	char * pedia_unit_stats_second_column_strs[10];
+
+	// Day-Night cycle data
+	int current_day_night_cycle;
+	bool day_night_cycle_unstarted; // If current_day_night_cycle has not been set, f.e. because it's the first turn of a new game.
+	bool day_night_cycle_img_proxies_indexed;
+	LARGE_INTEGER last_day_night_cycle_update_time;
+
+	struct table day_night_sprite_proxy_by_hour[24];
+
+	struct wonder_district_image_set {
+		Sprite img;
+		Sprite construct_img;
+		Sprite alt_dir_img;
+		Sprite alt_dir_construct_img;
+	} wonder_district_img_sets[MAX_WONDER_DISTRICT_TYPES];
+
+	struct natural_wonder_district_image_set {
+			Sprite img;
+		} natural_wonder_img_sets[MAX_NATURAL_WONDER_DISTRICT_TYPES];
+	struct natural_wonder_label_draw_info {
+		int text_left;
+		int text_top;
+		int text_width;
+		int font_size;
+		char const * text;
+	};
+
+	struct day_night_cycle_img_set
+	{
+		SpriteList Std_Terrain_Images[9];
+		SpriteList LM_Terrain_Images[9];
+		Sprite City_Images[80];
+		Sprite Destroyed_City_Images[3];
+		Sprite Resources[36];
+		Sprite ResourcesShadows[36];
+		Sprite Terrain_Buldings_Barbarian_Camp;
+		Sprite Terrain_Buldings_Mines;
+		Sprite Victory_Image;
+		Sprite Flood_Plains_Images[16];
+		Sprite Fog_Of_War_Images[81];
+		Sprite Polar_Icecaps_Images[32];
+		Sprite Railroads_Images[272];
+		Sprite Roads_Images[256];
+		Sprite Minor_Roads_Images[256];
+		Sprite Terrain_Buldings_Airfields[2];
+		Sprite Terrain_Buldings_Airfields_Shadow[2];
+		Sprite Terrain_Buldings_Camp[4];
+		Sprite Terrain_Buldings_Fortress[4];
+		Sprite Terrain_Buldings_Barricade[4];
+		Sprite Goody_Huts_Images[8];
+		Sprite Terrain_Buldings_Outposts[3];
+		Sprite Terrain_Buldings_Outposts_Shadow[3];
+		Sprite Pollution[25];
+		Sprite Craters[25];
+		Sprite Terrain_Buldings_Radar;
+		Sprite Terrain_Buldings_Radar_Shadow;
+		Sprite Tnt_Images[18];
+		Sprite Waterfalls_Images[4];
+		Sprite LM_Terrain[7];
+		Sprite Marsh_Large[8];
+		Sprite Marsh_Small[10];
+		Sprite Volcanos_Images[16];
+		Sprite Volcanos_Forests_Images[16];
+		Sprite Volcanos_Jungles_Images[16];
+		Sprite Volcanos_Snow_Images[16];
+		Sprite Grassland_Forests_Large[8];
+		Sprite Plains_Forests_Large[8];
+		Sprite Tundra_Forests_Large[8];
+		Sprite Grassland_Forests_Small[10];
+		Sprite Plains_Forests_Small[10];
+		Sprite Tundra_Forests_Small[10];
+		Sprite Grassland_Forests_Pines[12];
+		Sprite Plains_Forests_Pines[12];
+		Sprite Tundra_Forests_Pines[12];
+		Sprite Irrigation_Desert_Images[16];
+		Sprite Irrigation_Plains_Images[16];
+		Sprite Irrigation_Images[16];
+		Sprite Irrigation_Tundra_Images[16];
+		Sprite Grassland_Jungles_Large[8];
+		Sprite Grassland_Jungles_Small[12];
+		Sprite Mountains_Images[16];
+		Sprite Mountains_Forests_Images[16];
+		Sprite Mountains_Jungles_Images[16];
+		Sprite Mountains_Snow_Images[16];
+		Sprite Hills_Images[16];
+		Sprite Hills_Forests_Images[16];
+		Sprite Hills_Jungle_Images[16];
+		Sprite Delta_Rivers_Images[16];
+		Sprite Mountain_Rivers_Images[16];
+		Sprite Territory_Images[8];
+		Sprite LM_Mountains_Images[16];
+		Sprite LM_Forests_Large_Images[8];
+		Sprite LM_Forests_Small_Images[10];
+		Sprite LM_Forests_Pines_Images[12];
+		Sprite LM_Hills_Images[16];
+		Sprite District_Images[COUNT_DISTRICT_TYPES][MAX_DISTRICT_VARIANT_COUNT][4][MAX_DISTRICT_COLUMN_COUNT]; // [district][variant][era][column]
+		Sprite Abandoned_District_Image;
+		Sprite Abandoned_Maritime_District_Image;
+		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
+		struct natural_wonder_district_image_set Natural_Wonder_Images[MAX_NATURAL_WONDER_DISTRICT_TYPES];
+	} day_night_cycle_imgs[24];
+
+	// Districts
+	enum init_state dc_img_state;
+	enum init_state dc_btn_img_state;
+	enum init_state dc_icons_img_state;
+
+	struct district_config district_configs[COUNT_DISTRICT_TYPES];
+	struct wonder_district_config wonder_district_configs[MAX_WONDER_DISTRICT_TYPES];
+	struct natural_wonder_district_config natural_wonder_configs[MAX_NATURAL_WONDER_DISTRICT_TYPES];
+
+struct district_image_set {
+	Sprite imgs[MAX_DISTRICT_VARIANT_COUNT][4][MAX_DISTRICT_COLUMN_COUNT]; // [variant][era][column]
+} district_img_sets[COUNT_DISTRICT_TYPES];
+	Sprite abandoned_district_img;
+	Sprite abandoned_maritime_district_img;
+
+struct district_button_image_set {
+	Sprite imgs[4];
+} district_btn_img_sets[COUNT_DISTRICT_TYPES];
+
+	// Building ID keys -> district ID. If a building ID is present in the
+	// table that means that building can only be built if there is a corresponding district is present in the city radius.
+	struct table district_building_prereqs;
+
+	// Tile pointer IDs -> district_instance pointer. Maps tiles to dynamically allocated
+	// district_instance structs tracking district type and state (UNDER_CONSTRUCTION or COMPLETED).
+	// For wonder districts, the wonder_info field tracks wonder-specific state (unused, reserved, completed, ruined),
+	// which city reserved/completed the wonder, and which wonder index is on this district.
+	struct table district_tile_map;
+	struct table named_tile_map;
+
+	// Tracks per-turn airlift usage for aerodrome districts (tile pointer -> civ bitmask).
+	struct table aerodrome_airlift_usage;
+
+	// Command ID keys -> district ID. Used to identify which district
+	// a unit command (e.g., build order) corresponds to.
+	struct table command_id_to_district_id;
+
+	// Array of 32 tables (one per civ) of pending district requests keyed by city & district (values are struct pending_district_request pointers).
+	struct table city_pending_district_requests[32];
+
+	// City pointer keys -> improvement ID. Tracks which improvements (buildings/wonders)
+	// requiring districts a city has ordered to be built (pending district completion).
+	struct table city_pending_building_orders;
+
+	// AI cache mapping city pointer keys -> AI_Order pointer. Stores the best feasible
+	// production order for AI cities to optimize decision-making.
+	struct table ai_best_feasible_orders;
+
+	// String building/wonder name keys -> int building/improvement ID.
+	// Used to look up building IDs by their text names from the game data.
+	struct table building_name_to_id;
+
+	struct district_infos {
+		int advance_prereq_ids[MAX_DISTRICT_DEPENDENTS]; // Tech IDs that enable the district (all required)
+		int advance_prereq_count;
+		int obsoleted_by_id;
+		int resource_prereq_ids[MAX_DISTRICT_DEPENDENTS];
+		int resource_prereq_count;
+		int resource_prereq_on_tile_id;
+		int wonder_prereq_ids[MAX_DISTRICT_DEPENDENTS];
+		int wonder_prereq_count;
+		int natural_wonder_prereq_ids[MAX_DISTRICT_DEPENDENTS];
+		int natural_wonder_prereq_count;
+		int dependent_building_count;
+		int dependent_building_ids[MAX_DISTRICT_DEPENDENTS]; // Building types the district enables
+	} district_infos[COUNT_DISTRICT_TYPES];
+
+	// District tracking counters: total = special (hard-coded) + dynamic (from config/scenario)
+	// next_custom_dynamic_command_index assigns unique command IDs for custom dynamic commands
+	int district_count;
+	int special_district_count;
+	int dynamic_district_count;
+	int wonder_district_count;
+	int natural_wonder_count;
+	int next_custom_dynamic_command_index;
+
+	// Distribution Hub tracking: records keyed by tile plus per-tile coverage counts; dirty/refresh flags
+	// control when totals are recalculated
+	struct table distribution_hub_records;
+	struct table distribution_hub_coverage_counts;
+	bool distribution_hub_totals_dirty;
+	bool distribution_hub_refresh_in_progress;
+
+	// Distribution Hub UI sprites loaded from PCX files for rendering food/shield icons in city interface
+	// *_icons_remaining counters track how many icons to draw from each source (non-district, district, hub, corruption)
+	Sprite distribution_hub_shield_icon;
+	Sprite distribution_hub_corruption_icon;
+	Sprite distribution_hub_food_icon;
+	Sprite distribution_hub_eaten_food_icon;
+	Sprite distribution_hub_shield_icon_small;
+	Sprite distribution_hub_food_icon_small;
+	int non_district_shield_icons_remaining;
+	int corruption_shield_icons_remaining;
+	int district_shield_icons_remaining;
+	int distribution_hub_shield_icons_remaining;
+	int district_corruption_icons_remaining;
+	int distribution_hub_corruption_icons_remaining;
+
+	// District UI sprites loaded from PCX files for rendering yield icons (science, commerce, shield, food, culture, happiness)
+	// Available in both regular and small sizes for different UI contexts in city interface
+	Sprite district_science_icon;
+	Sprite district_commerce_icon;
+	Sprite district_shield_icon;
+	Sprite district_corruption_icon;
+	Sprite district_food_icon;
+	Sprite district_food_eaten_icon;
+	Sprite district_happiness_icon_small;
+	Sprite district_shield_icon_small;
+	Sprite district_commerce_icon_small;
+	Sprite district_food_icon_small;
+	Sprite district_science_icon_small;
+	Sprite district_culture_icon_small;
+	Sprite district_unhappiness_icon_small;
+	Sprite district_negative_shield_icon_small;
+	Sprite district_negative_commerce_icon_small;
+	Sprite district_negative_food_icon_small;
+	Sprite district_negative_science_icon_small;
+	Sprite district_negative_culture_icon_small;
+
+	// Guard to prevent recursive sharing when auto-adding buildings across cities
+	bool sharing_buildings_by_districts_in_progress;
+
+	// Worker tracking: 32 tables (one per civ), each mapping unit_id -> district_worker_record pointer
+	struct table district_worker_tables[32];
+
+	// Natural Wonder labels: table mapping natural wonder name strings to their IDs, count of defined natural wonders,
+	struct table natural_wonder_name_to_id;
+
+	struct ai_candidate_bridge_or_canal_entry * ai_candidate_bridge_or_canals;
+	int ai_candidate_bridge_or_canals_count;
+	int ai_candidate_bridge_or_canals_capacity;
+	bool ai_candidate_bridge_or_canals_initialized;
+
+	// City work radius highlighting: flag to enable/disable, table mapping tile pointers to highlight_level for visual feedback
+	bool highlight_city_radii;
+	struct table highlighted_city_radius_tile_pointers;
+
+	// Initialized to 0. Every time Main_Screen_Form::m82_handle_key_event receives an event with is_down == 0, the virtual key code is prepended
+	// to this list.
+	int last_main_screen_key_up_events[5];
+
+	// Stores the parameters to Unit::can_load while it's running, NULL otherwise.
+	Unit * can_load_transport, * can_load_passenger;
+
+	// Current tile being rendered in Map_Renderer_m19_Draw_Tile_by_XY_and_Flags. For use within various Map_Renderer::impl_m*_Draw_* functions. Nulled out after the render function is complete
+	Tile * current_render_tile;
+	struct district_instance * current_render_tile_district;
+	int current_render_tile_x, current_render_tile_y;
+
+	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp and so on for flagging whether to draw forests over roads on the tile being rendered
+	bool draw_forests_over_roads_on_tile;
+
+	// Set to true once the auto-build process for the Great Wall is complete to avoid running it again
+	enum great_wall_auto_build_state great_wall_auto_build;
+	Tile * focused_tile;
+
+	// Stores the improve ID currently being evaluated inside patch_City_can_build_improvement.
+	int current_evaluating_improve_id;
+
+	// Stores the index in the list of target civs currently being drawn on the espionage form. Used to replace the civ name with its era-specific alias.
+	int espionage_form_drawing_target_index;
+
+	// Tracks information about the last unit that was selected. These fields are updated when a new unit is selected or when the selected unit
+	// moves or is destroyed.
+	struct {
+		int initial_x, initial_y; // Stores the unit's location when it was selected
+		int last_x, last_y, type_id; // Stores the unit's current or last available location and type id
+		Unit * ptr; // A pointer to the unit, may be NULL if the unit was destroyed
+	} last_selected_unit;
+
+	// Maps unit IDs to the level at which they are waiting. Units with lower levels move first. Units that have not been set to wait are not in the table.
+	struct table waiting_units;
+
+	// Set to true when waiting_units has been initialized by loading from the save. Causes the game to skip clearing the table when setting up
+	// unit cycling for the turn.
+	bool have_loaded_waiting_units;
+
+	// Used in patch_Unit_do_capture_units and patch_Unit_despawn
+	Unit ** extra_capture_despawns;
+	int count_extra_capture_despawns;
+	int extra_capture_despawns_capacity;
 
 	// ==========
 	// }
@@ -384,6 +2273,8 @@ enum object_job {
 	OJ_INLEAD, // Patch this function with an inlead
 	OJ_REPL_VPTR, // Patch this function by replacing a pointer to it. The address column is the addr of the VPTR not the function itself.
 	OJ_REPL_CALL, // Patch a single function call. The address column is the addr of the call instruction, name refers to the new target function, type is not used.
+	OJ_REPL_VIS, // Patch a cluster of four function calls that make up a check of tile visibility. See implementation for details.
+	OJ_EXT_WALUP, // "EXTend Work Area LuP" Patch a jump instruction at the end of a "lup" (loop) over a city's workable area to extend it
 	OJ_IGNORE
 };
 

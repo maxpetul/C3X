@@ -1,0 +1,3 @@
+These icons are placed next to units on the right-click menu. By default, the LEDs match the movement indicators used by the base game, stored in Art\interface\MovementLED.pcx. (Note that there are five icons in that file but only three are used.) The swords to the left of the LEDs show which units can attack, making them easier to pick out of the menu.
+
+There are four columns because each unit may or may not be able to attack and may or may not be "busy". Units are busy if they're doing anything other than fortifying. Specifically, the busy state covers: all worker actions, intercepting, exploring, auto-bombarding, go-to orders, and automation.

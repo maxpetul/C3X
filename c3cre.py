@@ -1,4 +1,7 @@
 
+import os
+from collections import namedtuple
+
 import win32api as winapi
 import win32process as winproc
 import win32event as winev
@@ -122,12 +125,32 @@ def fit_offset (game_objects, observations, size=4):
                 tr = [v for v in game_objects[go].get_offsets (val, size) if v in tr]
         return tr
 
+C3CBinary = namedtuple("C3CBinary", ["title", "file_size", "text_section_end"])
+c3c_binaries = [
+#                  TITLE        FILE_SIZE   TEXT_SECTION_END
+        C3CBinary("GOG"       , 3417464   , 0x664FFF),
+        C3CBinary("Steam"     , 3518464   , 0x681FFF),
+        C3CBinary("PCGames.de", 3395072   , 0x6645FF)
+]
+
 class CivProc:
-        def __init__ (self, start_suspended = False):
+        def __init__ (self, use_unmodded_exe=True, start_suspended=False):
+                binary_name = "Civ3Conquests-Unmodded.exe" if use_unmodded_exe else "Civ3Conquests.exe"
+                binary_size = os.stat(binary_name).st_size
+                self.binary_stats = None
+                for b in c3c_binaries:
+                        if b.file_size == binary_size:
+                                print(f"Found {b.title} executable in {binary_name}")
+                                self.binary_stats = b
+                                break
+                if self.binary_stats is None:
+                        print(f"Warning: Could not identify binary, assuming {c3c_binaries[0].title}")
+                        self.binary_stats = c3c_binaries[0]
+
                 startup_info = winproc.STARTUPINFO ()
                 proc_handles = winproc.CreateProcess (
                         None,
-                        "Civ3Conquests.exe",
+                        binary_name,
                         None,
                         None,
                         False,
@@ -161,6 +184,9 @@ class CivProc:
                 read = self.read_memory (source_addr, num_bytes)
                 num_written = self.write_memory (dest_addr, read)
                 print ("memcpy read " + str (len (read)) + " bytes and wrote " + str (num_written) + " bytes")
+
+        def get_text_section(self):
+                return self.read_memory (0x401000, self.binary_stats.text_section_end - 0x401000)
 
         def find_mapped_pages (self):
                 # Scan through memory area and identify pages that have been mapped
@@ -266,3 +292,16 @@ class CivProc:
                 print ("Found %d unit types" % len (self.unit_types_by_id))
                 self.difficulties_by_id, self.difficulties_by_name = self.find_data_objects (difficulty)
                 print ("Found %d difficulties" % len (self.difficulties_by_id))
+
+# code_bytes comes from CivProc.get_text_section
+# addr is the address to inspect
+# target_addr is the address of a function
+# Returns whether or not there is a call to target_addr at addr
+def call_at (code_bytes, addr, target_addr):
+        a = addr - 0x401000
+        if code_bytes[a] == 0xE8:
+                b = code_bytes[a+1:a+5]
+                t = addr + 5 + int.from_bytes(b, byteorder="little", signed=True)
+                return t == target_addr
+        else:
+                return False

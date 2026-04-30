@@ -1,0 +1,33 @@
+About Monstrosity save where this happened:
+Attacks SE (3) from (250/0xFA, 62/0x3E)
+City is on (251/0xFB, 63/0x3F)
+Attacker unit ID: 2696/0xA88
+Offset of Unit ID field: 32
+Attacker's path len: 67
+           path[path_len-1]: 8
+Attacker is exploring (!). Calls pop_next_move_from_path at 0x464401
+It tries to path to (364/0x16C, 22/0x16)
+  This is the call to set_unit_path at 0x465448 => returns 3
+  This call is the problem b/c the unit moves in the returned direction, attacking the city
+  The call to get_movement_cost from the unit's tile to the city while setting unit path works correctly
+    it returns -1 from 0x57FDDC after calling get_tile_occupier_id
+    the patched get_movement_cost also returns -1 as expected
+  get_movement_cost gets called multiple times for the city's tile, always returns -1
+
+condition:
+([esp+0xC]==0xFB) && ([esp+0x10]==0x3F) && ([esp+4]==0xFA) && ([esp+8]==0x3E)
+
+About other galley attacking city (AI vs AI, posted by WW from Reddit):
+City is Maastricht on (10, 12)
+Attacks SE (3) again
+Attacker unit:
+  Initially at: (7, 11)
+  ID: 146/0x92
+  Owner: Mongolia (civ ID: 4)
+  Action target: (11, 23) one tile west of Rotterdam
+  Carrying just one archer
+Fighter::fight called from 0x5b63db in unnamed func
+  ...called from 0x5B92EF in Unit::move_to_adjacent_tile
+  ...called from 0x4670DF in Unit::Move
+  ...called from 0x45A1D7 in Unit::ai_move_naval_transport
+Attacker paths to (38/0x26, 22/0x16) hits the 256 limit for early return

@@ -2,6 +2,19 @@
 // common.c: Stores various utility functions available to both the injected code (injected_code.c) and the patcher (ep.c). Also includes most code
 // related to text parsing, only the parsing funcs that depend on BIC data are put in injected_code.c instead.
 
+#define ARRAY_LEN(a) ((sizeof a) / (sizeof a[0]))
+
+struct string_slice {
+	char * str;
+	int len;
+};
+
+int
+slice_matches_str (struct string_slice const * slice, char const * str)
+{
+	return (strncmp (str, slice->str, slice->len) == 0) && (str[slice->len] == '\0');
+}
+
 int
 not_below (int lim, int x)
 {
@@ -36,6 +49,17 @@ int
 int_abs (int x)
 {
 	return (x >= 0) ? x : (0 - x);
+}
+
+int
+gcd (int a, int b)
+{
+	while (b != 0) {
+		int t = b;
+		b = a % b;
+		a = t;
+	}
+	return a;
 }
 
 // Writes an integer to a byte buffer. buf need not be aligned but it must have at least four bytes of free space. Written little-endian.
@@ -73,13 +97,49 @@ reserve (int item_size, void ** p_items, int * p_capacity, int count)
 	}
 }
 
+byte *
+buffer_allocate (struct buffer * b, int size)
+{
+	size = not_below (0, size);
+	if ((b->contents != NULL) && (b->length + size <= b->capacity)) {
+		byte * tr = b->contents + b->length;
+		b->length += size;
+		return tr;
+	} else {
+		b->capacity = b->length + size + 1000;
+		b->contents = realloc (b->contents, b->capacity);
+		return buffer_allocate (b, size);
+	}
+}
 
+void
+buffer_deinit (struct buffer * b)
+{
+	free (b->contents);
+	memset (b, 0, sizeof *b);
+}
 
-// ===================================
-// ||                               ||
-// ||     SIMPLE INT HASH TABLE     ||
-// ||                               ||
-// ===================================
+// An i31b represents a 31-bit signed integer and a boolean packed into a single int.
+typedef int i31b;
+
+i31b
+i31b_pack (int int_val, bool bool_val)
+{
+	return (clamp (INT_MIN/2, INT_MAX/2, int_val) << 1) | (bool_val ? 1 : 0);
+}
+
+void
+i31b_unpack (i31b packed_val, int * out_int_val, bool * out_bool_val)
+{
+	*out_int_val = packed_val >> 1;
+	*out_bool_val = packed_val & 1;
+}
+
+// ========================================================
+// ||                                                    ||
+// ||     SIMPLE HASH TABLES FOR INT AND STRING KEYS     ||
+// ||                                                    ||
+// ========================================================
 
 void
 table_deinit (struct table * t)
@@ -116,14 +176,14 @@ table__set_occupation (struct table * t, size_t index, int occupied)
 // Finds an appropriate index for a given key in the table. If the key is already present in the table, the index of its entry will be returned. If
 // it's not present, the index of where it would be is returned. This function assumes that the table is not full and that it has been allocated.
 size_t
-table__place (struct table const * t, int key)
+table__place (struct table const * t, int (* compare_keys) (int, int), int key, size_t hash)
 {
 	size_t mask = ((size_t)1 << t->capacity_exponent) - 1;
-	size_t index = (size_t)key & mask;
+	size_t index = hash & mask;
 	int * base = TABLE__BASE (t);
 	while (1) {
 		int * entry = &base[2*index];
-		if ((! table__is_occupied (t, index)) || (key == entry[0]))
+		if ((! table__is_occupied (t, index)) || compare_keys (key, entry[0]))
 			return index;
 		else
 			index = (index + 1) & mask;
@@ -131,7 +191,7 @@ table__place (struct table const * t, int key)
 }
 
 void
-table__expand (struct table * t)
+table__expand (struct table * t, size_t (* hash) (int), int (* compare_keys) (int, int))
 {
 	size_t new_capacity_exponent = (t->capacity_exponent > 0) ? (t->capacity_exponent + 1) : 5;
 	void * new_block; {
@@ -149,7 +209,7 @@ table__expand (struct table * t)
 	for (size_t n = 0; n < old_capacity; n++)
 		if (table__is_occupied (t, n)) {
 			int * old_entry = &old_base[2*n];
-			size_t new_index = table__place (&new_table, old_entry[0]);
+			size_t new_index = table__place (&new_table, compare_keys, old_entry[0], hash (old_entry[0]));
 			int * new_entry = &((int *)TABLE__BASE (&new_table))[2*new_index];
 			new_entry[0] = old_entry[0]; // copy key
 			new_entry[1] = old_entry[1]; // copy value
@@ -161,38 +221,8 @@ table__expand (struct table * t)
 	*t = new_table;
 }
 
-void
-table_insert (struct table * t, int key, int value)
-{
-	if (t->len >= table_capacity (t) / 2)
-		table__expand (t);
-
-	size_t index = table__place (t, key);
-	int * entry = &((int *)TABLE__BASE (t))[2*index];
-	entry[0] = key;
-	entry[1] = value;
-	if (! table__is_occupied (t, index)) {
-		table__set_occupation (t, index, 1);
-		++t->len;
-	}
-}
-
 int
-table_look_up (struct table const * t, int key, int * out_value)
-{
-	if (t->len > 0) {
-		size_t index = table__place (t, key);
-		if (table__is_occupied (t, index)) {
-			int * entry = &((int *)TABLE__BASE (t))[2*index];
-			*out_value = entry[1];
-			return 1;
-		}
-	}
-	return 0;
-}
-
-int
-table_get_by_index (struct table * const t, size_t index, int * out_value)
+table_get_by_index (struct table const * t, size_t index, int * out_value)
 {
 	if ((t->len > 0) && table__is_occupied (t, index)) {
 		int * entry = &((int *)TABLE__BASE (t))[2*index];
@@ -202,6 +232,223 @@ table_get_by_index (struct table * const t, size_t index, int * out_value)
 	return 0;
 }
 
+int compare_int_keys (int a, int b) { return a == b; }
+size_t hash_int (int key) { return key; }
+
+void
+itable_insert (struct table * t, int key, int value)
+{
+	if (t->len >= table_capacity (t) / 2)
+		table__expand (t, hash_int, compare_int_keys);
+
+	size_t index = table__place (t, compare_int_keys, key, hash_int (key));
+	int * entry = &((int *)TABLE__BASE (t))[2*index];
+	entry[0] = key;
+	entry[1] = value;
+	if (! table__is_occupied (t, index)) {
+		table__set_occupation (t, index, 1);
+		++t->len;
+	}
+}
+
+// Deletes a table entry, if present. Returns whether or not the entry was present.
+int
+itable_remove (struct table * t, int key)
+{
+	if (t->len == 0)
+		return 0;
+
+	size_t index = table__place (t, compare_int_keys, key, hash_int (key));
+	if (! table__is_occupied (t, index))
+		return 0;
+
+	table__set_occupation (t, index, 0);
+	t->len--;
+
+	// Re-insert any elements in the probe sequence
+	size_t index_mask = ((size_t)1 << t->capacity_exponent) - 1;
+	size_t current = (index + 1) & index_mask;
+	while (table__is_occupied (t, current)) {
+		int * entry = &((int *)TABLE__BASE (t))[2 * current];
+		int cur_key = entry[0],
+		    cur_value = entry[1];
+		table__set_occupation (t, current, 0);
+
+		size_t new_index = table__place (t, compare_int_keys, cur_key, hash_int (cur_key));
+		int * new_entry = &((int *)TABLE__BASE (t))[2 * new_index];
+		new_entry[0] = cur_key;
+		new_entry[1] = cur_value;
+		table__set_occupation (t, new_index, 1);
+
+		current = (current + 1) & index_mask;
+	}
+
+	return 1;
+}
+
+int
+itable_look_up (struct table const * t, int key, int * out_value)
+{
+	size_t index = (t->len > 0) ? table__place (t, compare_int_keys, key, hash_int (key)) : 0;
+	return table_get_by_index (t, index, out_value);
+}
+
+// Returns the associated value if the key is present in the table, otherwise returns default_value
+int
+itable_look_up_or (struct table const * t, int key, int default_value)
+{
+	int value;
+	int got_value = itable_look_up (t, key, &value);
+	return got_value ? value : default_value;
+}
+
+int compare_str_keys (int str_ptr_a, int str_ptr_b) { return strcmp ((char const *)str_ptr_a, (char const *)str_ptr_b) == 0; }
+
+int
+compare_slice_and_str_keys (int slice_ptr, int str_ptr)
+{
+	struct string_slice const * slice = (struct string_slice const *)slice_ptr;
+	char const * str = (char const *)str_ptr;
+	return (strncmp (slice->str, str, slice->len) == 0) && (str[slice->len] == '\0');
+}
+
+size_t
+hash_str (int str_ptr)
+{
+	size_t tr = 0;
+	for (char const * str = (char const *)str_ptr; *str != '\0'; str++)
+		tr = (tr<<5 ^ tr>>2) + *str;
+	return tr;
+}
+
+size_t
+hash_slice (int slice_ptr)
+{
+	struct string_slice const * slice = (struct string_slice const *)slice_ptr;
+	size_t tr = 0;
+	for (int n = 0; n < slice->len; n++)
+		tr = (tr<<5 ^ tr>>2) + slice->str[n];
+	return tr;
+
+}
+
+// Like regular deinit but also frees all keys
+void
+stable_deinit (struct table * t)
+{
+	if (t->len > 0) {
+		size_t capacity = table_capacity (t);
+		for (size_t n = 0; n < capacity; n++)
+			if (table__is_occupied (t, n)) {
+				int * entry = &((int *)TABLE__BASE (t))[2*n];
+				free ((void *)entry[0]);
+			}
+	}
+	table_deinit (t);
+}
+
+void
+stable_insert (struct table * t, char const * key, int value)
+{
+	if (t->len >= table_capacity (t) / 2)
+		table__expand (t, hash_str, compare_str_keys);
+
+	size_t index = table__place (t, compare_str_keys, (int)key, hash_str ((int)key));
+	int * entry = &((int *)TABLE__BASE (t))[2*index];
+	if (entry[0] == 0)
+		entry[0] = (int)strdup (key);
+	entry[1] = value;
+	if (! table__is_occupied (t, index)) {
+		table__set_occupation (t, index, 1);
+		++t->len;
+	}
+}
+
+int
+stable_look_up (struct table const * t, char const * key, int * out_value)
+{
+	size_t index = (t->len > 0) ? table__place (t, compare_str_keys, (int)key, hash_str ((int)key)) : 0;
+	return table_get_by_index (t, index, out_value);
+}
+
+int
+stable_look_up_slice (struct table const * t, struct string_slice const * key, int * out_value)
+{
+	size_t index = (t->len > 0) ? table__place (t, compare_slice_and_str_keys, (int)key, hash_slice ((int)key)) : 0;
+	return table_get_by_index (t, index, out_value);
+}
+
+struct table_entry_iter {
+	struct table const * t;
+	size_t index;
+	size_t capacity;
+	int key;
+	int value;
+};
+
+void
+tei_next (struct table_entry_iter * tei)
+{
+	size_t new_index = tei->index + 1;
+	while ((new_index < tei->capacity) && (! table__is_occupied (tei->t, new_index)))
+		new_index++;
+	if (new_index < tei->capacity) {
+		int * entry = &((int *)TABLE__BASE (tei->t))[2*new_index];
+		tei->key = entry[0];
+		tei->value = entry[1];
+	}
+	tei->index = new_index;
+}
+
+struct table_entry_iter
+tei_init (struct table const * t)
+{
+	struct table_entry_iter tr = {0};
+	tr.t = t;
+	tr.capacity = table_capacity (t);
+	if (t->len > 0) {
+		tr.index = -1;
+		tei_next (&tr);
+	}
+	return tr;
+}
+
+#define FOR_TABLE_ENTRIES(tei_name, p_table) for (struct table_entry_iter tei_name = tei_init (p_table); tei_name.index < tei_name.capacity; tei_next (&tei_name))
+
+// Writes the contents of the table to the buffer as an array of key-value pairs. Returns the number of bytes written. Assumes the buffer contents is
+// four-byte aligned.
+int
+itable_serialize (struct table const * t, struct buffer * b)
+{
+	int tr = sizeof(int) + t->len * 2 * sizeof(int);
+	int * out = (int *)buffer_allocate (b, tr);
+	*out++ = t->len;
+	FOR_TABLE_ENTRIES (tei, t) {
+		*out++ = tei.key;
+		*out++ = tei.value;
+	}
+	return tr;
+}
+
+// Reads table entries from a buffer, inserting them into the given table. Will not read beyond buf_end. Returns the number of bytes read if
+// successful or 0 if there was an error.
+int
+itable_deserialize (byte const * buf, byte const * buf_end, struct table * t)
+{
+	int const * ints = (int const *)buf;
+
+	if (((int)buf & 3) || (buf_end - buf < 4))
+		return 0;
+	int count = *ints++;
+	if (buf + (count * 2 * sizeof(int)) > buf_end)
+		return 0;
+
+	for (int n = 0; n < count; n++)
+		itable_insert (t, ints[2*n], ints[2*n + 1]);
+
+	return (2*count + 1) * sizeof(int);
+}
+
 
 
 // ===============================
@@ -209,11 +456,6 @@ table_get_by_index (struct table * const t, size_t index, int * out_value)
 // ||     PARSING FUNCTIONS     ||
 // ||                           ||
 // ===============================
-
-struct string_slice {
-	char * str;
-	int len;
-};
 
 int
 is_horiz_space (char c)
@@ -307,36 +549,64 @@ extract_slice (struct string_slice const * s)
 int
 read_int (struct string_slice const * s, int * out_val)
 {
-	struct string_slice trimmed = trim_string_slice (s, 1);
-	char * str = trimmed.str;
-	int len = trimmed.len;
+    struct string_slice trimmed = trim_string_slice (s, 1);
+    char *str = trimmed.str;
+    int len = trimmed.len;
 
-	if ((len > 0) && (*str == '-') || ((*str >= '0') && (*str <= '9'))) {
-		char * end;
-		int base = 10;
-		if ((str[0] == '0') && ((str[1] == 'x') || (str[1] == 'X'))) {
-			base = 16;
-			str += 2;
-			len -= 2;
-		}
-		int res = strtol (str, &end, base);
-		if (end == str + len) {
-			*out_val = res;
+    if (len > 0 && (*str == '-' || (*str >= '0' && *str <= '9'))) {
+        char *end;
+        int base = 10;
+
+        char *p = str;
+        if (*p == '-') {
+            p++;
+        }
+
+        if (len >= 3 && p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+            base = 16;
+        }
+
+        int res = strtol(str, &end, base);
+
+        if (end == str + len) {
+            *out_val = res;
+            return 1;
+        }
+        return 0;
+    }
+    else if (len == 4 &&
+             (!strncmp(str, "true", 4) ||
+              !strncmp(str, "True", 4) ||
+              !strncmp(str, "TRUE", 4))) {
+        *out_val = 1;
+        return 1;
+    }
+    else if (len == 5 &&
+             (!strncmp(str, "false", 5) ||
+              !strncmp(str, "False", 5) ||
+              !strncmp(str, "FALSE", 5))) {
+        *out_val = 0;
+        return 1;
+    }
+
+    return 0;
+}
+
+int
+read_i31b (struct string_slice const * s, i31b * out_i31b_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if (trimmed.len > 0) {
+		bool percent = trimmed.str[trimmed.len - 1] == '%';
+		if (percent)
+			trimmed.len -= 1;
+
+		int int_val;
+		if (read_int (&trimmed, &int_val)) {
+			*out_i31b_val = i31b_pack (int_val, percent);
 			return 1;
 		} else
 			return 0;
-	} else if ((len == 4) &&
-		   ((0 == strncmp (str, "true", 4)) ||
-		    (0 == strncmp (str, "True", 4)) ||
-		    (0 == strncmp (str, "TRUE", 4)))) {
-		*out_val = 1;
-		return 1;
-	} else if ((len == 5) &&
-		   ((0 == strncmp (str, "false", 5)) ||
-		    (0 == strncmp (str, "False", 5)) ||
-		    (0 == strncmp (str, "FALSE", 5)))) {
-		*out_val = 0;
-		return 1;
 	} else
 		return 0;
 }
@@ -374,7 +644,7 @@ parse_string (char ** p_cursor, struct string_slice * out)
 			cur++;
 	} else {
 		str_start = cur;
-		while (windows1252_alpha_nums[*(unsigned char *)cur] || (*cur == '_') || (*cur == '-') || (*cur == '.'))
+		while (windows1252_alpha_nums[*(unsigned char *)cur] || (*cur == '_') || (*cur == '-') || (*cur == '.') || (*cur == '%'))
 			cur++;
 	}
 	int str_len = cur - str_start;
@@ -384,6 +654,30 @@ parse_string (char ** p_cursor, struct string_slice * out)
 	out->len = str_len;
 	*p_cursor = cur + (quoted && (*cur == '"'));
 	return 1;
+}
+
+int
+parse_int (char ** p_cursor, int * out)
+{
+	char * cur = *p_cursor;
+	struct string_slice ss;
+	if (parse_string (&cur, &ss) && read_int (&ss, out)) {
+		*p_cursor = cur;
+		return 1;
+	} else
+		return 0;
+}
+
+int
+parse_i31b (char ** p_cursor, int * out_i31b_val)
+{
+	char * cur = *p_cursor;
+	struct string_slice ss;
+	if (parse_string (&cur, &ss) && read_i31b (&ss, out_i31b_val)) {
+		*p_cursor = cur;
+		return 1;
+	} else
+		return 0;
 }
 
 int
@@ -407,24 +701,6 @@ parse_bracketed_block (char ** p_cursor, struct string_slice * out)
 		}
 		out->str = str_start;
 		out->len = cur - str_start - 1;
-		*p_cursor = cur;
-		return 1;
-	} else
-		return 0;
-}
-
-int
-parse_key_value_pair (char ** p_cursor, struct string_slice * out_key, struct string_slice * out_value)
-{
-	char * cur = *p_cursor;
-	struct string_slice key, value;
-	if (parse_string (&cur, &key) &&
-	    skip_punctuation (&cur, '=') &&
-	    (parse_string (&cur, &value) ||
-	     parse_bracketed_block (&cur, &value))) {
-		*out_key = key;
-		*out_value = value;
-		skip_to_line_end (&cur);
 		*p_cursor = cur;
 		return 1;
 	} else
@@ -466,6 +742,8 @@ read_object_job (struct string_slice const * s, enum object_job * out)
 	else if (0 == strncmp ("inlead"   , trimmed.str, trimmed.len)) *out = OJ_INLEAD;
 	else if (0 == strncmp ("repl vptr", trimmed.str, trimmed.len)) *out = OJ_REPL_VPTR;
 	else if (0 == strncmp ("repl call", trimmed.str, trimmed.len)) *out = OJ_REPL_CALL;
+	else if (0 == strncmp ("repl vis" , trimmed.str, trimmed.len)) *out = OJ_REPL_VIS;
+	else if (0 == strncmp ("ext walup", trimmed.str, trimmed.len)) *out = OJ_EXT_WALUP;
 	else if (0 == strncmp ("ignore"   , trimmed.str, trimmed.len)) *out = OJ_IGNORE;
 	else
 		return 0;
@@ -549,22 +827,26 @@ err_in_CreateFileA:
 	return NULL;
 }
 
-// Re-encodes a text buffer from UTF-8 to Windows-1252, a single-byte encoding used internally by Civ 3.
+// Re-encodes a text buffer from UTF-8 to a different encoding.
 char *
-utf8_to_windows1252 (char const * text)
+convert_from_utf8 (char const * text, unsigned encoding)
 {
+	// Skip the UTF-8 byte order mark, if present
+	if (0 == strncmp (text, "\xEF\xBB\xBF", 3))
+		text += 3;
+
 	int text_len = strlen (text);
 	int wide_text_size = 2 * (text_len + 1); // Size of wide text buffer in bytes. Each char is 2 bytes, +1 char for null terminator
 
 	void * wide_text = malloc (wide_text_size);
-	int wide_text_len = MultiByteToWideChar (CP_UTF8, MB_ERR_INVALID_CHARS | MB_PRECOMPOSED, text, -1, wide_text, text_len + 1);
+	int wide_text_len = MultiByteToWideChar (CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, wide_text, text_len + 1);
 	if (wide_text_len == 0) { // Error
 		free (wide_text);
 		return NULL;
 	}
 
 	void * tr = malloc (text_len + 1);
-	int bytes_written = WideCharToMultiByte (1252, 0, wide_text, -1, tr, text_len + 1, NULL, NULL);
+	int bytes_written = WideCharToMultiByte (encoding, 0, wide_text, -1, tr, text_len + 1, NULL, NULL);
 	if (bytes_written == 0) { // Error
 		free (tr);
 		free (wide_text);

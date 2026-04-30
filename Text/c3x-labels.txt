@@ -36,3 +36,134 @@ Config files loaded
 
 ; Appears on loading bar during setup of two-city start
 Creating cities
+
+; Warning messages for failed sanity check after two-city start
+Failed sanity check after setting up AI multi-city start:
+At least two cities are located on adjacent tiles
+One or more AIs did not receive all their starting cities
+
+; Used in place of "Upgrades To" in the Civilopedia for unit types that cannot actually upgrade
+Obsoleted By
+
+; Used on the stealth attack target selection popup, if chosen performs a normal attack instead of a stealth attack. The brackets cause the game to
+; italicize the text within, I like this effect since it sets this option apart from the others.
+[No stealth attack]
+
+; Pops up on the map when a bomber gets intercepted by enemy AA buildings but dodges the damage
+We were chased off by enemy air defenses.
+
+; As in a "preview" version of the mod. Used on the mod info popup.
+Preview
+
+; Tooltip for the build city button when it's disabled because the settler is too close to an existing city. Only applies when the minimum city
+; separation has been set > 1.
+Not a valid city location.^Cities must be separated by at least $NUM0 tiles.
+
+; Label for the total number of cities in the game. Appears on the F11 demographics screen, if enabled.
+Total cities:
+
+; Unit AI strategy names. Matches what they're called in the editor.
+Offense
+Defense
+Artillery
+Explore
+Army
+Cruise Missile
+Air Bombard
+Air Defense
+Naval Power
+Air Transport
+Naval Transport
+Naval Carrier
+Terraform
+Settle
+Leader
+Tactical Nuke
+ICBM
+Naval Missile Transport
+Flag Unit
+King
+
+; Unit actions. These appear on the right-click menu in place of Wake/Activate.
+Idle
+Fortified
+Sentry
+Mining
+Irrigating
+Building Fortress
+Building Road
+Building Railroad
+Planting Forest
+Clearing Forest
+Clearing Wetlands
+Clearing Damage
+Building Airfield
+Building Radar Tower
+Building Outpost
+Building Barricade
+Building Colony
+Intercepting
+Moving
+Automated
+Exploring
+Bombarding
+
+; Generic verb used for Districts right-click menu
+Building
+
+; Districts-related texts
+requires a
+to grow
+destroyed by volcanic eruption!
+construction halted due to missing
+lost population due to destroyed
+
+; Shown if City A receives a building from City B via shared district, as in "<City A> received <Building> from shared <District> with <City B>".
+received
+from shared
+with
+
+; Shown if a city loses one or more buildings due to destroyed district, as in "<City>'s <Building> and <Number> other buildings have been lost due to destroyed <District>"
+'s
+and
+other buildings have been 
+lost due to destroyed
+
+; Districts config mismatch checked on game load
+District ID
+is in the save file but missing in the current configuration.
+in the save file in the current configuration is called
+The save file had
+total district types but current configuration has
+Warning! This save file was created with a different districts configuration. The game may not function correctly. Error:
+There may be other errors as well.
+Districts in save file
+Currently configured districts from
+
+; For naming tiles
+Name Tile
+Rename
+
+; This appears instead of the above actions on units that have been loaded into another (except an army).
+Transported
+
+; Action labels for the four unknown unit states. These labels are placeholders that should never actually appear on the UI.
+In State 27
+In State 28
+In State 29
+In State 30
+In State 33
+
+; For unit stats on Civilopedia
+HP Bonus
+Worker Strength
+
+; Civ Trait labels for find_civ_trait_id_by_name
+Agricultural
+Commercial
+Expansionist
+Industrious
+Militaristic
+Religious
+Scientific
+Seafaring

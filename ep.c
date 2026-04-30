@@ -8,8 +8,6 @@
 #include "C3X.h"
 #include "common.c"
 
-#define ARRAY_LEN(a) ((sizeof a) / (sizeof a[0]))
-
 #if (!defined(C3X_RUN) && !defined(C3X_INSTALL)) || (defined(C3X_RUN) && defined(C3X_INSTALL))
 #error "Must #define exactly one of C3X_RUN or C3X_INSTALL"
 #endif
@@ -587,7 +585,8 @@ find_patch_function (TCCState * tcc, char const * obj_name, int prepend_patch)
 	return mss.matching_val;
 }
 
-enum reg { REG_EAX = 0, REG_ECX, REG_EDX, REG_EBX, REG_EBP, REG_ESI, REG_EDI };
+// Registers must be defined in this exact order to match how they're encoded inside an instruction
+enum reg { REG_EAX = 0, REG_ECX, REG_EDX, REG_EBX, REG_ESP, REG_EBP, REG_ESI, REG_EDI };
 
 // This writes a call to intercept_consideration at the cursor. intercept_consideration takes a single parameter, the point value of the thing being
 // considered and it returns a new, possibly modified, value for it. Because this call gets inserted into a stream of instructions we must take care
@@ -620,7 +619,7 @@ emit_consideration_intercept_call (byte ** p_cursor, byte * code_base, void * ad
 	*p_cursor = cursor;
 }
 
-enum jump_kind { JK_UNCOND = 0, JK_LESS };
+enum jump_kind { JK_UNCOND = 0, JK_LESS, JK_GREATER_EQ };
 
 void
 emit_jump (byte ** p_cursor, byte * code_base, int jump_target, byte * addr_airlock, enum jump_kind kind)
@@ -631,6 +630,9 @@ emit_jump (byte ** p_cursor, byte * code_base, int jump_target, byte * addr_airl
 	else if (kind == JK_LESS) {
 		*cursor++ = 0x0F; // | jl
 		*cursor++ = 0x8C; // |
+	} else if (kind == JK_GREATER_EQ) {
+		*cursor++ = 0x0F; // | jge
+		*cursor++ = 0x8D; // |
 	}
 	cursor = int_to_bytes (cursor, jump_target - ((int)addr_airlock + (cursor - code_base) + 4));
 	*p_cursor = cursor;
@@ -908,8 +910,14 @@ ENTRY_POINT ()
 #endif
 
 	// Allocate space for inleads
-	int inleads_capacity = 100,
-	    inleads_size = inleads_capacity * sizeof (struct inlead);
+	int inleads_capacity; {
+		int count = 0;
+		for (int n = 0; n < count_civ_prog_objects; n++)
+			if (civ_prog_objects[n].job == OJ_INLEAD)
+				count++;
+		inleads_capacity = count + 40; // Allocate some extra space for various uses
+	}
+	int inleads_size = inleads_capacity * sizeof (struct inlead);
 	struct inlead * inleads = alloc_prog_memory (".c3xinl", NULL, inleads_size, MAA_READ_WRITE_EXECUTE);
 	int i_next_free_inlead = 0;
 
@@ -920,69 +928,12 @@ ENTRY_POINT ()
 	write_prog_int (&injected_state->sc_img_state, IS_UNINITED);
 	write_prog_int (&injected_state->tile_highlight_state, IS_UNINITED);
 	write_prog_int (&injected_state->mod_info_button_images_state, IS_UNINITED);
-	struct c3x_config base_config = {
-		.enable_stack_bombard = 1,
-		.enable_disorder_warning = 1,
-		.allow_stealth_attack_against_single_unit = 1,
-		.show_detailed_city_production_info = 1,
-		.limit_railroad_movement = 0,
-		.enable_free_buildings_from_small_wonders = 1,
-		.enable_stack_unit_commands = 1,
-		.skip_repeated_tile_improv_replacement_asks = 1,
-		.autofill_best_gold_amount_when_trading = 1,
-		.adjust_minimum_city_separation = 0,
-		.disallow_founding_next_to_foreign_city = 1,
-		.enable_trade_screen_scroll = 1,
-		.group_units_on_right_click_menu = 1,
-		.anarchy_length_reduction_percent = 0,
-		.show_golden_age_turns_remaining = 1,
-		.reverse_specialist_order_with_shift = 1,
-		.dont_give_king_names_in_non_regicide_games = 1,
-		.disable_worker_automation = 0,
-		.enable_land_sea_intersections = 0,
-		.disallow_trespassing = 0,
-		.show_detailed_tile_info = 1,
-		.perfume_specs = NULL,
-		.count_perfume_specs = 0,
-		.building_unit_prereqs = (struct table) {0},
-		.mills = NULL,
-		.count_mills = 0,
-		.warn_about_unrecognized_names = 1,
-		.enable_ai_production_ranking = 1,
-		.enable_ai_city_location_desirability_display = 1,
-		.zero_corruption_when_off = 1,
-		.disallow_land_units_from_affecting_water_tiles = 1,
-		.dont_end_units_turn_after_airdrop = 0,
-		.enable_negative_pop_pollution = 1,
-		.retreat_rules = RR_STANDARD,
-		.enable_ai_two_city_start = 0,
-		.promote_forbidden_palace_decorruption = 0,
-		.allow_military_leaders_to_hurry_wonders = 0,
-
-		.use_offensive_artillery_ai = 1,
-		.ai_build_artillery_ratio = 20,
-		.ai_artillery_value_damage_percent = 50,
-		.ai_build_bomber_ratio = 70,
-		.replace_leader_unit_ai = 1,
-		.fix_ai_army_composition = 1,
-		.enable_pop_unit_ai = 1,
-
-		.remove_unit_limit = 1,
-		.remove_era_limit = 0,
-		.remove_cap_on_turn_limit = 1,
-
-		.patch_submarine_bug = 1,
-		.patch_science_age_bug = 1,
-		.patch_pedia_texture_bug = 1,
-		.patch_disembark_immobile_bug = 1,
-		.patch_houseboat_bug = 1,
-		.patch_intercept_lost_turn_bug = 1,
-		.patch_phantom_resource_bug = 1,
-
-		.prevent_autorazing = 0,
-		.prevent_razing_by_ai_players = 0,
-	};
-	write_prog_memory (&injected_state->base_config, (byte const *)&base_config, sizeof base_config);
+	write_prog_int (&injected_state->disabled_command_img_state, IS_UNINITED);
+	write_prog_int (&injected_state->unit_rcm_icon_state, IS_UNINITED);
+	write_prog_int (&injected_state->red_food_icon_state, IS_UNINITED);
+	write_prog_int (&injected_state->tile_already_worked_zoomed_out_sprite_init_state, IS_UNINITED);
+	write_prog_int (&injected_state->day_night_cycle_img_state, IS_UNINITED);
+	write_prog_int (&injected_state->large_minimap_frame_img_state, IS_UNINITED);
 	tcc_define_pointer (tcc, "ADDR_INJECTED_STATE", injected_state);
 
 	// Pass through prog objects before compiling to set things up for compilation
@@ -1026,6 +977,29 @@ ENTRY_POINT ()
 		tcc__define_symbol (tcc, "ADDR_SET_RESOURCE_BIT_AIRLOCK", temp_format ("((void *)0x%x)", (int)addr_set_resource_bit_airlock));
 	}
 
+	// Again, this time for the bit of code that captures the TradeOffer object pointer when a gold trade on the table is modified
+	ASSERT (i_next_free_inlead < inleads_capacity);
+	tcc__define_symbol (tcc, "ADDR_CAPTURE_MODIFIED_GOLD_TRADE", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead]));
+	i_next_free_inlead++;
+
+	// Again, this time for the airlocks to filter zone of control candidates. Need two b/c there are separate loops for land and sea units.
+	ASSERT (i_next_free_inlead + 1 < inleads_capacity);
+	tcc__define_symbol (tcc, "ADDR_SEA_ZOC_FILTER_AIRLOCK" , temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead    ]));
+	tcc__define_symbol (tcc, "ADDR_LAND_ZOC_FILTER_AIRLOCK", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead + 1]));
+	i_next_free_inlead += 2;
+
+	// Again to replace the call to get_pixel in draw_city_dot b/c the instruction is too small to edit with repl_call
+	ASSERT (i_next_free_inlead + 1 < inleads_capacity);
+	tcc__define_symbol (tcc, "ADDR_INLEAD_FOR_CITY_DOT_DRAW_PIXEL_REPL", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead]));
+	i_next_free_inlead++;
+
+	// Again to replace the division op in the limit when looping to generate bonus resources b/c the original div is a left shift
+	ASSERT (i_next_free_inlead + 1 < inleads_capacity);
+	tcc__define_symbol (tcc, "ADDR_RESOURCE_GEN_TILE_COUNT_DIV_REPL", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead]));
+	i_next_free_inlead++;
+
+	tcc__define_symbol (tcc, "INLEAD_SIZE", temp_format ("%u", sizeof (struct inlead)));
+
 	// Compile C code to inject
 	{
 		char * source = ep_file_to_string (mod_full_dir, "injected_code.c");
@@ -1065,18 +1039,81 @@ ENTRY_POINT ()
 	tcc__list_symbols (tcc, NULL, print_symbol_location);
 #endif
 	
+	// Gather everything we need to do visibility check replacements
+	void * patch_Map_get_tile_to_check_visibility       = find_patch_function (tcc, "Map_get_tile_to_check_visibility"      , 1);
+	void * patch_Map_get_tile_to_check_visibility_again = find_patch_function (tcc, "Map_get_tile_to_check_visibility_again", 1);
+	void * patch_tile_at_to_check_visibility            = find_patch_function (tcc, "tile_at_to_check_visibility"           , 1);
+	void * patch_tile_at_to_check_visibility_again      = find_patch_function (tcc, "tile_at_to_check_visibility_again"     , 1);
+	REQUIRE (patch_Map_get_tile_to_check_visibility       != NULL, "Missing function needed for vis replacement");
+	REQUIRE (patch_Map_get_tile_to_check_visibility_again != NULL, "Missing function needed for vis replacement");
+	REQUIRE (patch_tile_at_to_check_visibility            != NULL, "Missing function needed for vis replacement");
+	REQUIRE (patch_tile_at_to_check_visibility_again      != NULL, "Missing function needed for vis replacement");
+	int addr_Map_get_tile = 0, addr_tile_at = 0;
+	for (int n = 0; n < count_civ_prog_objects; n++) {
+		struct civ_prog_object const * obj = &civ_prog_objects[n];
+		if (obj->job == OJ_DEFINE) {
+			if (0 == strcmp (obj->name, "Map_get_tile"))
+				addr_Map_get_tile = obj->addr;
+			else if (0 == strcmp (obj->name, "tile_at"))
+				addr_tile_at = obj->addr;
+		}
+	}
+	REQUIRE ((addr_Map_get_tile != 0) && (addr_tile_at != 0), "Missing define needed for vis replacement");
+
 	// Pass through prog objects after compiling to redirect control flow to patches
 	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
-		if (obj->job != OJ_IGNORE) {
-			ASSERT (obj->addr != 0);
+		if ((obj->job != OJ_IGNORE) &&
+		    ! ((obj->job == OJ_REPL_CALL) && (obj->addr == 0x0FF))) { // Special address 0x0FF ("OFF") ignores call repl on a per-exe basis
+			ASSERT ((obj->addr != 0) || (0 == strcmp (obj->name, "exe_version_index")));
 
 			if (obj->job == OJ_INLEAD)
 				put_trampoline ((void *)obj->addr, find_patch_function (tcc, obj->name, 1), 0);
 			else if (obj->job == OJ_REPL_VPTR)
 				write_prog_int ((void *)obj->addr, (int)find_patch_function (tcc, obj->name, 1));
-			else if (obj->job == OJ_REPL_CALL)
+			else if (obj->job == OJ_REPL_CALL) {
+				byte * instr = read_prog_memory ((void *)obj->addr, 10);
+				int instr_size = length_disasm (instr);
+				REQUIRE (instr_size >= 5, format ("Can't perform call replacement for %s. Instruction must be at least 5 bytes.", obj->name));
 				put_trampoline ((void *)obj->addr, find_patch_function (tcc, obj->name, 1), 1);
+				if (instr_size > 5) {
+					byte nops[] = {0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90};
+					write_prog_memory ((void *)(obj->addr + 5), nops, instr_size - 5);
+				}
+				free (instr);
+
+			// Replace visibility check
+			// The game checks tile visibility with four calls to Map::get_tile or tile_at, each call reading only one visibility
+			// field. Because of this regular pattern, it's easy to replace the check programmatically. Given a starting address:
+			//   (1) Search for four call instructions close after that address
+			//   (2) Replace get_tile or tile_at calls with the corresponding patch function
+			//   (3) Replace all calls after the first with "again" functions that simply return a cached pointer set by the first
+			} else if (obj->job == OJ_REPL_VIS) {
+				byte * init_cursor = read_prog_memory ((void *)obj->addr, 200);
+
+				byte * cursor = init_cursor;
+				int found_calls = 0;
+				do {
+					if (*cursor == 0xE8) {
+						found_calls++;
+						int offset = int_from_bytes (&cursor[1]);
+						int actual_cursor_address = obj->addr + (cursor - init_cursor);
+						int target_addr = actual_cursor_address + 5 + offset;
+
+						if (target_addr == addr_Map_get_tile)
+							put_trampoline ((void *)actual_cursor_address, (found_calls == 1) ? patch_Map_get_tile_to_check_visibility : patch_Map_get_tile_to_check_visibility_again, 1);
+						else if (target_addr == addr_tile_at)
+							put_trampoline ((void *)actual_cursor_address, (found_calls == 1) ? patch_tile_at_to_check_visibility : patch_tile_at_to_check_visibility_again, 1);
+						else
+							THROW (format ("Vis cluster after 0x%x does not match pattern. Found non-vis call.", obj->addr));
+					}
+					cursor += length_disasm (cursor);
+				} while ((found_calls < 4) && (cursor - init_cursor < 200));
+
+				REQUIRE (found_calls == 4, format ("Vis cluster after 0x%x does not match pattern. Did not find four calls.", obj->addr));
+
+				free (init_cursor);
+			}
 		}
 	}
 
@@ -1094,6 +1131,81 @@ ENTRY_POINT ()
 		init_set_resource_bit_airlock (tcc, addr_set_resource_bit_airlock, addr_intercept_set_resource_bit);
 	}
 
+	// Process the "ext walup" jobs, which involves extending loops over city work areas by redirecting their final jump instruction (that would
+	// normally begin a new cycle) to an inlead where we redo the comparison against our own work area tile count variable then reproduce the
+	// jumps to either cycle again or exit the loop.
+	// Complications include: (1) There are many different loops to patch and they use different registers to contain the loop variable. We must
+	// detect which register is being used for each. (2) Some jump instructions are only 2 bytes. We must overwrite more than just the original
+	// jmp instr in those cases in order to insert a jump to the inlead (req. 5 bytes).
+	for (int n = 0; n < count_civ_prog_objects; n++) {
+		struct civ_prog_object const * obj = &civ_prog_objects[n];
+		if (obj->job != OJ_EXT_WALUP)
+			continue;
+
+		int addr_jump = obj->addr;
+
+		byte * orig_code = read_prog_memory ((void *)(addr_jump - 20), 40);
+		byte * jump_instr = &orig_code[20];
+
+		// Determine if this is a 6-byte or 2-byte jump and make sure the jump instruction matches one of the ones we can handle.
+		int jump_instr_size = length_disasm (jump_instr);
+		REQUIRE (   ((jump_instr_size == 6) && (jump_instr[0] == 0x0F) && ((jump_instr[1] == 0x8C) || (jump_instr[1] == 0x8D)))
+			 || ((jump_instr_size == 2) && (jump_instr[0] == 0x7C)),
+			 "Work area jump address invalid or type of jump not supported");
+		bool small_jump = jump_instr_size == 2,
+		     cond_ge = (jump_instr_size == 6) && (jump_instr[1] == 0x8D); // One jump's condition is GE, all others are less-than
+
+		// Determine what register contains the loop index (which is also neighbor index around the city). We need to know this in order to
+		// reproduce the cmp instruction.
+		enum reg reg; {
+			byte * cursor = orig_code;
+			do {
+				if ((cursor[0] == 0x83) && (cursor[1] >= 0xF8) && (cursor[2] == 0x15)) {
+					reg = (enum reg)(cursor[1] - 0xF8);
+					break;
+				}
+				cursor++;
+			} while (cursor < jump_instr);
+			REQUIRE (cursor != jump_instr, "Couldn't find cmp instruction in lead up to work area jump");
+		}
+
+		// If we're redirecting a 2-byte jump, check that the instruction sequence is specifically increment, compare, jump, and that the
+		// increment and compare concern the same register.
+		if (small_jump) {
+			byte incr_instr = 0x40 + (int)reg;
+			REQUIRE ((jump_instr[-4] == incr_instr) && (jump_instr[-3] == 0x83) && (jump_instr[-1] == 0x15),
+				"2-byte work area jump pattern not matched");
+		}
+
+		int jump_offset = small_jump ? (int)*(char *)&jump_instr[1] : read_prog_int ((void const *)(addr_jump + 2));
+		int orig_jump_target = addr_jump + jump_instr_size + jump_offset;
+
+		ASSERT (i_next_free_inlead < inleads_capacity);
+		byte * wae_inlead = (byte *)&inleads[i_next_free_inlead];
+		i_next_free_inlead++;
+
+		// Replace original jump with an uncond. one heading to the inlead. If the jump is only 2 bytes, replace the instruction preceeding
+		// it, too, which we have already determined is the 3-byte compare.
+		byte jump_repl[6] = {0xE9, 0, 0, 0, 0, 0x90};
+		int addr_new_jump = small_jump ? addr_jump - 3 : addr_jump;
+		int_to_bytes (&jump_repl[1], (int)wae_inlead - (addr_new_jump + 5));
+		write_prog_memory ((byte *)addr_new_jump, jump_repl, small_jump ? 5 : 6);
+
+		// At the inlead, replace the original cmp, cond. jump, and also add second jmp exiting the loop in case the cond. doesn't pass
+		{
+			byte code[sizeof (struct inlead)] = {0};
+			byte * cursor = code;
+			*cursor++ = 0x3B;
+			*cursor++ = 0x05 + 8 * (int)reg;
+			cursor = int_to_bytes (cursor, (int)&injected_state->workable_tile_count);
+			emit_jump (&cursor, code, orig_jump_target, wae_inlead, cond_ge ? JK_GREATER_EQ : JK_LESS);
+			emit_jump (&cursor, code, addr_jump + jump_instr_size, wae_inlead, JK_UNCOND);
+			write_prog_memory (wae_inlead, code, sizeof code);
+		}
+
+		free (orig_code);
+	}
+
 	// Give up write permission on Civ proc's code injection pages
 	set_prog_mem_protection (civ_inject_mem, inject_size, MAA_READ_EXECUTE);
 
@@ -1109,6 +1221,7 @@ ENTRY_POINT ()
 	ResumeThread (civ_proc_info.hThread);
 
 	WaitForSingleObject (civ_proc, INFINITE);
+	TerminateProcess (civ_proc_info.hProcess, 0);
 	CloseHandle (civ_proc_info.hProcess);
 	CloseHandle (civ_proc_info.hThread);
 

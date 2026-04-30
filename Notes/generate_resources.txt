@@ -1,0 +1,93 @@
+
+[This is the Civ 3 map generator's resource placement method converted into pseudocode. To determine whether a resource can be spawned on a given tile, it calls out to another function that returns whether all of the following are true:
+	- The tile's terrain can hold the resource, according to the scenario data
+	- For strategic resources, there are no resources of any type on the neighboring tiles
+	- For luxury and bonus resources, there are no resources of a different type on the neighboring tiles
+	- For luxuries, there are no luxuries of a different type nearby (subjectively, within an area of about 5 tiles)
+	- For luxuries, the continent is large enough (37 or 75 tiles, depending on map size)
+	- The tile does not have the bonus shield flag (indicating bonus grassland, but the flag is set for non-grassland tiles too, including hills and mountains)
+]
+
+
+
+Initialize resource_continent_ids, a list of continent IDs one for each resource, to -1 for all
+Create list of tile indices and shuffle it
+Clear global resource counts
+
+Loop over all luxury resources:
+	Let appearance_rate = resource's appearance ratio from scenario data
+	if appearance_rate == 0:
+		appearance_rate = 50 + x + y where x, y are random integers taken uniformly from [0, 25]
+	appearance_rate = appearance_rate * scenario.civ_count / 100
+
+	eligible_terrain_count = 0
+	for each terrain type:
+		if the luxury can appear on this terrain:
+			eligible_terrain_count += 1 if the terrain is land else 5
+
+	if eligible_terrain_count == 0:
+		appearance_rate = 0
+	elif it == 1:
+		appearance_rate = appearance_rate * 0.5 but not less than 1
+	elif it == 2 or 3:
+		apperance_rate = appearance_rate * 0.75 but not less than 1
+	else:
+		make sure apperance_rate is at least 2
+
+	number_spawned = 0
+	Loop apperance_rate times:
+		Loop over shuffled tile indices:
+			Get the tile at the index
+			if (resource_continent_ids[luxury_id] == -1, i.e. the luxury does not already have a continent set) OR
+			   (resource_continent_ids[luxury_id] == tile.continent_id, i.e. the tile is on the luxury's continent):
+				if the luxury can be spawned on the tile:
+					resource_continent_ids[luxury_id] = tile.continent_id
+					spawn it there
+					increment global resource count for the luxury
+					While number_spawned < appearance_rate:
+						Flip a coin to break out of loop
+						Loop over neighboring tiles:
+							Count how many copies of the luxury are on the neighbor's neighboring tiles
+							if that count is less than 3:
+								spawn the luxury on the neighbor
+								increment global resource count for the luxury
+								number_spawned += 1
+								break out of loop over neighbors
+					number_spawned += 1
+					if number_spawned >= appearance_rate:
+						break out of loop "appearance_rate times", i.e. advance to next luxury
+
+number_non_lux_spawned = 0
+
+Loop over all strategic resources:
+	Compute appearance_rate the same as for luxury resources
+	Loop appearance_rate times:
+		Loop over shuffled tile indices:
+			Get the tile at the index
+			if the strategic resource can be spawned there:
+				spawn it on the tile
+				increment global resource count for the strat res
+				number_non_lux_spawned += 1
+				break out of loop over shuffled indices
+
+Loop until done generating bonus resources:
+	spawned_bonus_on_last_iteration = false
+	Loop over all bonus resources:
+		Compute eligible_terrain_count like for luxuries
+		if eligible_terrain_count > 0:
+			if eligible_terrain_count == 1:
+				die_sides = 6
+			elif it == 2 or 3:
+				die_sides = 4
+			else:
+				die_sides = 2
+			if a random integer taken uniformly from [0, die_sides - 1] equals 0 or 1:
+				Loop over shuffled tile indices:
+					Get the tile at the index
+					if the bonus resource can be spawned there:
+						spawn it
+						increment global resource count for the bonus res
+						number_non_lux_spawned += 1
+						spawned_bonus_on_last_iteration = true
+						break out of loop over shuffled indices
+	done generating bonus resources if number_non_lux_spawned >= map.tile_count / 32 or spawned_bonus_on_last_iteration == false
