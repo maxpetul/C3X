@@ -190,6 +190,7 @@ enum ai_auto_build_great_wall_strategy {
 enum perfume_kind {
 	PK_PRODUCTION = 0,
 	PK_TECHNOLOGY,
+	PK_RESOURCE,
 	PK_GOVERNMENT,
 
 	COUNT_PERFUME_KINDS
@@ -353,6 +354,7 @@ struct c3x_config {
 	bool allow_upgrades_in_any_city;
 	bool do_not_generate_volcanos;
 	bool do_not_pollute_impassable_tiles;
+	bool do_not_place_barb_huts_or_camps_on_impassable_tiles;
 	bool show_hp_of_stealth_attack_options;
 	bool exclude_invisible_units_from_stealth_attack;
 	bool exclude_passengers_from_stealth_attack;

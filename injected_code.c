@@ -1177,6 +1177,7 @@ parse_perfume_spec (char ** p_cursor, enum perfume_kind kind, struct error_line 
 
 		if (((kind == PK_PRODUCTION) && find_city_order_by_name (&name, &unused_city_order)) ||
 		    ((kind == PK_TECHNOLOGY) && find_game_object_id_by_name (GOK_TECHNOLOGY, &name, 0, &unused_id)) ||
+		    ((kind == PK_RESOURCE) && find_game_object_id_by_name (GOK_RESOURCE, &name, 0, &unused_id)) ||
 		    ((kind == PK_GOVERNMENT) && find_game_object_id_by_name (GOK_GOVERNMENT, &name, 0, &unused_id))) {
 			struct perfume_spec * out = out_perfume_spec;
 			snprintf (out->name, sizeof out->name, "%.*s", name.len, name.str);
@@ -1201,6 +1202,12 @@ enum recognizable_parse_result
 parse_technology_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_perfume_spec)
 {
 	return parse_perfume_spec (p_cursor, PK_TECHNOLOGY, p_unrecognized_lines, out_perfume_spec);
+}
+
+enum recognizable_parse_result
+parse_resource_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_perfume_spec)
+{
+	return parse_perfume_spec (p_cursor, PK_RESOURCE, p_unrecognized_lines, out_perfume_spec);
 }
 
 enum recognizable_parse_result
@@ -2420,6 +2427,14 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 parse_technology_perfume_spec,
 											 (void **)&perfume_spec_lists[PK_TECHNOLOGY].items,
 											 &perfume_spec_lists[PK_TECHNOLOGY].count)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "resource_perfume")) {
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct perfume_spec),
+											 parse_resource_perfume_spec,
+											 (void **)&perfume_spec_lists[PK_RESOURCE].items,
+											 &perfume_spec_lists[PK_RESOURCE].count)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "government_perfume")) {
 					if (0 <= (recog_err_offset = read_recognizables (&value,
@@ -18034,6 +18049,7 @@ patch_init_floating_point ()
 		{"allow_upgrades_in_any_city"                            , false, offsetof (struct c3x_config, allow_upgrades_in_any_city)},
 		{"do_not_generate_volcanos"                              , false, offsetof (struct c3x_config, do_not_generate_volcanos)},
 		{"do_not_pollute_impassable_tiles"                       , false, offsetof (struct c3x_config, do_not_pollute_impassable_tiles)},
+		{"do_not_place_barb_huts_or_camps_on_impassable_tiles"   , false, offsetof (struct c3x_config, do_not_place_barb_huts_or_camps_on_impassable_tiles)},
 		{"show_hp_of_stealth_attack_options"                     , false, offsetof (struct c3x_config, show_hp_of_stealth_attack_options)},
 		{"exclude_invisible_units_from_stealth_attack"           , false, offsetof (struct c3x_config, exclude_invisible_units_from_stealth_attack)},
 		{"exclude_passengers_from_stealth_attack"                , false, offsetof (struct c3x_config, exclude_passengers_from_stealth_attack)},
@@ -30005,6 +30021,30 @@ patch_Tile_set_flag_for_eruption_damage (Tile * this, int edx, int param_1, int 
 }
 
 bool __fastcall
+patch_Map_impl_check_goody_hut_location (Map * this, int edx, int tile_x, int tile_y)
+{
+	Tile * tile;
+	if (is->current_config.do_not_place_barb_huts_or_camps_on_impassable_tiles &&
+	    (tile = tile_at (tile_x, tile_y)) != NULL &&
+	    p_bic_data->TileTypes[tile->vtable->m50_Get_Square_BaseType (tile)].Flags.Impassable)
+		return false;
+
+	return Map_impl_check_goody_hut_location (this, __, tile_x, tile_y);
+}
+
+bool __fastcall
+patch_Map_impl_check_barbarian_camp_location (Map * this, int edx, int tile_x, int tile_y)
+{
+	Tile * tile;
+	if (is->current_config.do_not_place_barb_huts_or_camps_on_impassable_tiles &&
+	    (tile = tile_at (tile_x, tile_y)) != NULL &&
+	    p_bic_data->TileTypes[tile->vtable->m50_Get_Square_BaseType (tile)].Flags.Impassable)
+		return false;
+
+	return Map_impl_check_barbarian_camp_location (this, __, tile_x, tile_y);
+}
+
+bool __fastcall
 patch_City_confirm_production_switch (City * this, int edx, int order_type, int order_id)
 {
 	bool tr = City_confirm_production_switch (this, __, order_type, order_id);
@@ -31471,6 +31511,20 @@ patch_Leader_ai_eval_technology (Leader * this, int edx, int id, bool param_2, b
 {
 	int base = Leader_ai_eval_technology (this, __, id, param_2, param_3);
 	return apply_perfume (PK_TECHNOLOGY, p_bic_data->Advances[id].Name, base);
+}
+
+int __fastcall
+patch_Leader_ai_eval_strategic_resource (Leader * this, int edx, int id, bool param_2, bool param_3)
+{
+	int base = Leader_ai_eval_strategic_resource (this, __, id, param_2, param_3);
+	return apply_perfume (PK_RESOURCE, p_bic_data->ResourceTypes[id].Name, base);
+}
+
+int __fastcall
+patch_Leader_ai_eval_luxury_resource (Leader * this, int edx, int id, bool param_2, bool param_3)
+{
+	int base = Leader_ai_eval_luxury_resource (this, __, id, param_2, param_3);
+	return apply_perfume (PK_RESOURCE, p_bic_data->ResourceTypes[id].Name, base);
 }
 
 int __fastcall
