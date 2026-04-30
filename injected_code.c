@@ -36680,34 +36680,40 @@ patch_City_Form_initialize_on_game_load (City_Form * this)
 	// pop_up_in_game_error (s);
 }
 
+void
+adjust_rect_for_hd (RECT * rect, int form_x, int form_y, int old_screen_x, int old_screen_y, int * out_new_screen_x, int * out_new_screen_y)
+{
+	*out_new_screen_x = form_x + (p_bic_data->ScreenWidth  - 1920) / 2;
+	*out_new_screen_y = form_y + (p_bic_data->ScreenHeight - 1080) / 2;
+
+	// Update the rect
+	int dx = *out_new_screen_x - old_screen_x,
+	    dy = *out_new_screen_y - old_screen_y;
+	rect->left  += dx;
+	rect->right += dx;
+	rect->top    += dy;
+	rect->bottom += dy;
+}
+
 void __fastcall
 patch_Button_init_city_left_arrow (Button * this, int edx, char * text, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)
 {
-	City_Form * city_form = (City_Form *)parent;
-	int dx = (1920 - 1024) / 2;
-	city_form->rects[CFR_LEFT_ARROW_BUTTON].left  += dx;
-	city_form->rects[CFR_LEFT_ARROW_BUTTON].right += dx;
-	Button_initialize (this, __, text, control_id, x + dx, y, width, height, parent, param_8);
+	adjust_rect_for_hd (&((City_Form *)parent)->rects[CFR_LEFT_ARROW_BUTTON], 660, 40, x, y, &x, &y);
+	Button_initialize (this, __, text, control_id, x, y, width, height, parent, param_8);
 }
 
 void __fastcall
 patch_Button_init_city_right_arrow (Button * this, int edx, char * text, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)
 {
-	City_Form * city_form = (City_Form *)parent;
-	int dx = (1920 - 1024) / 2;
-	city_form->rects[CFR_RIGHT_ARROW_BUTTON].left  += dx;
-	city_form->rects[CFR_RIGHT_ARROW_BUTTON].right += dx;
-	Button_initialize (this, __, text, control_id, x + dx, y, width, height, parent, param_8);
+	adjust_rect_for_hd (&((City_Form *)parent)->rects[CFR_RIGHT_ARROW_BUTTON], 1920 - 660 - 48, 40, x, y, &x, &y);
+	Button_initialize (this, __, text, control_id, x, y, width, height, parent, param_8);
 }
 
 void __fastcall
 patch_Button_init_city_close (Button * this, int edx, char * text, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)
 {
-	City_Form * city_form = (City_Form *)parent;
-	int dx = 1920 - 1024;
-	city_form->rects[CFR_CLOSE_BUTTON].left  += dx;
-	city_form->rects[CFR_CLOSE_BUTTON].right += dx;
-	Button_initialize (this, __, text, control_id, x + dx, y, width, height, parent, param_8);
+	adjust_rect_for_hd (&((City_Form *)parent)->rects[CFR_CLOSE_BUTTON], 1690, 40, x, y, &x, &y);
+	Button_initialize (this, __, text, control_id, x, y, width, height, parent, param_8);
 }
 
 // TCC requires a main function be defined even though it's never used.
