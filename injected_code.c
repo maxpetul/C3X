@@ -12923,7 +12923,6 @@ reset_district_state (bool reset_tile_map)
 {
 	clear_all_tracked_workers ();
 	deinit_district_images ();
-	deinit_district_command_buttons ();
 	clear_highlighted_worker_tiles_for_districts ();
 
 	FOR_TABLE_ENTRIES (tei, &is->district_building_prereqs) {
@@ -21621,7 +21620,6 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 
 	// This scenario might use different mod art assets than the old one
 	deinit_stackable_command_buttons ();
-	deinit_district_command_buttons ();
 	deinit_disabled_command_buttons ();
 	deinit_trade_scroll_buttons ();
 	deinit_unit_rcm_icons ();
