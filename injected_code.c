@@ -36681,10 +36681,16 @@ patch_City_Form_initialize_on_game_load (City_Form * this)
 }
 
 void
+city_form_to_screen_coords (int form_x, int form_y, int * out_screen_x, int * out_screen_y)
+{
+	*out_screen_x = form_x + (p_bic_data->ScreenWidth  - p_city_form->Background_Image.Width ) / 2;
+	*out_screen_y = form_y + (p_bic_data->ScreenHeight - p_city_form->Background_Image.Height) / 2;
+}
+
+void
 adjust_rect_for_hd (RECT * rect, int form_x, int form_y, int old_screen_x, int old_screen_y, int * out_new_screen_x, int * out_new_screen_y)
 {
-	*out_new_screen_x = form_x + (p_bic_data->ScreenWidth  - 1920) / 2;
-	*out_new_screen_y = form_y + (p_bic_data->ScreenHeight - 1080) / 2;
+	city_form_to_screen_coords (form_x, form_y, out_new_screen_x, out_new_screen_y);
 
 	// Update the rect
 	int dx = *out_new_screen_x - old_screen_x,
@@ -36714,6 +36720,34 @@ patch_Button_init_city_close (Button * this, int edx, char * text, int control_i
 {
 	adjust_rect_for_hd (&((City_Form *)parent)->rects[CFR_CLOSE_BUTTON], 1690, 40, x, y, &x, &y);
 	Button_initialize (this, __, text, control_id, x, y, width, height, parent, param_8);
+}
+
+int __fastcall
+patch_PCX_Image_draw_treasury_on_city_form (PCX_Image * this, int edx, char * str, int x, int y, int str_len)
+{
+	city_form_to_screen_coords (1920/2 - 100, 65, &x, &y);
+	PCX_Image_draw_text (this, __, str, x, y, str_len);
+}
+
+int __fastcall
+patch_PCX_Image_draw_population_on_city_form (PCX_Image * this, int edx, char * str, int x, int y, int str_len)
+{
+	city_form_to_screen_coords (1920/2 - 100, 85, &x, &y);
+	PCX_Image_draw_text (this, __, str, x, y, str_len);
+}
+
+int __fastcall
+patch_PCX_Image_draw_government_on_city_form (PCX_Image * this, int edx, char * str, int x, int y, int str_len)
+{
+	city_form_to_screen_coords (1920/2 + 20, 65, &x, &y);
+	PCX_Image_draw_text (this, __, str, x, y, str_len);
+}
+
+int __fastcall
+patch_PCX_Image_draw_current_date_on_city_form (PCX_Image * this, int edx, char * str, int x, int y, int str_len)
+{
+	city_form_to_screen_coords (1920/2 + 20, 85, &x, &y);
+	PCX_Image_draw_text (this, __, str, x, y, str_len);
 }
 
 // TCC requires a main function be defined even though it's never used.
