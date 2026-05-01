@@ -298,6 +298,7 @@ struct c3x_config {
 	bool enable_debug_mode_switch;
 	bool accentuate_cities_on_minimap;
 	enum minimap_doubling_mode double_minimap_size;
+	bool enable_high_def_city_screen;
 	bool allow_multipage_civilopedia_descriptions;
 	enum unit_cycle_search_criteria unit_cycle_search_criteria;
 	bool reformat_turns_remaining_on_domestic_advisor_screen;
@@ -1623,6 +1624,10 @@ struct injected_state {
 	// These variables store the number of units of each type that each player has
 	int unit_type_count_init_bits; // Player bits tracking which unit type count tables have been initialized.
 	struct table unit_type_counts[32]; // One table per player. Each one maps unit type ids (ints) to counts (ints)
+
+	// Set to true if the city screen background was loaded from HDBackground.pcx. False if it was loaded from the standard background.pcx or has
+	// not been loaded yet.
+	bool using_high_def_city_screen;
 
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {

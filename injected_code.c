@@ -17701,6 +17701,7 @@ patch_init_floating_point ()
 		{"convert_some_popups_into_online_mp_messages"           , false, offsetof (struct c3x_config, convert_some_popups_into_online_mp_messages)},
 		{"enable_debug_mode_switch"                              , false, offsetof (struct c3x_config, enable_debug_mode_switch)},
 		{"accentuate_cities_on_minimap"                          , false, offsetof (struct c3x_config, accentuate_cities_on_minimap)},
+		{"enable_high_def_city_screen"                           , true , offsetof (struct c3x_config, enable_high_def_city_screen)},
 		{"allow_multipage_civilopedia_descriptions"              , true , offsetof (struct c3x_config, allow_multipage_civilopedia_descriptions)},
 		{"reformat_turns_remaining_on_domestic_advisor_screen"   , true , offsetof (struct c3x_config, reformat_turns_remaining_on_domestic_advisor_screen)},
 		{"expand_civilopedia_unit_stats"                         , true , offsetof (struct c3x_config, expand_civilopedia_unit_stats)},
@@ -18082,6 +18083,8 @@ patch_init_floating_point ()
 	is->unit_type_count_init_bits = 0;
 	for (int n = 0; n < 32; n++)
 		memset (&is->unit_type_counts[n], 0, sizeof is->unit_type_counts[n]);
+
+	is->using_high_def_city_screen = false;
 
 	is->penciled_in_upgrades = NULL;
 	is->penciled_in_upgrade_count = is->penciled_in_upgrade_capacity = 0;
@@ -36680,6 +36683,34 @@ patch_City_Form_initialize_on_game_load (City_Form * this)
 	// pop_up_in_game_error (s);
 }
 
+char * __fastcall
+patch_BIC_get_asset_path_for_city_screen_bkg (BIC * this, int edx, char * str, bool show_error_popup)
+{
+	if (is->current_config.enable_high_def_city_screen) {
+		char * hd_path = "Art\\city screen\\HDBackground.pcx";
+		char * tr = BIC_get_asset_path (this, __, hd_path, false);
+		if (0 != strcmp (tr, hd_path)) {
+			is->using_high_def_city_screen = true;
+			return tr;
+		} else {
+			PopupForm * popup = get_popup_form ();
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
+
+			char s[500];
+			snprintf (s, sizeof s, "FILE NOT FOUND: %s", hd_path);
+			s[(sizeof s) - 1] = '\0';
+			PopupForm_add_text (popup, __, s, 0);
+
+			PopupForm_add_text (popup, __, "^The HD city screen cannot be activated.", 0);
+
+			patch_show_popup (popup, __, 0, 0);
+		}
+	}
+
+	is->using_high_def_city_screen = false;
+	return BIC_get_asset_path (this, __, str, show_error_popup);
+}
+
 void
 city_form_to_screen_coords (int form_x, int form_y, int * out_screen_x, int * out_screen_y)
 {
@@ -36704,51 +36735,60 @@ adjust_rect_for_hd (RECT * rect, int form_x, int form_y, int old_screen_x, int o
 void __fastcall
 patch_Button_init_city_left_arrow (Button * this, int edx, char * text, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)
 {
-	adjust_rect_for_hd (&((City_Form *)parent)->rects[CFR_LEFT_ARROW_BUTTON], 660, 40, x, y, &x, &y);
+	if (is->using_high_def_city_screen)
+		adjust_rect_for_hd (&((City_Form *)parent)->rects[CFR_LEFT_ARROW_BUTTON], 660, 40, x, y, &x, &y);
 	Button_initialize (this, __, text, control_id, x, y, width, height, parent, param_8);
 }
 
 void __fastcall
 patch_Button_init_city_right_arrow (Button * this, int edx, char * text, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)
 {
-	adjust_rect_for_hd (&((City_Form *)parent)->rects[CFR_RIGHT_ARROW_BUTTON], 1920 - 660 - 48, 40, x, y, &x, &y);
+	if (is->using_high_def_city_screen)
+		adjust_rect_for_hd (&((City_Form *)parent)->rects[CFR_RIGHT_ARROW_BUTTON], 1920 - 660 - 48, 40, x, y, &x, &y);
 	Button_initialize (this, __, text, control_id, x, y, width, height, parent, param_8);
 }
 
 void __fastcall
 patch_Button_init_city_close (Button * this, int edx, char * text, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)
 {
-	adjust_rect_for_hd (&((City_Form *)parent)->rects[CFR_CLOSE_BUTTON], 1690, 40, x, y, &x, &y);
+	if (is->using_high_def_city_screen)
+		adjust_rect_for_hd (&((City_Form *)parent)->rects[CFR_CLOSE_BUTTON], 1690, 40, x, y, &x, &y);
 	Button_initialize (this, __, text, control_id, x, y, width, height, parent, param_8);
 }
 
 int __fastcall
 patch_PCX_Image_draw_treasury_on_city_form (PCX_Image * this, int edx, char * str, int x, int y, int str_len)
 {
-	city_form_to_screen_coords (1920/2 - 100, 65, &x, &y);
-	PCX_Image_draw_text (this, __, str, x, y, str_len);
+	if (is->using_high_def_city_screen)
+		city_form_to_screen_coords (1920/2 - 100, 65, &x, &y);
+	return PCX_Image_draw_text (this, __, str, x, y, str_len);
 }
 
 int __fastcall
 patch_PCX_Image_draw_population_on_city_form (PCX_Image * this, int edx, char * str, int x, int y, int str_len)
 {
-	city_form_to_screen_coords (1920/2 - 100, 85, &x, &y);
-	PCX_Image_draw_text (this, __, str, x, y, str_len);
+	if (is->using_high_def_city_screen)
+		city_form_to_screen_coords (1920/2 - 100, 85, &x, &y);
+	return PCX_Image_draw_text (this, __, str, x, y, str_len);
 }
 
 int __fastcall
 patch_PCX_Image_draw_government_on_city_form (PCX_Image * this, int edx, char * str, int x, int y, int str_len)
 {
-	city_form_to_screen_coords (1920/2 + 20, 65, &x, &y);
-	PCX_Image_draw_text (this, __, str, x, y, str_len);
+	if (is->using_high_def_city_screen)
+		city_form_to_screen_coords (1920/2 + 20, 65, &x, &y);
+	return PCX_Image_draw_text (this, __, str, x, y, str_len);
 }
 
 int __fastcall
 patch_PCX_Image_draw_current_date_on_city_form (PCX_Image * this, int edx, char * str, int x, int y, int str_len)
 {
-	city_form_to_screen_coords (1920/2 + 20, 85, &x, &y);
-	PCX_Image_draw_text (this, __, str, x, y, str_len);
+	if (is->using_high_def_city_screen)
+		city_form_to_screen_coords (1920/2 + 20, 85, &x, &y);
+	return PCX_Image_draw_text (this, __, str, x, y, str_len);
 }
+
+
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
