@@ -7895,6 +7895,202 @@ unit_matches_counter_side (struct c3x_config * cfg, int type_id,
 	               p_bic_data->UnitTypes[type_id].Name) == 0;
 }
 
+bool
+slice_matches_str_case_insensitive (struct string_slice const * slice, char const * str)
+{
+	int str_len = strlen (str);
+	if (slice->len != str_len)
+		return false;
+	for (int i = 0; i < str_len; i++)
+		if (tolower ((unsigned char)slice->str[i]) !=
+		    tolower ((unsigned char)str[i]))
+			return false;
+	return true;
+}
+
+bool
+read_counter_rule_experience_value (struct string_slice const * exp_name, int * out_id)
+{
+	if ((exp_name == NULL) || (out_id == NULL))
+		return false;
+
+	struct string_slice trimmed = trim_string_slice (exp_name, 1);
+	if (trimmed.len <= 0)
+		return false;
+
+	if (slice_matches_str (&trimmed, "*") ||
+	    slice_matches_str_case_insensitive (&trimmed, "any")) {
+		*out_id = -1;
+		return true;
+	}
+
+	for (int i = 0; i < p_bic_data->CombatExperienceCount; i++) {
+		if (slice_matches_str_case_insensitive (
+		        &trimmed, p_bic_data->CombatExperience[i].Name.S)) {
+			*out_id = i;
+			return true;
+		}
+	}
+
+	struct {
+		char const * name;
+		int rank;
+	} const default_aliases[] = {
+		{ "conscript", 0 },
+		{ "regular",   1 },
+		{ "veteran",   2 },
+		{ "elite",     3 },
+	};
+
+	for (int i = 0; i < ARRAY_LEN (default_aliases); i++) {
+		if (slice_matches_str_case_insensitive (&trimmed, default_aliases[i].name)) {
+			int count = p_bic_data->CombatExperienceCount;
+			if ((default_aliases[i].rank >= 0) &&
+			    (default_aliases[i].rank < count)) {
+				int * ids = malloc (count * sizeof ids[0]);
+				if (ids == NULL)
+					return false;
+				for (int j = 0; j < count; j++)
+					ids[j] = j;
+				for (int j = 0; j < count - 1; j++) {
+					for (int k = j + 1; k < count; k++) {
+						int j_id = ids[j],
+						    k_id = ids[k],
+						    j_hp = p_bic_data->CombatExperience[j_id].Base_Hit_Points,
+						    k_hp = p_bic_data->CombatExperience[k_id].Base_Hit_Points;
+						if ((k_hp < j_hp) || ((k_hp == j_hp) && (k_id < j_id))) {
+							ids[j] = k_id;
+							ids[k] = j_id;
+						}
+					}
+				}
+				*out_id = ids[default_aliases[i].rank];
+				free (ids);
+				return true;
+			}
+		}
+	}
+
+	int id;
+	if (read_int (&trimmed, &id) &&
+	    (id >= 0) &&
+	    (id < p_bic_data->CombatExperienceCount)) {
+		*out_id = id;
+		return true;
+	}
+
+	return false;
+}
+
+bool
+is_counter_rule_self_experience_token (struct string_slice const * token)
+{
+	return slice_matches_str (token, "self-exp") ||
+	       slice_matches_str (token, "self-experience") ||
+	       slice_matches_str (token, "self-combat-exp") ||
+	       slice_matches_str (token, "self-combat-experience") ||
+	       slice_matches_str (token, "self_combat_experience");
+}
+
+bool
+is_counter_rule_enemy_experience_token (struct string_slice const * token)
+{
+	return slice_matches_str (token, "enemy-exp") ||
+	       slice_matches_str (token, "enemy-experience") ||
+	       slice_matches_str (token, "enemy-combat-exp") ||
+	       slice_matches_str (token, "enemy-combat-experience") ||
+	       slice_matches_str (token, "enemy_combat_experience");
+}
+
+bool
+is_counter_rule_option_token (struct string_slice const * token)
+{
+	return slice_matches_str (token, "in-city") ||
+	       slice_matches_str (token, "ignore-terrain") ||
+	       slice_matches_str (token, "self-atk") ||
+	       slice_matches_str (token, "self-def") ||
+	       slice_matches_str (token, "enemy-atk") ||
+	       slice_matches_str (token, "enemy-def") ||
+	       slice_matches_str (token, "terrain") ||
+	       slice_matches_str (token, "district") ||
+	       is_counter_rule_self_experience_token (token) ||
+	       is_counter_rule_enemy_experience_token (token);
+}
+
+enum recognizable_parse_result
+read_counter_rule_experience_mask (char ** p_cursor,
+                                   struct error_line ** p_unrecognized_lines,
+                                   unsigned int * out_mask)
+{
+	char * cur = *p_cursor;
+	unsigned int mask = 0;
+	bool got_any_value = false;
+	bool unrestricted = false;
+
+	while (1) {
+		char * before = cur;
+		struct string_slice exp_name;
+		if (! parse_string (&cur, &exp_name))
+			break;
+
+		if (is_counter_rule_option_token (&exp_name)) {
+			cur = before;
+			break;
+		}
+
+		int exp_id;
+		if (! read_counter_rule_experience_value (&exp_name, &exp_id)) {
+			add_unrecognized_line (p_unrecognized_lines, &exp_name);
+			*p_cursor = cur;
+			return RPR_UNRECOGNIZED;
+		}
+
+		got_any_value = true;
+		if (exp_id < 0) {
+			mask = 0;
+			unrestricted = true;
+		} else if (unrestricted) {
+			;
+		} else if (exp_id < 8 * sizeof mask) {
+			mask |= 1U << exp_id;
+		} else {
+			add_unrecognized_line (p_unrecognized_lines, &exp_name);
+			*p_cursor = cur;
+			return RPR_UNRECOGNIZED;
+		}
+	}
+
+	if (! got_any_value) {
+		*p_cursor = cur;
+		return RPR_PARSE_ERROR;
+	}
+
+	*out_mask = mask;
+	*p_cursor = cur;
+	return RPR_OK;
+}
+
+bool
+counter_rule_experience_mask_matches (unsigned int mask, int experience_id)
+{
+	if (mask == 0)
+		return true;
+	if ((experience_id < 0) || (experience_id >= 8 * sizeof mask))
+		return false;
+	return (mask & (1U << experience_id)) != 0;
+}
+
+bool
+counter_rule_experience_conditions_match (struct counter_rule * r,
+                                          int self_experience_id,
+                                          int enemy_experience_id)
+{
+	return counter_rule_experience_mask_matches (r->self_experience_mask,
+	                                             self_experience_id) &&
+	       counter_rule_experience_mask_matches (r->enemy_experience_mask,
+	                                             enemy_experience_id);
+}
+
 enum recognizable_parse_result
 parse_unit_counter_group (char ** p_cursor,
                           struct error_line ** p_unrecognized_lines,
@@ -7958,6 +8154,8 @@ parse_counter_rule (char ** p_cursor,
 		.terrain_mask   = 0,
 		.district_id    = -1,
 		.district_name  = NULL,
+		.self_experience_mask  = 0,
+		.enemy_experience_mask = 0,
 		.self_atk_pct   = 100,
 		.self_def_pct   = 100,
 		.enemy_atk_pct  = 100,
@@ -8002,6 +8200,20 @@ parse_counter_rule (char ** p_cursor,
 		} else if (slice_matches_str (&token, "enemy-def")) {
 			if (! parse_int (&cur, &r->enemy_def_pct))
 				return RPR_PARSE_ERROR;
+		} else if (is_counter_rule_self_experience_token (&token)) {
+			enum recognizable_parse_result res =
+				read_counter_rule_experience_mask (&cur,
+				                                   p_unrecognized_lines,
+				                                   &r->self_experience_mask);
+			if (res != RPR_OK)
+				return res;
+		} else if (is_counter_rule_enemy_experience_token (&token)) {
+			enum recognizable_parse_result res =
+				read_counter_rule_experience_mask (&cur,
+				                                   p_unrecognized_lines,
+				                                   &r->enemy_experience_mask);
+			if (res != RPR_OK)
+				return res;
 		} else if (slice_matches_str (&token, "terrain")) {
 			struct string_slice terrain_name;
 			if (! parse_string (&cur, &terrain_name))
@@ -8055,6 +8267,20 @@ apply_counter_rules (struct c3x_config * cfg,
 		                   r->defender_match, r->defender_group) &&
 		               unit_matches_counter_side (cfg, d_type,
 		                   r->attacker_match, r->attacker_group);
+
+		if (forward &&
+		    ! counter_rule_experience_conditions_match (
+		        r,
+		        attacker->Body.Combat_Experience,
+		        defender->Body.Combat_Experience))
+			forward = false;
+
+		if (reverse &&
+		    ! counter_rule_experience_conditions_match (
+		        r,
+		        defender->Body.Combat_Experience,
+		        attacker->Body.Combat_Experience))
+			reverse = false;
 
 		if (! forward && ! reverse)
 			continue;

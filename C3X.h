@@ -220,6 +220,8 @@ struct counter_rule {
 	bool   only_in_city;
 	int    district_id;       // -1 = no restriction
 	char * district_name;     // Resolved after district configs are loaded
+	unsigned int self_experience_mask;  // 0 = no restriction
+	unsigned int enemy_experience_mask; // 0 = no restriction
 	bool   ignore_terrain;    // true = set defender terrain defense to 0
 
 	// Effects (percent values, 100 = no change)
