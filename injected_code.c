@@ -20733,8 +20733,18 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 			((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
 			if ((dest != NULL) &&
 				dest->vtable->m35_Check_Is_Water (dest) &&
-				(dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
-				base_validity = AMV_OK;
+				(dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast)) {
+				bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
+				if (is_human) {
+					
+				} else {
+					// Allow AI to enter coast only if their territory, else constant 
+					// AI worker movement across coasts can look odd or almost like cheating
+					if (this->Body.CivID == dest->Territory_OwnerID) {
+						base_validity = AMV_OK;
+					}
+				}
+			}
 		}
 
 		// Allow land units to enter bridge tiles
@@ -20874,8 +20884,18 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 		    (base_cost < 0) && (unit != NULL) && is_worker (unit) &&
 		    to_valid &&
 		    to->vtable->m35_Check_Is_Water (to) &&
-		    (to->vtable->m50_Get_Square_BaseType (to) == SQ_Coast))
-			base_cost = Unit_get_max_move_points (unit);
+		    (to->vtable->m50_Get_Square_BaseType (to) == SQ_Coast)) {
+			bool is_human = (*p_human_player_bits & (1 << unit->Body.CivID)) != 0;
+			if (is_human) {
+				base_cost = Unit_get_max_move_points (unit);
+			} else {
+				if (unit->Body.CivID == to->Territory_OwnerID) {
+					base_cost = Unit_get_max_move_points (unit);
+				} else {
+					return -1;
+				}
+			}
+		}
 
 		// Let the pathfinder consider bridge tiles reachable for land units
 		if (is->current_config.enable_bridge_districts &&
@@ -22535,8 +22555,9 @@ ai_handle_district_production_requirements (City * city, City_Order * out)
 	if (swapped_to_fallback) {
 		*out = fallback_order;
 	}
-	if ((swapped_to_fallback || should_mark_district) && (required_district_id >= 0))
+	if ((swapped_to_fallback || should_mark_district) && (required_district_id >= 0)) {
 		mark_city_needs_district (city, required_district_id);
+	}
 
 	clear_best_feasible_order (city);
 	return swapped_to_fallback;
@@ -27625,19 +27646,10 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 				if (is_human) {
 					should_override = true;
 				} else {
-					struct district_worker_record * rec = get_tracked_worker_record (this);
-					struct pending_district_request * req = (rec != NULL) ? rec->pending_req : NULL;
-					if (req != NULL) {
-						City * req_city = (req->city != NULL) ? req->city : get_city_ptr (req->city_id);
-						if ((req->district_id >= 0) &&
-						    (req->district_id < is->district_count) &&
-						    (req_city != NULL) &&
-						    city_radius_contains_tile (req_city, nx, ny) &&
-						    (req->target_x == nx) && (req->target_y == ny)) {
-							struct district_config const * cfg = &is->district_configs[req->district_id];
-							if ((cfg->buildable_square_types_mask & (1 << SQ_Coast)) != 0)
-								should_override = true;
-						}
+					// Allow AI to enter coast only if their territory, to prevent
+					// 
+					if (this->Body.CivID == dest->Territory_OwnerID) {
+						should_override = true;
 					}
 				}
 			}
@@ -27685,6 +27697,7 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 			this->Body.Container_Unit = is->coast_walk_prev_container;
 			Unit_set_state (this, __, is->coast_walk_prev_state);
 			if (is->coast_walk_restore_goto_path) {
+				this->Body.UnitState = prev_state;
 				this->Body.path_len = is->coast_walk_prev_path_len;
 				this->Body.path_dest_x = is->coast_walk_prev_path_dest_x;
 				this->Body.path_dest_y = is->coast_walk_prev_path_dest_y;

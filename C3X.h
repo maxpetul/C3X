@@ -482,6 +482,8 @@ struct c3x_config {
 	int ai_auto_build_great_wall_strategy;
 
 	bool enable_city_work_radii_highlights;
+
+	bool do_not_place_barb_huts_or_camps_on_impassable_tiles;
 };
 
 enum stackable_command {
