@@ -20736,7 +20736,7 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 				(dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast)) {
 				bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
 				if (is_human) {
-					
+					base_validity = AMV_OK;
 				} else {
 					// Allow AI to enter coast only if their territory, else constant 
 					// AI worker movement across coasts can look odd or almost like cheating
