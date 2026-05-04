@@ -25,6 +25,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define LoadLibraryA is->LoadLibraryA
 #define FreeLibrary is->FreeLibrary
 #define MessageBoxA is->MessageBoxA
+#define PtInRect is->PtInRect
 #define MultiByteToWideChar is->MultiByteToWideChar
 #define WideCharToMultiByte is->WideCharToMultiByte
 #define GetLastError is->GetLastError
@@ -17843,6 +17844,7 @@ patch_init_floating_point ()
 	QueryPerformanceFrequency = (void *)(*p_GetProcAddress) (is->kernel32, "QueryPerformanceFrequency");
 	GetLocalTime              = (void *)(*p_GetProcAddress) (is->kernel32, "GetLocalTime");
 	MessageBoxA  = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
+	PtInRect     = (void *)(*p_GetProcAddress) (is->user32, "PtInRect");
 	is->msimg32  = LoadLibraryA ("Msimg32.dll");
 	TransparentBlt = (void *)(*p_GetProcAddress) (is->msimg32, "TransparentBlt");
 	snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
@@ -18082,6 +18084,8 @@ patch_init_floating_point ()
 	is->unit_type_count_init_bits = 0;
 	for (int n = 0; n < 32; n++)
 		memset (&is->unit_type_counts[n], 0, sizeof is->unit_type_counts[n]);
+
+	is->mouse_hover_tile_x = is->mouse_hover_tile_y = -1;
 
 	is->penciled_in_upgrades = NULL;
 	is->penciled_in_upgrade_count = is->penciled_in_upgrade_capacity = 0;
@@ -36605,6 +36609,41 @@ patch_Tile_check_water_for_canal_move_to_adjacent_tile_dest (Tile * this)
 	}
 
 	return this->vtable->m35_Check_Is_Water (this);
+}
+
+bool
+is_over_main_gui_widget (int mouse_x, int mouse_y)
+{
+	POINT mouse_point = { mouse_x, mouse_y };
+	Main_GUI * main_gui = &p_main_screen_form->GUI;
+
+	// TODO: The check against the unit status rect is too broad, it includes the box above the panel that shows passenger units whether or not
+	// it's actually visible. Also, should test against main menu buttons, unit command buttons, and mulitplayer widgets when active.
+	return main_gui->is_enabled &&
+		(PtInRect (&main_gui->Mini_Map_Click_Rect, mouse_point) || PtInRect (&main_gui->Unit_Status_Rect, mouse_point));
+}
+
+void __fastcall
+patch_Main_Screen_Form_m27_process_mouse_hover (Main_Screen_Form * this, int edx, int local_x, int local_y)
+{
+	Main_Screen_Form_m27_process_mouse_hover (this, __, local_x, local_y);
+
+	int new_hover_x, new_hover_y;
+	if (*p_player_bits != 0 && // if in-game as opposed to on the main menu
+	    ! is_over_main_gui_widget (local_x, local_y) &&
+	    ! Main_Screen_Form_get_tile_coords_under_mouse (p_main_screen_form, __, local_x, local_y, &new_hover_x, &new_hover_y))
+		;
+	else
+		new_hover_x = new_hover_y = -1;
+
+	if (new_hover_x != is->mouse_hover_tile_x || new_hover_y != is->mouse_hover_tile_y) {
+		char s[100];
+		snprintf (s, sizeof s, "Hover: %d, %d", new_hover_x, new_hover_y);
+		(*p_OutputDebugStringA) (s);
+
+		is->mouse_hover_tile_x = new_hover_x;
+		is->mouse_hover_tile_y = new_hover_y;
+	}
 }
 
 

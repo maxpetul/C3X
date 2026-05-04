@@ -1447,6 +1447,7 @@ struct injected_state {
 
 	// Win32 funcs from user32.dll
 	int (WINAPI * MessageBoxA) (HWND, LPCSTR, LPCSTR, UINT);
+	BOOL (WINAPI * PtInRect) (RECT *, POINT);
 
 	// Win32 funcs from Msimg32.dll
 	BOOL (WINAPI * TransparentBlt) (HDC, int, int, int, int, HDC, int, int, int, int, UINT);
@@ -1623,6 +1624,9 @@ struct injected_state {
 	// These variables store the number of units of each type that each player has
 	int unit_type_count_init_bits; // Player bits tracking which unit type count tables have been initialized.
 	struct table unit_type_counts[32]; // One table per player. Each one maps unit type ids (ints) to counts (ints)
+
+	// Stores the tile the mouse is currently hovering over on the main map while in-game. -1/-1 otherwise.
+	int mouse_hover_tile_x, mouse_hover_tile_y;
 
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {
