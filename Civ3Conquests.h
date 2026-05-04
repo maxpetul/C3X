@@ -3088,7 +3088,7 @@ struct Base_Form_vtable
   int m24;
   int m25_Process_Mouse_Wheel;
   void (__fastcall * m26_on_mouse_hover) (Base_Form * this, __, int local_x, int local_y, int param_3);
-  int m27;
+  void (__fastcall * m27_process_mouse_hover) (Base_Form * this, __, int local_x, int local_y);
   int m28;
 //  void (__thiscall *m29_On_Left_Click)(Base_Form *, int, int);
   void *m29_On_Left_Click;
