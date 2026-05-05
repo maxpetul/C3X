@@ -34149,6 +34149,18 @@ patch_Tile_has_city_or_district (Tile * this)
 	return has_city;
 }
 
+void __fastcall
+patch_Animator_update (Animator * this)
+{
+	Animator_update (this);
+
+	if (is->mouse_hover_tile_x != -1 && is->mouse_hover_tile_y != -1) {
+		char s[100];
+		snprintf (s, sizeof s, "Hovering over: %d, %d", is->mouse_hover_tile_x, is->mouse_hover_tile_y);
+		PCX_Image_draw_text (&p_main_screen_form->Base_Data.Canvas, __, s, 20, 80, strlen (s));
+	}
+}
+
 int __fastcall
 patch_Tile_check_water_for_navigator_cell_coloring (Tile * this)
 {
@@ -34193,7 +34205,7 @@ patch_PopupForm_impl_begin_showing_popup (PopupForm * this)
 		int tr = PopupForm_impl_begin_showing_popup (this);
 
 		*(bool *)(p_main_screen_form->animator.field_18E4 + 10) = true; // Set what must be a dirty flag
-		Animator_update (&p_main_screen_form->animator); // Make sure message appears
+		patch_Animator_update (&p_main_screen_form->animator); // Make sure message appears
 
 		this->field_1BF0[0xE4] = saved_flags;
 		*p_preferences = saved_prefs;
@@ -36637,12 +36649,10 @@ patch_Main_Screen_Form_m27_process_mouse_hover (Main_Screen_Form * this, int edx
 		new_hover_x = new_hover_y = -1;
 
 	if (new_hover_x != is->mouse_hover_tile_x || new_hover_y != is->mouse_hover_tile_y) {
-		char s[100];
-		snprintf (s, sizeof s, "Hover: %d, %d", new_hover_x, new_hover_y);
-		(*p_OutputDebugStringA) (s);
-
 		is->mouse_hover_tile_x = new_hover_x;
 		is->mouse_hover_tile_y = new_hover_y;
+
+		*(bool *)(this->animator.field_18E4 + 10) = true; // Set dirty flag to update display
 	}
 }
 

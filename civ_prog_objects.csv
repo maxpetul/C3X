@@ -813,7 +813,7 @@ define,	   0x537700,	0x541D30,	0x537780,	"play_sound_effect",				"void (__cdecl 
 repl call, 0x578CD9,	0x585DF3,	0x578C49,	"Tile_check_water_for_navigator_cell_coloring",	""
 inlead,	   0x49F5C0,	0x4A6080,	0x49F650,	"PopupForm_impl_begin_showing_popup",		"int (__fastcall *) (PopupForm * this)"
 repl call, 0x49F5CB,	0x4A608B,	0x49F65B,	"is_online_game_for_show_popup",		""
-define,	   0x4EEC40,	0x4F7BE0,	0x4EED00,	"Animator_update",				"void (__fastcall *) (Animator * this)"
+inlead,	   0x4EEC40,	0x4F7BE0,	0x4EED00,	"Animator_update",				"void (__fastcall *) (Animator * this)"
 inlead,	   0x5C32F0,	0x5D1F20,	0x5C3000,	"Unit_ai_can_sacrifice",			"bool (__fastcall *) (Unit * this, int edx, bool requires_city)"
 inlead,	   0x4C5A10,	0x4CD2C0,	0x4C5A30,	"Map_Renderer_load_images",			"void (__fastcall *) (Map_Renderer *this, int edx)"
 define,	   0x446114,	0x447EF6,	0x446194,	"ADDR_CITY_LIM_CMP_IN_CONT_BEGIN_TURN",		"byte *"
