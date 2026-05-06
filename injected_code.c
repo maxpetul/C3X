@@ -21769,6 +21769,7 @@ patch_Unit_load (Unit * this, int edx, Unit * transport)
 	    is->current_config.naval_units_use_port_districts_not_cities &&
 	    (this != NULL) && (transport != NULL) &&
 	    ((this->Body.X != transport->Body.X) || (this->Body.Y != transport->Body.Y)) &&
+		(p_bic_data->UnitTypes[transport->Body.UnitTypeID].Unit_Class == UTC_Sea) &&
 	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land)) {
 		Tile * unit_tile = tile_at (this->Body.X, this->Body.Y);
 		Tile * transport_tile = tile_at (transport->Body.X, transport->Body.Y);
