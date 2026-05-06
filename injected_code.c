@@ -4705,6 +4705,24 @@ tile_is_land (int civ_id, int tile_x, int tile_y, bool must_be_same_owner)
 }
 
 bool
+tile_allows_worker_coast_entry_source (Tile * tile)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (! tile->vtable->m35_Check_Is_Water (tile))
+		return true;
+
+	if (! is->current_config.enable_bridge_districts)
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	return (inst != NULL) &&
+	       (inst->district_id == BRIDGE_DISTRICT_ID) &&
+	       district_is_complete (tile, inst->district_id);
+}
+
+bool
 tile_is_water (int tile_x, int tile_y)
 {
 	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
@@ -20732,19 +20750,12 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 		// Let workers step onto coast tiles when the config flag is enabled (base logic treats this as an invalid sea move)
 		if (is->current_config.workers_can_enter_coast && is_worker (this) &&
 			((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
+			Tile * source = tile_at (this->Body.X, this->Body.Y);
 			if ((dest != NULL) &&
 				dest->vtable->m35_Check_Is_Water (dest) &&
-				(dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast)) {
-				bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
-				if (is_human) {
-				    base_validity = AMV_OK;
-				} else {
-				    // Allow AI to enter coast only if their territory, else constant
-				    // AI worker movement across coasts can look odd or almost like cheating
-				    if (this->Body.CivID == dest->Territory_OwnerID) {
-				        base_validity = AMV_OK;
-				    }
-				}
+				(dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast) &&
+				tile_allows_worker_coast_entry_source (source)) {
+				base_validity = AMV_OK;
 			}
 
 		}
@@ -20886,17 +20897,9 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 		    (base_cost < 0) && (unit != NULL) && is_worker (unit) &&
 		    to_valid &&
 		    to->vtable->m35_Check_Is_Water (to) &&
-		    (to->vtable->m50_Get_Square_BaseType (to) == SQ_Coast)) {
-			bool is_human = (*p_human_player_bits & (1 << unit->Body.CivID)) != 0;
-			if (is_human) {
-			    base_cost = Unit_get_max_move_points (unit);
-			} else {
-			    if (unit->Body.CivID == to->Territory_OwnerID) {
-			        base_cost = Unit_get_max_move_points (unit);
-			    } else {
-			        return -1;
-			    }
-			}
+		    (to->vtable->m50_Get_Square_BaseType (to) == SQ_Coast) &&
+		    tile_allows_worker_coast_entry_source (tile_at (from_x, from_y))) {
+			base_cost = Unit_get_max_move_points (unit);
 		}
 
 		// Let the pathfinder consider bridge tiles reachable for land units
@@ -27680,12 +27683,9 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 			bool should_override = false;
 			if (allow_worker_coast &&
 			    dest->vtable->m35_Check_Is_Water (dest) &&
-			    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast)) {
-				bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
-				if (is_human)
-					should_override = true;
-				else if (this->Body.CivID == dest->Territory_OwnerID)
--                   should_override = true;
+			    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast) &&
+			    tile_allows_worker_coast_entry_source (tile_at (this->Body.X, this->Body.Y))) {
+				should_override = true;
 			}
 
 			if (! should_override && allow_bridge_walk) {
@@ -35542,24 +35542,11 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 		if (is->current_config.workers_can_enter_coast &&
 			base != PBV_OK && is_worker(this)) {
 			Tile * source = tile_at (from_x, from_y);
-			if (source != NULL &&
-			    source->vtable->m35_Check_Is_Water (source) &&
-			    (source->vtable->m50_Get_Square_BaseType (source) == SQ_Coast))
-				return PBV_OK;
-
 			if (to_valid &&
 			    to->vtable->m35_Check_Is_Water (to) &&
-			    (to->vtable->m50_Get_Square_BaseType (to) == SQ_Coast)) {
-				bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
-
-				// If human, okay to enter coast tile
-				if (is_human)
-					return PBV_OK;
-
-				struct district_worker_record * rec = get_tracked_worker_record (this);
-				struct pending_district_request * req = (rec != NULL) ? rec->pending_req : NULL;
-				if (req != NULL)
-					return PBV_OK;
+			    (to->vtable->m50_Get_Square_BaseType (to) == SQ_Coast) &&
+			    tile_allows_worker_coast_entry_source (source)) {
+				return PBV_OK;
 			}
 		}
 
@@ -35626,7 +35613,8 @@ patch_Unit_select_transport (Unit * this, int edx, int tile_x, int tile_y, bool 
 			bool allow_move = false;
 			if (is->current_config.workers_can_enter_coast && is_worker (this) &&
 			    dest->vtable->m35_Check_Is_Water (dest) &&
-			    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
+			    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast) &&
+			    tile_allows_worker_coast_entry_source (tile_at (this->Body.X, this->Body.Y)))
 				allow_move = true;
 
 			if (! allow_move && is->current_config.enable_bridge_districts &&
