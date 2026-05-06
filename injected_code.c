@@ -4693,6 +4693,18 @@ tile_has_district_at (int tile_x, int tile_y, int district_id)
 }
 
 bool
+tile_has_district_at_with_owner (int tile_x, int tile_y, int district_id, int owner_id)
+{
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile) || (tile->Territory_OwnerID != owner_id))
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	return (inst != NULL) && (inst->district_id == district_id) && (district_is_complete (tile, district_id));
+}
+
+bool
 tile_is_land (int civ_id, int tile_x, int tile_y, bool must_be_same_owner)
 {
 	if (must_be_same_owner && (civ_id <= 0))
@@ -21531,6 +21543,13 @@ int __fastcall
 patch_Game_get_wonder_city_id (Game * this, int edx, int wonder_improvement_id)
 {
 	int ret_addr = ((int *)&wonder_improvement_id)[-1];
+	if (is->current_config.enable_districts && 
+		is->current_config.enable_great_wall_districts && 
+		is->current_config.disable_great_wall_city_defense_bonus && 
+		(ret_addr == ADDR_SMALL_WONDER_FREE_IMPROVS_RETURN) &&
+		(wonder_improvement_id == is->current_config.great_wall_auto_build_wonder_improv_id)) {
+		return -1;
+	}
 	if ((is->current_config.enable_free_buildings_from_small_wonders) && (ret_addr == ADDR_SMALL_WONDER_FREE_IMPROVS_RETURN)) {
 		Leader * leader = is->leader_param_for_patch_get_wonder_city_id;
 		Improvement * improv = &p_bic_data->Improvements[wonder_improvement_id];
@@ -33750,12 +33769,13 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 void
 draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	bool wall_nw = tile_has_district_at (tile_x - 1, tile_y - 1, GREAT_WALL_DISTRICT_ID);
-	bool wall_ne = tile_has_district_at (tile_x + 1, tile_y - 1, GREAT_WALL_DISTRICT_ID);
-	bool wall_se = tile_has_district_at (tile_x + 1, tile_y + 1, GREAT_WALL_DISTRICT_ID);
-	bool wall_sw = tile_has_district_at (tile_x - 1, tile_y + 1, GREAT_WALL_DISTRICT_ID);
-	bool wall_s  = tile_has_district_at (tile_x,     tile_y + 2, GREAT_WALL_DISTRICT_ID);
-	bool wall_n  = tile_has_district_at (tile_x,     tile_y - 2, GREAT_WALL_DISTRICT_ID);
+	int owner_id = tile->Territory_OwnerID;
+	bool wall_nw = tile_has_district_at_with_owner (tile_x - 1, tile_y - 1, GREAT_WALL_DISTRICT_ID, owner_id);
+	bool wall_ne = tile_has_district_at_with_owner (tile_x + 1, tile_y - 1, GREAT_WALL_DISTRICT_ID, owner_id);
+	bool wall_se = tile_has_district_at_with_owner (tile_x + 1, tile_y + 1, GREAT_WALL_DISTRICT_ID, owner_id);
+	bool wall_sw = tile_has_district_at_with_owner (tile_x - 1, tile_y + 1, GREAT_WALL_DISTRICT_ID, owner_id);
+	bool wall_s  = tile_has_district_at_with_owner (tile_x,     tile_y + 2, GREAT_WALL_DISTRICT_ID, owner_id);
+	bool wall_n  = tile_has_district_at_with_owner (tile_x,     tile_y - 2, GREAT_WALL_DISTRICT_ID, owner_id);
 
 	bool water_ne = tile_is_water (tile_x - 1, tile_y - 1);
 	bool water_nw = tile_is_water (tile_x + 1, tile_y - 1);
