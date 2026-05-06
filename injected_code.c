@@ -220,6 +220,7 @@ bool __fastcall patch_City_has_resource (City * this, int edx, int resource_id);
 bool __fastcall patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, bool param_2);
 char __fastcall patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing);
 void __fastcall patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7);
+int __fastcall patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool param_2, int param_3, byte param_4);
 bool can_build_district_on_tile (Tile * tile, int district_id, int civ_id);
 bool city_can_build_district (City * city, int district_id);
 bool leader_can_build_district (Leader * leader, int district_id);
@@ -20736,15 +20737,16 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 				(dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast)) {
 				bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
 				if (is_human) {
-					base_validity = AMV_OK;
+				    base_validity = AMV_OK;
 				} else {
-					// Allow AI to enter coast only if their territory, else constant 
-					// AI worker movement across coasts can look odd or almost like cheating
-					if (this->Body.CivID == dest->Territory_OwnerID) {
-						base_validity = AMV_OK;
-					}
+				    // Allow AI to enter coast only if their territory, else constant
+				    // AI worker movement across coasts can look odd or almost like cheating
+				    if (this->Body.CivID == dest->Territory_OwnerID) {
+				        base_validity = AMV_OK;
+				    }
 				}
 			}
+
 		}
 
 		// Allow land units to enter bridge tiles
@@ -20887,13 +20889,13 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 		    (to->vtable->m50_Get_Square_BaseType (to) == SQ_Coast)) {
 			bool is_human = (*p_human_player_bits & (1 << unit->Body.CivID)) != 0;
 			if (is_human) {
-				base_cost = Unit_get_max_move_points (unit);
+			    base_cost = Unit_get_max_move_points (unit);
 			} else {
-				if (unit->Body.CivID == to->Territory_OwnerID) {
-					base_cost = Unit_get_max_move_points (unit);
-				} else {
-					return -1;
-				}
+			    if (unit->Body.CivID == to->Territory_OwnerID) {
+			        base_cost = Unit_get_max_move_points (unit);
+			    } else {
+			        return -1;
+			    }
 			}
 		}
 
@@ -20938,6 +20940,15 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 				}
 			}
 		}
+
+		if ((unit != NULL) &&
+		    (base_cost < 0) &&
+		    is->current_config.enable_port_districts &&
+		    is->current_config.naval_units_use_port_districts_not_cities &&
+		    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Land) &&
+		    tile_has_friendly_port_district (to, unit->Body.CivID) &&
+		    (Unit_find_transport (unit, __, to_x, to_y) != NULL))
+			base_cost = Unit_get_max_move_points (unit);
 
 		if ((unit != NULL) &&
 		    (base_cost >= 0) &&
@@ -21731,6 +21742,40 @@ patch_Unit_can_load (Unit * this, int edx, Unit * passenger)
 void __fastcall
 patch_Unit_load (Unit * this, int edx, Unit * transport)
 {
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_port_districts &&
+	    is->current_config.naval_units_use_port_districts_not_cities &&
+	    (this != NULL) && (transport != NULL) &&
+	    ((this->Body.X != transport->Body.X) || (this->Body.Y != transport->Body.Y)) &&
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land)) {
+		Tile * unit_tile = tile_at (this->Body.X, this->Body.Y);
+		Tile * transport_tile = tile_at (transport->Body.X, transport->Body.Y);
+		if ((unit_tile != NULL) &&
+		    (unit_tile != p_null_tile) &&
+		    Tile_has_city (unit_tile) &&
+		    tile_has_friendly_port_district (transport_tile, this->Body.CivID)) {
+				// If directly adjacent to the transport, load directly
+				for (int n = 1; n <= 8; n++) {
+					int nx, ny;
+					get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, n, &nx, &ny);
+					if ((nx == transport->Body.X) && (ny == transport->Body.Y)) {
+						patch_Unit_move_to_adjacent_tile (this, __, n, false, 0, 1);
+						return;
+					}
+				}
+				// Otherwise, set the unit on a path to it
+				if (patch_Trade_Net_set_unit_path (is->trade_net, __, this->Body.X, this->Body.Y,
+				                                   transport->Body.X, transport->Body.Y,
+				                                   this, this->Body.CivID, 0x81, NULL) > 0) {
+					Unit_set_escortee (this, __, -1);
+					Unit_set_state (this, __, UnitState_Go_To);
+					this->Body.path_dest_x = transport->Body.X;
+					this->Body.path_dest_y = transport->Body.Y;
+				}
+				return;
+			}
+	}
+
 	Unit_load (this, __, transport);
 
 	// Tie the unit to the transport if configured to do so
@@ -22415,11 +22460,6 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 {	
 	is->current_evaluating_improve_id = i_improv;
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "patch_City_can_build_improvement:evaluating improvement %s (%d)\n",
-		p_bic_data->Improvements[i_improv].Name.S, i_improv);
-	(*p_OutputDebugStringA) (ss);
-
 	// First defer to the base game's logic
 	bool base = City_can_build_improvement (this, __, i_improv, apply_strict_rules);
 	if (! base) return false;
@@ -22555,9 +22595,8 @@ ai_handle_district_production_requirements (City * city, City_Order * out)
 	if (swapped_to_fallback) {
 		*out = fallback_order;
 	}
-	if ((swapped_to_fallback || should_mark_district) && (required_district_id >= 0)) {
+	if ((swapped_to_fallback || should_mark_district) && (required_district_id >= 0))
 		mark_city_needs_district (city, required_district_id);
-	}
 
 	clear_best_feasible_order (city);
 	return swapped_to_fallback;
@@ -27643,15 +27682,10 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 			    dest->vtable->m35_Check_Is_Water (dest) &&
 			    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast)) {
 				bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
-				if (is_human) {
+				if (is_human)
 					should_override = true;
-				} else {
-					// Allow AI to enter coast only if their territory, to prevent
-					// 
-					if (this->Body.CivID == dest->Territory_OwnerID) {
-						should_override = true;
-					}
-				}
+				else if (this->Body.CivID == dest->Territory_OwnerID)
+-                   should_override = true;
 			}
 
 			if (! should_override && allow_bridge_walk) {
@@ -35547,6 +35581,39 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 	return base;
 }
 
+
+Unit * __fastcall
+patch_Unit_find_transport (Unit * this, int edx, int tile_x, int tile_y)
+{
+	Unit * transport = Unit_find_transport (this, __, tile_x, tile_y);
+
+	if ((transport == NULL) &&
+	    is->current_config.enable_districts &&
+	    is->current_config.enable_port_districts &&
+	    is->current_config.naval_units_use_port_districts_not_cities) {
+		City * city = city_at (tile_x, tile_y);
+		if ((city != NULL) && (city->Body.CivID == this->Body.CivID)) {
+			int port_x = -1, port_y = -1;
+			Tile * port = get_completed_district_tile_for_city (city, PORT_DISTRICT_ID, &port_x, &port_y);
+			if (tile_has_friendly_port_district (port, this->Body.CivID)) {
+				FOR_UNITS_ON (uti, port) {
+					UnitType * type = &p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID];
+					bool same_civ = uti.unit->Body.CivID == this->Body.CivID;
+					bool naval_transport = (type->AI_Strategy & UTAI_Naval_Transport) != 0;
+					bool undamaged = uti.unit->Body.Damage == 0;
+					bool can_load = patch_Unit_can_load (uti.unit, __, this);
+					if (same_civ && naval_transport && undamaged && can_load) {
+						transport = uti.unit;
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	return transport;
+}
+
 Unit * __fastcall
 patch_Unit_select_transport (Unit * this, int edx, int tile_x, int tile_y, bool do_show_popup)
 {
@@ -35734,6 +35801,12 @@ patch_Unit_ai_move_naval_power_unit (Unit * this)
 		return;
 	}
 
+	// If carrying units, use vanilla logic
+	if (Unit_count_contained_units (this) > 0) {
+		Unit_ai_move_naval_power_unit (this);
+		return;
+	}
+
 	Tile * here = tile_at (this->Body.X, this->Body.Y);
 	if (here == NULL) {
 		Unit_ai_move_naval_power_unit (this);
@@ -35784,6 +35857,12 @@ patch_Unit_ai_move_naval_transport (Unit * this)
 		return;
 	}
 
+	// If carrying units, use vanilla logic
+	if (Unit_count_contained_units (this) > 0) {
+		Unit_ai_move_naval_transport (this);
+		return;
+	}
+
 	// If damaged and CAN heal at current location (e.g. port district), fortify to heal
 	if ((this->Body.Damage > 0) &&
 	    patch_Unit_can_heal_at (this, __, this->Body.X, this->Body.Y)) {
@@ -35805,6 +35884,12 @@ patch_Unit_ai_move_naval_missile_transport (Unit * this)
 	if (! is->current_config.enable_districts || 
 		! is->current_config.enable_port_districts ||
 		! is->current_config.naval_units_use_port_districts_not_cities) {
+		Unit_ai_move_naval_missile_transport (this);
+		return;
+	}
+
+	// If carrying units, use vanilla logic
+	if (Unit_count_contained_units (this) > 0) {
 		Unit_ai_move_naval_missile_transport (this);
 		return;
 	}
