@@ -37603,7 +37603,7 @@ read_tile_animation_terrain_types (struct string_slice const * value,
 				include_land = true;
 			else {
 				enum SquareTypes terrain = SQ_INVALID;
-				if (! read_square_type_value (&token, &terrain)) {
+				if (! read_tile_terrain_type_value (&token, &terrain)) {
 					free (text);
 					return false;
 				}
@@ -38200,7 +38200,7 @@ parse_tile_animation_adjacent_to (struct string_slice const * value,
 			if (slice_matches_str (&terrain_token, "land")) {
 				req->is_land = true;
 				req->square_type = SQ_Grassland;
-			} else if (! read_square_type_value (&terrain_token, &req->square_type)) {
+			} else if (! read_tile_terrain_type_value (&terrain_token, &req->square_type)) {
 				free (text);
 				return false;
 			}
