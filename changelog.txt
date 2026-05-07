@@ -1,3 +1,6 @@
+- Show more unit stats on the right click menu and in the unit status box, option named expand_right_click_menu_unit_stats
+  - Shows rate of fire, range, anti-air strength, passenger count & transport capacity, worker strength, and moves for immobile units
+
 * RELEASE 27 PREVIEW 1
 - Add some optional rule changes for helicopters (or any air units with transport capacity) controlled by special_helicopter_rules
   - Helicopters may be rebased or loaded onto carriers
