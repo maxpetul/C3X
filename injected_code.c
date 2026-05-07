@@ -2252,54 +2252,6 @@ read_barbarian_activity_override (struct string_slice const * s, enum barbarian_
 	return found;
 }
 
-struct parsable_field_bit {
-	char * name;
-	int bit_value;
-};
-
-bool
-read_bit_field (struct string_slice const * s, struct parsable_field_bit const * bits, int count_bits, int * out_field)
-{
-	struct string_slice trimmed = trim_string_slice (s, 0);
-	s = &trimmed;
-
-	int tr;
-	if (s->len <= 0)
-		tr = 0;
-	else if (slice_matches_str (s, "all"))
-		tr = ~0;
-	else {
-		tr = 0;
-		char * cursor = &s->str[0];
-		char * s_end = &s->str[s->len];
-		while (1) {
-			struct string_slice name;
-
-			if (cursor >= s_end)
-				break;
-			else if (! parse_string (&cursor, &name)) {
-				skip_white_space (&cursor);
-				if (cursor >= s_end)
-					break;
-				else
-					return false; // Invalid character in value
-			}
-
-			bool matched_any = false;
-			for (int n = 0; n < count_bits; n++)
-				if (slice_matches_str (&name, bits[n].name)) {
-					tr |= bits[n].bit_value;
-					matched_any = true;
-					break;
-				}
-			if (! matched_any)
-				return false;
-		}
-	}
-	*out_field = tr;
-	return true;
-}
-
 int
 read_units_per_tile_limit (struct string_slice const * s, int * out_limits)
 {
