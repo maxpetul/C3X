@@ -29306,6 +29306,15 @@ patch_MenuUnitItem_write_text_to_temp_str (MenuUnitItem * this)
 }
 
 void __fastcall
+patch_Main_GUI_get_unit_stat_str (Main_GUI * this, int edx, char * out_str, Unit * unit)
+{
+	if (is->current_config.expand_right_click_menu_unit_stats)
+		write_expanded_unit_stats (unit, out_str, sizeof_temp_str);
+	else
+		Main_GUI_get_unit_stat_str (this, __, out_str, unit);
+}
+
+void __fastcall
 patch_Tile_m74_Set_Square_Type_for_hill_gen (Tile * this, int edx, enum SquareTypes sq, int tile_x, int tile_y)
 {
 	if ((sq == SQ_Volcano) && is->current_config.do_not_generate_volcanos)
