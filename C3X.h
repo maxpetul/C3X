@@ -394,7 +394,6 @@ struct c3x_config {
 	int count_unit_counter_groups;
 	struct counter_rule * counter_rules;
 	int count_counter_rules;
-	bool use_civ4_style_best_defender;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
@@ -1872,7 +1871,9 @@ struct injected_state {
 	// not on that tile, there is no effect. This is only intended to be used on a temporary basis.
 	struct unit_display_override {
 		int unit_id, tile_x, tile_y;
-	} unit_display_override;
+	} unit_display_override, unit_display_override_2;
+	bool combat_unit_display_override_active;
+	struct unit_display_override saved_combat_unit_display_override;
 
 	// Set in patch_Fighter_get_odds_for_main_combat_loop, read by patch_Unit_get_attack/defense_strength.
 	// Stores counter multipliers for the current combat. Active only during Fighter_get_combat_odds call.

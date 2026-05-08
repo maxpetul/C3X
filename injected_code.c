@@ -2609,6 +2609,22 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					}
 					if (! value_ok)
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "unit_group")) {
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct unit_counter_group),
+											 parse_unit_counter_group,
+											 (void **)&cfg->unit_counter_groups,
+											 &cfg->count_unit_counter_groups)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "counter_rule")) {
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct counter_rule),
+											 parse_counter_rule,
+											 (void **)&cfg->counter_rules,
+											 &cfg->count_counter_rules)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 
 				// if key is for an obsolete option
 				} else if (slice_matches_str (&p.key, "patch_disembark_immobile_bug")) {
@@ -2661,6 +2677,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 				} else if (slice_matches_str (&p.key, "move_trade_net_object")) {
 					; // No nothing. This setting no longer serves any purpose.
+				} else if (slice_matches_str (&p.key, "use_civ4_style_best_defender")) {
+					; // Obsolete. Counter rules now always affect normal defender selection when enable_unit_counters is on.
 
 				// if key was previously misspelled
 				} else if (slice_matches_str (&p.key, "share_visibility_in_hoseat")) {
@@ -2668,22 +2686,6 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->share_visibility_in_hotseat = ival != 0;
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
-				} else if (slice_matches_str (&p.key, "unit_group")) {
-					if (0 <= (recog_err_offset = read_recognizables (&value,
-											 &unrecognized_lines,
-											 sizeof (struct unit_counter_group),
-											 parse_unit_counter_group,
-											 (void **)&cfg->unit_counter_groups,
-											 &cfg->count_unit_counter_groups)))
-						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
-				} else if (slice_matches_str (&p.key, "counter_rule")) {
-					if (0 <= (recog_err_offset = read_recognizables (&value,
-											 &unrecognized_lines,
-											 sizeof (struct counter_rule),
-											 parse_counter_rule,
-											 (void **)&cfg->counter_rules,
-											 &cfg->count_counter_rules)))
-						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
@@ -8124,8 +8126,6 @@ parse_unit_counter_group (char ** p_cursor,
 			add_unrecognized_line (p_unrecognized_lines, &type_name);
 			any_unrecognized = 1;
 		}
-		if (! skip_punctuation (&cur, ','))
-			break;
 	}
 	*p_cursor = cur;
 	return any_unrecognized ? RPR_UNRECOGNIZED : RPR_OK;
@@ -18329,7 +18329,6 @@ patch_init_floating_point ()
 		{"allow_sale_of_small_wonders"                           , false, offsetof (struct c3x_config, allow_sale_of_small_wonders)},
 		{"initialize_preplaced_scenario_leaders_as_mgls"         , false, offsetof (struct c3x_config, initialize_preplaced_scenario_leaders_as_mgls)},
 		{"enable_unit_counters"									 , false, offsetof (struct c3x_config, enable_unit_counters)},
-		{"use_civ4_style_best_defender"							 , false, offsetof (struct c3x_config, use_civ4_style_best_defender)},
 	};
 
 	struct integer_config_option {
@@ -18619,6 +18618,9 @@ patch_init_floating_point ()
 	is->combat_defense_improvs = (struct improv_id_list) {0};
 
 	is->unit_display_override = (struct unit_display_override) {-1, -1, -1};
+	is->unit_display_override_2 = (struct unit_display_override) {-1, -1, -1};
+	is->combat_unit_display_override_active = false;
+	is->saved_combat_unit_display_override = (struct unit_display_override) {-1, -1, -1};
 
 	is->dbe = (struct defensive_bombard_event) {0};
 
@@ -25162,6 +25164,11 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 {
 	Fighter_begin (this, __, attacker, attack_direction, defender);
 
+	if (is->combat_unit_display_override_active && (this->defender != NULL))
+		is->unit_display_override = (struct unit_display_override) {
+			this->defender->Body.ID, this->defender->Body.X, this->defender->Body.Y
+		};
+
 	// Apply override of retreat eligibility
 	// Must use this->defender instead of the defender argument since the argument is often NULL, in which case Fighter_begin finds a defender on
 	// the target tile and stores it in this->defender. Also must check that against NULL since Fighter_begin might fail to find a defender.
@@ -25224,6 +25231,11 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	// If we're despawning the stored ZoC defender, clear that variable so we don't despawn it again in check_life_after_zoc
 	if (this == is->zoc_defender)
 		is->zoc_defender = NULL;
+
+	if (this->Body.ID == is->unit_display_override.unit_id)
+		is->unit_display_override = (struct unit_display_override) {-1, -1, -1};
+	if (this->Body.ID == is->unit_display_override_2.unit_id)
+		is->unit_display_override_2 = (struct unit_display_override) {-1, -1, -1};
 
 	if (this == is->sb_next_up)
 		is->sb_next_up = NULL;
@@ -27955,37 +27967,42 @@ patch_Unit_get_attack_strength_for_land_zoc (Unit * this)
 	return (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land) ? Unit_get_attack_strength (this) : 0;
 }
 
-// Forward declaration; defined further below near patch_Fighter_get_odds_for_main_combat_loop
-// where its dependencies (apply_counter_rules, Fighter_get_combat_odds, counter_combat_ctx) live.
-Unit * find_civ4_best_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y);
+Unit * find_counter_best_visible_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded);
 
 Unit * __fastcall
 patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int tile_x, int tile_y, Unit * excluded)
 {
-	struct unit_display_override * override = &is->unit_display_override;
-	if ((override->unit_id >= 0) && (override->tile_x == tile_x) && (override->tile_y == tile_y)) {
-		Unit * unit = get_unit_ptr (override->unit_id);
-		if (unit != NULL) {
-			if ((unit->Body.X == tile_x) && (unit->Body.Y == tile_y))
-				return unit;
+	struct unit_display_override * overrides[] = {
+		&is->unit_display_override_2,
+		&is->unit_display_override,
+	};
+	for (int i = 0; i < ARRAY_LEN (overrides); i++) {
+		struct unit_display_override * override = overrides[i];
+		if ((override->unit_id >= 0) && (override->tile_x == tile_x) && (override->tile_y == tile_y)) {
+			Unit * unit = get_unit_ptr (override->unit_id);
+			if (unit != NULL) {
+				if ((unit->Body.X == tile_x) && (unit->Body.Y == tile_y))
+					return unit;
+			}
 		}
 	}
 
-	// Civ 4-style 'best defender' display: when a player selects an attacker, the unit at the top of the enemy stack
-	// should be the one with the lowest win rate against that attacker.
-	// Only takes effect when both `use_civ4_style_best_defender` and `enable_unit_counters` are enabled,
-	// and provided the currently selected unit belongs to the local player and there is an enemy unit on the target square.
-	//
-	if (is->current_config.use_civ4_style_best_defender &&
-	    is->current_config.enable_unit_counters &&
+	if (is->current_config.enable_unit_counters &&
 	    (this->Current_Unit != NULL) &&
 	    (this->Current_Unit->Body.CivID == this->Player_CivID) &&
-	    ((this->Current_Unit->Body.X != tile_x) || (this->Current_Unit->Body.Y != tile_y))) {
+	    ((this->Current_Unit->Body.X != tile_x) || (this->Current_Unit->Body.Y != tile_y)) &&
+	    (this->Mode_Action != UMA_Bombard) &&
+	    (this->Mode_Action != UMA_Air_Bombard) &&
+	    (this->Mode_Action != UMA_Auto_Bombard) &&
+	    (this->Mode_Action != UMA_Auto_Air_Bombard) &&
+	    (this->Mode_Action != UMA_Precision_Strike) &&
+	    (this->Mode_Action != UMA_Auto_Precision_Strike)) {
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile) &&
 		    tile_has_enemy_unit (tile, this->Current_Unit->Body.CivID)) {
-			Unit * best = find_civ4_best_defender_against (this->Current_Unit, tile, tile_x, tile_y);
-			if ((best != NULL) && (best != excluded))
+			Unit * best = find_counter_best_visible_defender_against (
+				this->Current_Unit, tile, tile_x, tile_y, excluded);
+			if (best != NULL)
 				return best;
 		}
 	}
@@ -27998,6 +28015,26 @@ patch_Animator_play_zoc_animation (Animator * this, int edx, Unit * unit, Animat
 {
 	if (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class != UTC_Air)
 		Animator_play_one_shot_unit_animation (this, __, unit, anim_type, param_3);
+}
+
+void __fastcall
+patch_Animator_play_one_shot_unit_animation (Animator * this, int edx, Unit * unit, AnimationType anim_type, bool param_3)
+{
+	struct unit_display_override saved_udo = is->unit_display_override;
+	bool force_unit_to_top = (unit != NULL) && (anim_type == AT_DEATH);
+	if (force_unit_to_top) {
+		is->unit_display_override = (struct unit_display_override) {
+			unit->Body.ID, unit->Body.X, unit->Body.Y
+		};
+		is->unit_display_override_2 = (struct unit_display_override) {
+			unit->Body.ID, unit->Body.X, unit->Body.Y
+		};
+	}
+
+	Animator_play_one_shot_unit_animation (this, __, unit, anim_type, param_3);
+
+	if (force_unit_to_top && ! is->combat_unit_display_override_active)
+		is->unit_display_override = saved_udo;
 }
 
 bool __fastcall
@@ -28354,6 +28391,14 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 		itable_insert (&is->extra_defensive_bombards, bombarder->Body.ID, extra_dbs + 1);
 	}
 
+	// Defensive bombard may briefly show the bombarder, then possibly the defender dying.
+	// Keep the defender as the default top unit for the damage/death part. The attack anim
+	// patch below temporarily overrides this with the bombarder while the shot is playing.
+	struct unit_display_override saved_udo = is->unit_display_override;
+	is->unit_display_override.unit_id = defender->Body.ID;
+	is->unit_display_override.tile_x = defender->Body.X;
+	is->unit_display_override.tile_y = defender->Body.Y;
+
 	int damage_before = defender->Body.Damage;
 	Fighter_damage_by_defensive_bombard (this, __, bombarder, defender);
 	int damage_after = defender->Body.Damage;
@@ -28370,25 +28415,40 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 		// patch to get_combat_odds ensures the dead unit has no chance of winning a round.
 		if (dead_before ^ dead_after) {
 			is->dbe.defender_was_destroyed = true;
-			if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (this, __, bombarder, defender, true))
+			if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (this, __, bombarder, defender, true)) {
+				is->unit_display_override_2 = (struct unit_display_override) {
+					defender->Body.ID, defender->Body.X, defender->Body.Y
+				};
 				Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, defender, AT_DEATH, false);
+			}
 			is->dbe.saved_animation_setting = this->play_animations;
 			this->play_animations = 0;
 		}
 	}
+
+	if (is->dbe.defender_was_destroyed)
+		is->unit_display_override = (struct unit_display_override) {
+			defender->Body.ID, defender->Body.X, defender->Body.Y
+		};
+	else
+		is->unit_display_override = saved_udo;
 }
 
 int __fastcall
 patch_Fighter_get_odds_for_main_combat_loop (Fighter * this, int edx, Unit * attacker, Unit * defender, bool bombarding, bool ignore_defensive_bonuses)
 {
+	if (is->combat_unit_display_override_active && (defender != NULL))
+		is->unit_display_override = (struct unit_display_override) {
+			defender->Body.ID, defender->Body.X, defender->Body.Y
+		};
+
 	if (is->dbe.defender_was_destroyed)
 		return 1025;
 
 	struct c3x_config * cfg = &is->current_config;
 	// Only OR in counter-rule terrain skipping when we actually ran apply_counter_rules for this
-	// call. Otherwise counter_combat_ctx.ignore_terrain can be stale from an earlier probe (e.g.
-	// find_civ4_best_defender_against) or an earlier combat round — especially risky after
-	// merges that add new odds call sites.
+	// call. Otherwise counter_combat_ctx.ignore_terrain can be stale from an earlier combat
+	// round or a future odds probe.
 	bool ignore_terrain_for_odds = ignore_defensive_bonuses;
 	if (cfg->enable_unit_counters && attacker != NULL && defender != NULL) {
 		Tile * def_tile = tile_at (this->defender_location_x,
@@ -28413,53 +28473,160 @@ patch_Fighter_get_odds_for_main_combat_loop (Fighter * this, int edx, Unit * att
 	return result;
 }
 
-// Civ 4-style best defender: On the specified tile, pick the defender that is hardest for the
-// attacker to beat (i.e. the one with the highest *defender* win rate against the attacker).
-// Takes unit counter rules into account. Returns NULL if there is no suitable defender.
-//
-// IMPORTANT — odds semantics: vanilla Fighter_get_combat_odds returns the *defender*'s win
-// chance (out of ~1024), not the attacker's. Confirmed by the existing patch at
-// patch_Fighter_get_odds_for_main_combat_loop: when the attacker has been killed by defensive
-// bombardment ("defender_was_destroyed"), the patch returns 1025 so the still-running combat
-// loop sees ~100% defender win chance and finishes off the doomed attacker. Therefore "hardest
-// to beat" = "highest defender win chance" = max odds.
-//
-// Notes:
-//   - Skips units with Container_Unit >= 0 (units inside armies/transports; only the top unit represents the group).
-//   - Skips units not visible to the attacker's civ, avoiding revealing invisible units.
-//   - Skips units of the same civ as the attacker (they cannot defend).
-//   - Skips units with defense strength <= 0 (incapable of combat).
-//   - Temporarily overwrites is->counter_combat_ctx internally and saves/restores the context before/after execution,
-//     to avoid disrupting the actual combat odds context.
-Unit *
-find_civ4_best_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y)
+bool
+unit_has_valid_type_id (Unit * unit)
 {
-	if ((attacker == NULL) || (tile == NULL) || (tile == p_null_tile))
+	return (unit != NULL) &&
+	       (unit->Body.UnitTypeID >= 0) &&
+	       (unit->Body.UnitTypeID < p_bic_data->UnitTypeCount);
+}
+
+int
+counter_adjusted_defender_strength (Unit * attacker, Unit * defender, int defender_strength)
+{
+	if (! (is->current_config.enable_unit_counters &&
+	       unit_has_valid_type_id (attacker) &&
+	       unit_has_valid_type_id (defender)))
+		return defender_strength;
+
+	Tile * def_tile = tile_at (defender->Body.X, defender->Body.Y);
+	if ((def_tile == NULL) || (def_tile == p_null_tile))
+		return defender_strength;
+
+	int  attacker_atk_pct, defender_def_pct;
+	bool ignore_terrain;
+	apply_counter_rules (&is->current_config, attacker, defender, def_tile,
+	                     &attacker_atk_pct, &defender_def_pct, &ignore_terrain);
+
+	if ((attacker_atk_pct == 100) && (defender_def_pct == 100))
+		return defender_strength;
+
+	if (attacker_atk_pct <= 0)
+		return 0x3FFFFFFF;
+
+	long long adjusted = (long long)defender_strength * defender_def_pct * 100 / attacker_atk_pct;
+	if (adjusted < 0)
+		return 0;
+	if (adjusted > 0x3FFFFFFF)
+		return 0x3FFFFFFF;
+	return (int)adjusted;
+}
+
+int
+counter_adjusted_attacker_strength (Unit * attacker, Unit * defender, int attacker_strength)
+{
+	if (! (is->current_config.enable_unit_counters &&
+	       unit_has_valid_type_id (attacker) &&
+	       unit_has_valid_type_id (defender)))
+		return attacker_strength;
+
+	Tile * def_tile = tile_at (defender->Body.X, defender->Body.Y);
+	if ((def_tile == NULL) || (def_tile == p_null_tile))
+		return attacker_strength;
+
+	int  attacker_atk_pct, defender_def_pct;
+	bool ignore_terrain;
+	apply_counter_rules (&is->current_config, attacker, defender, def_tile,
+	                     &attacker_atk_pct, &defender_def_pct, &ignore_terrain);
+
+	if ((attacker_atk_pct == 100) && (defender_def_pct == 100))
+		return attacker_strength;
+
+	if (defender_def_pct <= 0)
+		return 0x3FFFFFFF;
+
+	long long adjusted = (long long)attacker_strength * attacker_atk_pct * 100 / defender_def_pct;
+	if (adjusted < 0)
+		return 0;
+	if (adjusted > 0x3FFFFFFF)
+		return 0x3FFFFFFF;
+	return (int)adjusted;
+}
+
+Unit *
+select_counter_best_attacking_army_member (Unit * army, Unit * defender)
+{
+	if (! (is->current_config.enable_unit_counters &&
+	       unit_has_valid_type_id (army) &&
+	       unit_has_valid_type_id (defender) &&
+	       Unit_has_ability (army, __, UTA_Army)))
 		return NULL;
 
-	// Defensive: validate attacker shape before we deref any of its fields downstream. If the
-	// pointer is stale or refers to a half-initialized unit, UnitTypeID will be out of range and
-	// we bail out instead of crashing inside Fighter_get_combat_odds / vtable calls.
-	int atk_tid = attacker->Body.UnitTypeID;
-	if ((atk_tid < 0) || (atk_tid >= p_bic_data->UnitTypeCount))
+	Tile * tile = tile_at (army->Body.X, army->Body.Y);
+	if ((tile == NULL) || (tile == p_null_tile))
 		return NULL;
 
-	struct c3x_config * cfg = &is->current_config;
+	Unit * best = NULL;
+	int best_strength = -1;
+	int best_base_strength = -1;
+	FOR_UNITS_ON (uti, tile) {
+		Unit * unit = uti.unit;
+		if ((unit == NULL) ||
+		    (unit->Body.Container_Unit != army->Body.ID) ||
+		    ! unit_has_valid_type_id (unit))
+			continue;
+
+		int base_strength = Unit_get_attack_strength (unit);
+		if (base_strength <= 0)
+			continue;
+
+		int strength = counter_adjusted_attacker_strength (unit, defender, base_strength);
+		if ((best == NULL) ||
+		    (strength > best_strength) ||
+		    ((strength == best_strength) && (base_strength > best_base_strength))) {
+			best = unit;
+			best_strength = strength;
+			best_base_strength = base_strength;
+		}
+	}
+
+	return best;
+}
+
+Unit *
+counter_attacker_for_defender_selection (Unit * attacker, Unit * defender)
+{
+	if (unit_has_valid_type_id (attacker) &&
+	    unit_has_valid_type_id (defender) &&
+	    Unit_has_ability (attacker, __, UTA_Army)) {
+		Unit * member = select_counter_best_attacking_army_member (attacker, defender);
+		if (member != NULL)
+			return member;
+	}
+	return attacker;
+}
+
+bool __fastcall
+patch_Fighter_prefer_first_defender_1 (Fighter * this, int edx, Unit * first, int first_strength, Unit * second, int second_strength, bool param_5)
+{
+	Unit * attacker = (this != NULL) ? this->attacker : NULL;
+	if (is->current_config.enable_unit_counters &&
+	    unit_has_valid_type_id (attacker) &&
+	    unit_has_valid_type_id (first) &&
+	    unit_has_valid_type_id (second) &&
+	    (first->Body.CivID != attacker->Body.CivID) &&
+	    (second->Body.CivID != attacker->Body.CivID) &&
+	    first->vtable->is_enemy_of_civ (first, __, attacker->Body.CivID, 0) &&
+	    second->vtable->is_enemy_of_civ (second, __, attacker->Body.CivID, 0)) {
+		Unit * first_attacker = counter_attacker_for_defender_selection (attacker, first);
+		Unit * second_attacker = counter_attacker_for_defender_selection (attacker, second);
+		first_strength = counter_adjusted_defender_strength (first_attacker, first, first_strength);
+		second_strength = counter_adjusted_defender_strength (second_attacker, second, second_strength);
+	}
+
+	return Fighter_prefer_first_defender_1 (this, __, first, first_strength, second, second_strength, param_5);
+}
+
+Unit *
+find_counter_best_visible_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded)
+{
+	if (! (unit_has_valid_type_id (attacker) &&
+	       (tile != NULL) &&
+	       (tile != p_null_tile)))
+		return NULL;
+
 	int attacker_civ = attacker->Body.CivID;
 
-	// Backup the current counter ctx, as we'll be repeatedly overwriting it within the loop.
-	bool   saved_active        = is->counter_combat_ctx.active;
-	Unit * saved_attacker      = is->counter_combat_ctx.attacker;
-	Unit * saved_defender      = is->counter_combat_ctx.defender;
-	int    saved_attacker_atk  = is->counter_combat_ctx.attacker_atk_pct;
-	int    saved_defender_def  = is->counter_combat_ctx.defender_def_pct;
-	bool   saved_ignore_terrain = is->counter_combat_ctx.ignore_terrain;
-
-	// Backup the live Fighter struct fields. Vanilla Fighter_get_combat_odds may consult
-	// fighter.attacker / fighter.defender / fighter.defender_location_x/y to fetch terrain or
-	// state; if those still point at units from a previous combat (or are NULL during init), the
-	// vanilla code can dereference garbage and crash. We point them at the current candidate
-	// inside the loop and restore the originals at the end.
 	Unit * saved_fighter_attacker = p_bic_data->fighter.attacker;
 	Unit * saved_fighter_defender = p_bic_data->fighter.defender;
 	int    saved_fighter_atk_x    = p_bic_data->fighter.attacker_location_x;
@@ -28468,124 +28635,37 @@ find_civ4_best_defender_against (Unit * attacker, Tile * tile, int tile_x, int t
 	int    saved_fighter_def_y    = p_bic_data->fighter.defender_location_y;
 
 	Unit * best = NULL;
-	// We track the maximum defender win rate. Start below any possible result so the first
-	// eligible candidate always becomes the initial best.
-	int    best_odds = -1;
-
 	FOR_UNITS_ON (uti, tile) {
-		Unit * d = uti.unit;
-		if ((d == NULL) || (d == attacker))
-			continue;
-		// Defensive: a unit on the tile_units linked list with an out-of-range type id is almost
-		// certainly stale or in some half-initialized state — skip it entirely so we never pass it
-		// to anything that dereferences UnitType.
-		int dtid = d->Body.UnitTypeID;
-		if ((dtid < 0) || (dtid >= p_bic_data->UnitTypeCount))
-			continue;
-		if (d->Body.Container_Unit >= 0)
-			continue;
-		if (d->Body.CivID == attacker_civ)
-			continue;
-		// Must be a true enemy of the attacker (allies/peace treaties).
-		if (! d->vtable->is_enemy_of_civ (d, __, attacker_civ, 0))
-			continue;
-		if (Unit_get_defense_strength (d) <= 0)
-			continue;
-		if (! patch_Unit_is_visible_to_civ (d, __, attacker_civ, 0))
+		Unit * unit = uti.unit;
+		if ((unit == NULL) ||
+		    (unit == excluded) ||
+		    (unit->Body.Container_Unit >= 0) ||
+		    ! unit_has_valid_type_id (unit) ||
+		    (unit->Body.CivID == attacker_civ) ||
+		    ! unit->vtable->is_enemy_of_civ (unit, __, attacker_civ, 0) ||
+		    (Unit_get_defense_strength (unit) <= 0) ||
+		    ! patch_Unit_is_visible_to_civ (unit, __, attacker_civ, 0))
 			continue;
 
-		// Apply unit counter multipliers (100 if unit counters are disabled, equivalent to vanilla win rate formula).
-		int  aa = 100, dd = 100;
-		bool ignore_terrain = false;
-		if (cfg->enable_unit_counters)
-			apply_counter_rules (cfg, attacker, d, tile, &aa, &dd, &ignore_terrain);
-
-		is->counter_combat_ctx.active           = true;
-		is->counter_combat_ctx.attacker         = attacker;
-		is->counter_combat_ctx.defender         = d;
-		is->counter_combat_ctx.attacker_atk_pct = aa;
-		is->counter_combat_ctx.defender_def_pct = dd;
-		is->counter_combat_ctx.ignore_terrain   = ignore_terrain;
-
-		// Point the live Fighter struct at the (attacker, d) pair so the vanilla odds function
-		// reads valid pointers instead of stale ones.
 		p_bic_data->fighter.attacker            = attacker;
-		p_bic_data->fighter.defender            = d;
+		p_bic_data->fighter.defender            = unit;
 		p_bic_data->fighter.attacker_location_x = attacker->Body.X;
 		p_bic_data->fighter.attacker_location_y = attacker->Body.Y;
 		p_bic_data->fighter.defender_location_x = tile_x;
 		p_bic_data->fighter.defender_location_y = tile_y;
 
-		// IMPORTANT: vanilla Fighter_get_combat_odds reads attack/defense values directly from
-		// UnitType.Attack and UnitType.Defence — it does NOT route through Unit_get_attack/defense_strength
-		// in a way that this mod has hooked (Unit_get_defense_strength is not registered in
-		// civ_prog_objects.csv as an inlead, so patch_Unit_get_defense_strength never gets called from
-		// inside vanilla odds computation). To make our counter multipliers actually affect the odds we
-		// compute here, we monkey-patch the UnitType fields for the duration of the call and restore
-		// them immediately after. This is single-threaded mod code and the call window is microseconds,
-		// so no other reader can observe the temporary values.
-		UnitType * a_type = &p_bic_data->UnitTypes[atk_tid];
-		UnitType * d_type = &p_bic_data->UnitTypes[dtid];
-		int saved_a_attack  = a_type->Attack;
-		int saved_d_defence = d_type->Defence;
-		if (aa != 100)
-			a_type->Attack  = (saved_a_attack  * aa) / 100;
-		if (dd != 100)
-			d_type->Defence = (saved_d_defence * dd) / 100;
+		if (! Fighter_unit_can_defend (&p_bic_data->fighter, __, unit, tile_x, tile_y))
+			continue;
 
-		int odds = Fighter_get_combat_odds (&p_bic_data->fighter, __, attacker, d, false, ignore_terrain);
-
-		a_type->Attack  = saved_a_attack;
-		d_type->Defence = saved_d_defence;
-
-		// odds = defender's win chance (see comment above the function). We want the candidate
-		// that is hardest for the attacker to beat, i.e. the one with the *highest* odds.
-		bool replace;
-		if (best == NULL) {
-			replace = true;
-		} else if (odds > best_odds) {
-			replace = true;
-		} else if (odds < best_odds) {
-			replace = false;
-		} else {
-			// Odds tie. Defer to vanilla's own defender comparator (cheaper-cost-defends-first
-			// etc.) — but we must give it the *effective* defense of each candidate against
-			// this attacker, otherwise it would compare base defenses (e.g. Swordsman base 2 vs
-			// Musketman base 4) and pick Musketman immediately, never reaching the cost
-			// tie-break that should decide between two units that are effectively equally hard
-			// to beat (Swordsman with a x2 counter has effective def 4, equal to Musketman's
-			// base 4 — vanilla's tie-break should then prefer the cheaper Swordsman).
-			//
-			// We can't rely on counter_combat_ctx flowing through Unit_get_defense_strength
-			// here (see the long comment above the odds call: the patch isn't actually hooked
-			// into vanilla code). So we apply the multiplier ourselves on top of whatever
-			// Unit_get_defense_strength returns for each candidate.
-			int best_aa = 100, best_dd = 100;
-			bool best_ignore = false;
-			if (cfg->enable_unit_counters)
-				apply_counter_rules (cfg, attacker, best, tile, &best_aa, &best_dd, &best_ignore);
-
-			int d_def    = (Unit_get_defense_strength (d)    * dd     ) / 100;
-			int best_def = (Unit_get_defense_strength (best) * best_dd) / 100;
-
-			replace = Fighter_prefer_first_defender_1 (&p_bic_data->fighter, __,
-			                                          d, d_def, best, best_def, true);
-		}
-		if (replace) {
-			best = d;
-			best_odds = odds;
-		}
+		if ((best == NULL) ||
+		    patch_Fighter_prefer_first_defender_1 (
+			&p_bic_data->fighter, __,
+			unit, Unit_get_defense_strength (unit),
+			best, Unit_get_defense_strength (best),
+			true))
+			best = unit;
 	}
 
-	is->counter_combat_ctx.active           = saved_active;
-	is->counter_combat_ctx.attacker         = saved_attacker;
-	is->counter_combat_ctx.defender         = saved_defender;
-	is->counter_combat_ctx.attacker_atk_pct = saved_attacker_atk;
-	is->counter_combat_ctx.defender_def_pct = saved_defender_def;
-	is->counter_combat_ctx.ignore_terrain   = saved_ignore_terrain;
-
-	// Restore the live Fighter struct so we don't leave it pointing at our probe values when a
-	// real combat (or other code path that reads it) starts.
 	p_bic_data->fighter.attacker            = saved_fighter_attacker;
 	p_bic_data->fighter.defender            = saved_fighter_defender;
 	p_bic_data->fighter.attacker_location_x = saved_fighter_atk_x;
@@ -28600,47 +28680,17 @@ byte __fastcall
 patch_Fighter_fight (Fighter * this, int edx, Unit * attacker,
                      int attack_direction, Unit * defender_or_null)
 {
-	// Civ 4-style best defender: compute the defender from the target tile (neighbor of the
-	// attacker) using counter-aware odds, then use that unit for combat.
-	//
-	// Vanilla usually *pre-resolves* a defender and passes it non-NULL. That selection uses base
-	// UnitType stats (and cost tie-breaks), not our counter rules — so combat could hit Musketman
-	// while Main_Screen_Form_find_visible_unit (which always calls find_civ4_best_defender_against)
-	// showed Swordsman. We therefore apply our pick whenever the attack is a normal 8-neighbor
-	// strike and either no defender was passed, or the passed defender still sits on the target
-	// tile (vanilla's stack defender). If vanilla passes a defender on some other tile, leave it
-	// alone (unusual / non-adjacent paths).
-	if (is->current_config.use_civ4_style_best_defender &&
-	    is->current_config.enable_unit_counters &&
-	    (attacker != NULL) &&
-	    // Strict guard: attack_direction must be a valid 8-neighbor index. Some non-combat code
-	    // paths call Fighter_fight with sentinel values (-1 etc.); forwarding those into
-	    // neighbor_index_to_diff would produce a junk target tile and crash.
-	    (attack_direction >= 0) && (attack_direction < 8)) {
-		int dx = 0, dy = 0;
-		neighbor_index_to_diff (attack_direction, &dx, &dy);
-		// Belt-and-braces: dx/dy must lie on the 8-neighbor lattice.
-		if ((dx >= -1) && (dx <= 1) && (dy >= -1) && (dy <= 1) && ((dx != 0) || (dy != 0))) {
-			int target_x = attacker->Body.X + dx;
-			int target_y = attacker->Body.Y + dy;
-			wrap_tile_coords (&p_bic_data->Map, &target_x, &target_y);
-			Tile * target_tile = tile_at (target_x, target_y);
-			if ((target_tile != NULL) && (target_tile != p_null_tile)) {
-				bool vanilla_defender_on_target =
-					(defender_or_null != NULL) &&
-					(defender_or_null->Body.X == target_x) &&
-					(defender_or_null->Body.Y == target_y);
-				if ((defender_or_null == NULL) || vanilla_defender_on_target) {
-					Unit * picked = find_civ4_best_defender_against (attacker, target_tile, target_x, target_y);
-					if (picked != NULL)
-						defender_or_null = picked;
-				}
-			}
-		}
-	}
+	bool saved_combat_udo_active = is->combat_unit_display_override_active;
+	struct unit_display_override saved_combat_udo = is->saved_combat_unit_display_override;
+	is->saved_combat_unit_display_override = is->unit_display_override;
+	is->combat_unit_display_override_active = true;
 
 	byte tr = Fighter_fight (this, __, attacker, attack_direction,
 	                         defender_or_null);
+
+	is->unit_display_override = is->saved_combat_unit_display_override;
+	is->saved_combat_unit_display_override = saved_combat_udo;
+	is->combat_unit_display_override_active = saved_combat_udo_active;
 	is->dbe = (struct defensive_bombard_event) {0};
 	is->counter_combat_ctx.active = false;
 	return tr;
@@ -28689,12 +28739,12 @@ patch_Unit_play_attack_anim_for_def_bombard (Unit * this, int edx, int direction
 	// Don't play any animation for air units, the animations are instead handled in the patch for damage_by_defensive_bombard
 	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air) {
 
-		// Make sure the unit is displayed if it's in an army and we're configured for that
+		// Defensive bombard can come from a mid-stack unit. Force the bombarder to the top
+		// only for its attack animation, then restore the defender/top-unit override.
 		struct unit_display_override saved_udo = is->unit_display_override;
-		Unit * container;
-		if (is->current_config.show_armies_performing_defensive_bombard &&
-		    (container = get_unit_ptr (this->Body.Container_Unit)) != NULL &&
-		    Unit_has_ability (container, __, UTA_Army))
+		Unit * container = get_unit_ptr (this->Body.Container_Unit);
+		bool in_army = (container != NULL) && Unit_has_ability (container, __, UTA_Army);
+		if ((! in_army) || is->current_config.show_armies_performing_defensive_bombard)
 			is->unit_display_override = (struct unit_display_override) { this->Body.ID, this->Body.X, this->Body.Y };
 
 		Unit_play_attack_animation (this, __, direction);
@@ -37366,6 +37416,47 @@ patch_Unit_select_army_member_for_combat (Unit * this, int edx, int param_1, cha
 		}
 		if (unit_count == 0)
 			return this;
+	}
+
+	if (is->current_config.enable_unit_counters &&
+	    Unit_has_ability (this, __, UTA_Army) &&
+	    unit_has_valid_type_id (p_bic_data->fighter.defender) &&
+	    (p_bic_data->fighter.defender->Body.CivID != this->Body.CivID) &&
+	    p_bic_data->fighter.defender->vtable->is_enemy_of_civ (
+		p_bic_data->fighter.defender, __, this->Body.CivID, 0)) {
+		Unit * best_attacker = select_counter_best_attacking_army_member (
+			this, p_bic_data->fighter.defender);
+		if (best_attacker != NULL)
+			return best_attacker;
+	}
+
+	if (is->current_config.enable_unit_counters &&
+	    Unit_has_ability (this, __, UTA_Army) &&
+	    unit_has_valid_type_id (p_bic_data->fighter.attacker) &&
+	    (p_bic_data->fighter.attacker->Body.CivID != this->Body.CivID) &&
+	    this->vtable->is_enemy_of_civ (this, __, p_bic_data->fighter.attacker->Body.CivID, 0)) {
+		Tile * tile = tile_at (this->Body.X, this->Body.Y);
+		Unit * best = NULL;
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			FOR_UNITS_ON (uti, tile) {
+				Unit * unit = uti.unit;
+				if ((unit == NULL) ||
+				    (unit->Body.Container_Unit != this->Body.ID) ||
+				    (Unit_get_defense_strength (unit) <= 0))
+					continue;
+				if ((best == NULL) ||
+				    patch_Fighter_prefer_first_defender_1 (
+					&p_bic_data->fighter, __,
+					unit, Unit_get_defense_strength (unit),
+					best, Unit_get_defense_strength (best),
+					true))
+					best = unit;
+			}
+		}
+		if (best != NULL) {
+			this->Body.army_top_defender_id = best->Body.ID;
+			return best;
+		}
 	}
 
 	return Unit_select_army_member_for_combat (this, __, param_1, param_2);
