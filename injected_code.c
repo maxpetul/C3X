@@ -243,6 +243,8 @@ void on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y);
 bool ai_move_district_worker (Unit * worker, struct district_worker_record * rec);
 bool has_active_building (City * city, int improv_id);
 bool tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, int district_id, int i_improv);
+void __fastcall patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups);
+int get_visible_non_subsumed_tile_resource (Tile * tile, struct district_instance * inst, int civ_id);
 void recompute_distribution_hub_totals ();
 void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y);
 void wrap_tile_coords (Map * map, int * x, int * y);
@@ -6415,15 +6417,10 @@ district_is_complete(Tile * tile, int district_id)
 				}
 			}
 			if (worker_to_consume != NULL) {
-				char worker_ss[200];
-				snprintf (worker_ss, sizeof worker_ss, "District %d completed at tile (%d,%d), consuming worker %d\n",
-					  district_id, tile_x, tile_y, worker_to_consume->Body.ID);
-				(*p_OutputDebugStringA) (worker_ss);
-				if ((p_main_screen_form != NULL) &&
-				    patch_Leader_is_tile_visible (&leaders[p_main_screen_form->Player_CivID], __, worker_to_consume->Body.X, worker_to_consume->Body.Y)) {
-					p_main_screen_form->animator.field_18E4[10] |= 1;
+				if ((p_main_screen_form != NULL) && 
+					patch_Leader_is_tile_visible (&leaders[p_main_screen_form->Player_CivID], __, worker_to_consume->Body.X, worker_to_consume->Body.Y)) {
+					patch_Unit_despawn (worker_to_consume, __, 0, true, false, 0, 0, 0, 0);
 				}
-				patch_Unit_despawn (worker_to_consume, __, 0, true, false, 0, 0, 0, 0);
 			}
 		}
 
@@ -6459,6 +6456,9 @@ district_is_complete(Tile * tile, int district_id)
 		char ss[200];
 		snprintf (ss, sizeof ss, "District %d completed at tile (%d,%d)\n", district_id, tile_x, tile_y);
 		(*p_OutputDebugStringA) (ss);
+
+		if (cfg->subsumes_tile_resource && is->trade_net != NULL)
+			patch_Trade_Net_recompute_resources (is->trade_net, __, false);
 
 		// Check if this was an AI-requested district
 		struct pending_district_request * req = find_pending_district_request_by_coords (NULL, tile_x, tile_y, district_id);
@@ -12838,7 +12838,7 @@ district_resource_prereqs_met_r (Tile * tile, int tile_x, int tile_y, int distri
 							continue;
 						if (radius_tile->vtable->m38_Get_Territory_OwnerID (radius_tile) != civ_id)
 							continue;
-						if (Tile_get_resource_visible_to (radius_tile, __, civ_id) == resource_req) {
+						if (get_visible_non_subsumed_tile_resource (radius_tile, NULL, civ_id) == resource_req) {
 							has_resource = true;
 							break;
 						}
@@ -15739,11 +15739,7 @@ get_visible_non_subsumed_tile_resource (Tile * tile, struct district_instance * 
 	if (! cfg->subsumes_tile_resource)
 		return resource_id;
 
-	int res_class = p_bic_data->ResourceTypes[resource_id].Class;
-	if ((res_class == RC_Strategic) || (res_class == RC_Luxury))
-		return -1;
-
-	return resource_id;
+	return -1;
 }
 
 bool __fastcall
@@ -15835,7 +15831,7 @@ has_resources_required_by_building_r (City * city, int improv_id, int max_req_re
 			wrap_tile_coords (&p_bic_data->Map, &x, &y);
 			Tile * tile = tile_at (x, y);
 			if (tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id) {
-				int res_here = Tile_get_resource_visible_to (tile, __, civ_id);
+				int res_here = get_visible_non_subsumed_tile_resource (tile, NULL, civ_id);
 				if (res_here >= 0) {
 					finds[0] |= targets[0] == res_here;
 					finds[1] |= targets[1] == res_here;
@@ -19769,7 +19765,7 @@ patch_Map_check_colony_location (Map * this, int edx, int tile_x, int tile_y, in
 	int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
 	if ((owner_id < 0) || (owner_id == civ_id)) return base;
 
-	int resource_type = Tile_get_resource_visible_to (tile, __, civ_id);
+	int resource_type = get_visible_non_subsumed_tile_resource (tile, NULL, civ_id);
 	if ((resource_type < 0) || (resource_type >= p_bic_data->ResourceTypeCount)) return base;
 
 	int req_tech = p_bic_data->ResourceTypes[resource_type].RequireID;
@@ -31983,7 +31979,7 @@ draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, in
 void __fastcall
 patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 {
-	Tile * district_tiles_hidden_from_vanilla[256];
+	Tile * district_tiles_hidden[256];
 	int district_tiles_hidden_count = 0;
 
 	// If we're zoomed in and the city work radius is at least 4 then it's likely we'll end up drawing things outside of the city screen's usual
@@ -32008,8 +32004,8 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 				continue;
 			if (wai.tile->Body.CityAreaID != city_id)
 				continue;
-			if (district_tiles_hidden_count < ARRAY_LEN (district_tiles_hidden_from_vanilla)) {
-				district_tiles_hidden_from_vanilla[district_tiles_hidden_count++] = wai.tile;
+			if (district_tiles_hidden_count < ARRAY_LEN (district_tiles_hidden)) {
+				district_tiles_hidden[district_tiles_hidden_count++] = wai.tile;
 				wai.tile->Body.CityAreaID = -1;
 			}
 		}
@@ -32030,7 +32026,7 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 	if (this->CurrentCity != NULL) {
 		int city_id = this->CurrentCity->Body.ID;
 		for (int i = 0; i < district_tiles_hidden_count; i++) {
-			Tile * tile = district_tiles_hidden_from_vanilla[i];
+			Tile * tile = district_tiles_hidden[i];
 			if ((tile != NULL) && (tile != p_null_tile))
 				tile->Body.CityAreaID = city_id;
 		}
