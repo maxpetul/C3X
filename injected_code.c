@@ -13354,7 +13354,21 @@ patch_Map_calc_food_yield_at (Map * this, int edx, int tile_x, int tile_y, int t
 		struct district_instance * inst = get_district_instance (tile);
 		if (inst != NULL &&
 		    district_is_complete (tile, inst->district_id)) {
-			return 0;
+			if (! district_uses_tile_improvement_rules (inst->district_id))
+				return 0;
+			City * yield_city = get_city_ptr (tile->Body.CityAreaID);
+			if (! district_tile_bonus_applies_to_city (tile, inst->district_id, yield_city))
+				return 0;
+			struct district_config * cfg = &is->district_configs[inst->district_id];
+			int food_bonus = 0;
+			get_effective_district_yields (inst, cfg, &food_bonus, NULL, NULL, NULL, NULL, NULL);
+			if ((cfg->generated_resource_id >= 0) &&
+			    (cfg->generated_resource_flags & MF_YIELDS) &&
+			    district_generates_resource_for_civ (tile, inst, cfg, yield_city->Body.CivID)) {
+				Resource_Type * res = &p_bic_data->ResourceTypes[cfg->generated_resource_id];
+				food_bonus += res->Food;
+			}
+			return food_bonus;
 		}
 	}
 
@@ -13372,7 +13386,21 @@ patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int
 		struct district_instance * inst = get_district_instance (tile);
 		if (inst != NULL &&
 		    district_is_complete (tile, inst->district_id)) {
-			return 0;
+			if (! district_uses_tile_improvement_rules (inst->district_id))
+				return 0;
+			City * yield_city = get_city_ptr (tile->Body.CityAreaID);
+			if (! district_tile_bonus_applies_to_city (tile, inst->district_id, yield_city))
+				return 0;
+			struct district_config * cfg = &is->district_configs[inst->district_id];
+			int shield_bonus = 0;
+			get_effective_district_yields (inst, cfg, NULL, &shield_bonus, NULL, NULL, NULL, NULL);
+			if ((cfg->generated_resource_id >= 0) &&
+			    (cfg->generated_resource_flags & MF_YIELDS) &&
+			    district_generates_resource_for_civ (tile, inst, cfg, yield_city->Body.CivID)) {
+				Resource_Type * res = &p_bic_data->ResourceTypes[cfg->generated_resource_id];
+				shield_bonus += res->Shield;
+			}
+			return shield_bonus;
 		}
 	}
 
