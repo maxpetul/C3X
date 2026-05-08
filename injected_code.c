@@ -15084,6 +15084,7 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 			actual_district_id = inst->district_id;
 	}
 
+	int assigned_city_id = tile->Body.CityAreaID;
 	remove_district_instance (tile);
 
 	bool removed_neighborhood = actual_district_id == NEIGHBORHOOD_DISTRICT_ID;
@@ -15103,8 +15104,15 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	if (district_id >= 0)
 		remove_dependent_buildings_for_district (district_id, center_x, center_y);
 
-	// Make the tile workable again by resetting CityAreaID and recomputing yields for nearby cities
-	tile->Body.CityAreaID = -1;
+	if (district_tile_should_be_unworkable (actual_district_id))
+		tile->Body.CityAreaID = -1;
+	else {
+		City * assigned_city = get_city_ptr (assigned_city_id);
+		if ((assigned_city != NULL) && city_radius_contains_tile (assigned_city, center_x, center_y))
+			tile->Body.CityAreaID = assigned_city_id;
+		else
+			tile->Body.CityAreaID = -1;
+	}
 
 	int tile_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
 
@@ -35164,6 +35172,25 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 	int city_center_base_shields = City_calc_tile_yield_at (city, __, YK_SHIELDS, city_x, city_y);
 	int total_district_shield_bonus = 0;
 	calculate_city_center_district_bonus (city, NULL, &total_district_shield_bonus, NULL);
+	int city_center_district_shields = total_district_shield_bonus;
+
+	FOR_DISTRICTS_AROUND (wai, city_x, city_y, true) {
+		int district_id = wai.district_inst->district_id;
+		if (! district_uses_tile_improvement_rules (district_id))
+			continue;
+		if (! district_tile_bonus_applies_to_city (wai.tile, district_id, city))
+			continue;
+		int shield_bonus = 0;
+		struct district_config * cfg = &is->district_configs[district_id];
+		get_effective_district_yields (wai.district_inst, cfg, NULL, &shield_bonus, NULL, NULL, NULL, NULL);
+		if ((cfg->generated_resource_id >= 0) &&
+		    (cfg->generated_resource_flags & MF_YIELDS) &&
+		    district_generates_resource_for_civ (wai.tile, wai.district_inst, cfg, city->Body.CivID)) {
+			Resource_Type * res = &p_bic_data->ResourceTypes[cfg->generated_resource_id];
+			shield_bonus += res->Shield;
+		}
+		total_district_shield_bonus += shield_bonus;
+	}
 
 	// Distribution hub contribution is tracked separately for icon rendering.
 	int distribution_hub_shields = 0;
@@ -35171,8 +35198,8 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 		get_distribution_hub_yields_for_city (city, NULL, &distribution_hub_shields);
 	if (distribution_hub_shields < 0)
 		distribution_hub_shields = 0;
-	if (distribution_hub_shields > total_district_shield_bonus)
-		distribution_hub_shields = total_district_shield_bonus;
+	if (distribution_hub_shields > city_center_district_shields)
+		distribution_hub_shields = city_center_district_shields;
 
 	int standard_district_shields = total_district_shield_bonus - distribution_hub_shields;
 	if (standard_district_shields < 0)
