@@ -1007,7 +1007,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port", .display_name = "Port",
-		.advance_prereqs = {"Map Making"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 2, .align_to_coast = true,
+		.advance_prereqs = {"Alphabet"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 2, .align_to_coast = true,
 		.img_paths = {"Port_NW.pcx", "Port_NE.pcx", "Port_SE.pcx", "Port_SW.pcx"}, .dependent_improvements = {"Harbor", "Commercial Dock"},
 		.buildable_square_types_mask = (1 << SQ_Coast),
 		.img_path_count = 4, .img_column_count = 4, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .align_to_coast = true,
