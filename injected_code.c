@@ -24396,12 +24396,6 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 	    is->is_placing_scenario_things)
 		return;
 
-	// ToC-3: Re-entrancy guard — if a previous call is still executing (GWABS_RUNNING),
-	// do not start a second pass.  This prevents double-processing if the function is
-	// triggered for a civ while it is already mid-run for another.
-	if (is->great_wall_auto_build == GWABS_RUNNING)
-		return;
-
 	bool is_human = (*p_human_player_bits & (1 << civ_id)) != 0;
 
 	if ((GREAT_WALL_DISTRICT_ID < 0) || (GREAT_WALL_DISTRICT_ID >= is->district_count)) {
