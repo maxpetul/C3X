@@ -2635,6 +2635,11 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->share_visibility_in_hotseat = ival != 0;
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
+				} else if (slice_matches_str (&p.key, "great_wall_districts_impassible_by_others")) {
+					if (read_int (&value, &ival))
+						cfg->great_wall_districts_impassable_by_others = ival != 0;
+					else
+						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
@@ -9514,7 +9519,8 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
-	} else if (slice_matches_str (key, "impassable")) {
+	// Match misspelling of "impassable" too so old configs still load without error
+	} else if (slice_matches_str (key, "impassable") || slice_matches_str (key, "impassible")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
@@ -9523,7 +9529,8 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
-	} else if (slice_matches_str (key, "impassable_to_wheeled")) {
+	// Match misspelling of "impassable" too so old configs still load without error
+	} else if (slice_matches_str (key, "impassable_to_wheeled") || slice_matches_str (key, "impassible_to_wheeled")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
@@ -10962,7 +10969,8 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
-	} else if (slice_matches_str (key, "impassable")) {
+	// Match misspelling of "impassable" too so old configs still load without error
+	} else if (slice_matches_str (key, "impassable") || slice_matches_str (key, "impassible")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
@@ -10973,7 +10981,8 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
-	} else if (slice_matches_str (key, "impassable_to_wheeled")) {
+	// Match misspelling of "impassable" too so old configs still load without error
+	} else if (slice_matches_str (key, "impassable_to_wheeled") || slice_matches_str (key, "impassible_to_wheeled")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
