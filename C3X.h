@@ -2235,6 +2235,7 @@ struct district_button_image_set {
 
 	// Set to true once the auto-build process for the Great Wall is complete to avoid running it again
 	enum great_wall_auto_build_state great_wall_auto_build;
+	unsigned int great_wall_auto_build_done_civs;  // Ha Luu line add - ToC-3 - to make EACH CIV able to get auto-build of walls, not just one civ
 	Tile * focused_tile;
 
 	// Stores the improve ID currently being evaluated inside patch_City_can_build_improvement.
