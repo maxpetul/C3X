@@ -38795,10 +38795,10 @@ handle_tile_animation_definition_key (struct parsed_tile_animation_definition * 
 		} else if (slice_matches_str (&v, "pcx")) {
 			def->type = TAT_PCX;
 			def->has_type = true;
-		} else if (slice_matches_str (&v, "destruct-initial") || slice_matches_str (&v, "destruct_initial")) {
+		} else if (slice_matches_str (&v, "destruct-initial")) {
 			def->type = TAT_DESTRUCT_INITIAL;
 			def->has_type = true;
-		} else if (slice_matches_str (&v, "destruct-after") || slice_matches_str (&v, "destruct_after")) {
+		} else if (slice_matches_str (&v, "destruct-after")) {
 			def->type = TAT_DESTRUCT_AFTER;
 			def->has_type = true;
 		} else if (slice_matches_str (&v, "coastal-wave")) {
