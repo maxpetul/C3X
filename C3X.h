@@ -433,6 +433,8 @@ struct c3x_config {
 
 	bool enable_custom_animations;
 	char * aircraft_victory_animation; // NULL if set to "none" in config
+	int show_tile_destruct_animation_after;
+	int show_tile_destruction_animation_for_turns;
 
 	int day_night_cycle_mode;
 	int elapsed_minutes_per_day_night_hour_transition;
@@ -972,8 +974,16 @@ enum tile_animation_type {
 	TAT_TERRAIN = 0,
 	TAT_RESOURCE,
 	TAT_NATURAL_WONDER,
+	TAT_DESTRUCT_INITIAL,
+	TAT_DESTRUCT_AFTER,
 	TAT_PCX,
 	TAT_COASTAL_WAVE
+};
+
+enum tile_destruct_animation_trigger {
+	TDAT_BOMBARD = 1,
+	TDAT_PILLAGE = 2,
+	TDAT_BOMB = 4
 };
 
 #define TILE_ANIM_PCX_FILE_UNKNOWN (-1)
@@ -2385,6 +2395,7 @@ struct district_button_image_set {
 	byte * tile_animation_selected_next_index; // Cached winner animation index per tile, 0xFF = none.
 	int * tile_animation_selected_tile_indices; // Tile indices currently having a cached winner.
 	int tile_animation_selected_match_count;
+	byte * tile_destruct_animation_ages; // Per tile: 0 = none, 1 = initial, >1 = after.
 
 	// PCX-driven animation rule lookups and active masks.
 	struct table tile_animation_pcx_sprite_lookup;
