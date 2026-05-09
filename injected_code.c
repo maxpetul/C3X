@@ -2635,6 +2635,11 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->share_visibility_in_hotseat = ival != 0;
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
+				} else if (slice_matches_str (&p.key, "great_wall_districts_impassible_by_others")) {
+					if (read_int (&value, &ival))
+						cfg->great_wall_districts_impassable_by_others = ival != 0;
+					else
+						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
@@ -8549,10 +8554,10 @@ override_special_district_from_definition (struct parsed_district_definition * d
 	}
 	if (def->has_heal_units_in_one_turn)
 		cfg->heal_units_in_one_turn = def->heal_units_in_one_turn;
-	if (def->has_impassible)
-		cfg->impassible = def->impassible;
-	if (def->has_impassible_to_wheeled)
-		cfg->impassible_to_wheeled = def->impassible_to_wheeled;
+	if (def->has_impassable)
+		cfg->impassable = def->impassable;
+	if (def->has_impassable_to_wheeled)
+		cfg->impassable_to_wheeled = def->impassable_to_wheeled;
 	if (def->has_culture_bonus) {
 		cfg->culture_bonus = def->culture_bonus;
 		free_bonus_entry_list_override (&cfg->culture_bonus_extras, &defaults->culture_bonus_extras);
@@ -8849,8 +8854,8 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.btn_tile_sheet_row = def->has_btn_tile_sheet_row ? def->btn_tile_sheet_row : 0;
 	new_cfg.defense_bonus_percent = def->has_defense_bonus_percent ? def->defense_bonus_percent : 0;
 	new_cfg.heal_units_in_one_turn = def->has_heal_units_in_one_turn ? def->heal_units_in_one_turn : false;
-	new_cfg.impassible = def->has_impassible ? def->impassible : false;
-	new_cfg.impassible_to_wheeled = def->has_impassible_to_wheeled ? def->impassible_to_wheeled : false;
+	new_cfg.impassable = def->has_impassable ? def->impassable : false;
+	new_cfg.impassable_to_wheeled = def->has_impassable_to_wheeled ? def->impassable_to_wheeled : false;
 	new_cfg.culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
 	new_cfg.science_bonus = def->has_science_bonus ? def->science_bonus : 0;
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
@@ -9514,21 +9519,23 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
-	} else if (slice_matches_str (key, "impassible")) {
+	// Match misspelling of "impassable" too so old configs still load without error
+	} else if (slice_matches_str (key, "impassable") || slice_matches_str (key, "impassible")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->impassible = (ival != 0);
-			def->has_impassible = true;
+			def->impassable = (ival != 0);
+			def->has_impassable = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
-	} else if (slice_matches_str (key, "impassible_to_wheeled")) {
+	// Match misspelling of "impassable" too so old configs still load without error
+	} else if (slice_matches_str (key, "impassable_to_wheeled") || slice_matches_str (key, "impassible_to_wheeled")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->impassible_to_wheeled = (ival != 0);
-			def->has_impassible_to_wheeled = true;
+			def->impassable_to_wheeled = (ival != 0);
+			def->has_impassable_to_wheeled = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
@@ -10730,8 +10737,8 @@ add_natural_wonder_from_definition (struct parsed_natural_wonder_definition * de
 	new_cfg.gold_bonus = def->has_gold_bonus ? def->gold_bonus : 0;
 	new_cfg.shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
 	new_cfg.happiness_bonus = def->has_happiness_bonus ? def->happiness_bonus : 0;
-	new_cfg.impassible = def->has_impassible ? def->impassible : false;
-	new_cfg.impassible_to_wheeled = def->has_impassible_to_wheeled ? def->impassible_to_wheeled : false;
+	new_cfg.impassable = def->has_impassable ? def->impassable : false;
+	new_cfg.impassable_to_wheeled = def->has_impassable_to_wheeled ? def->impassable_to_wheeled : false;
 
 	if (has_existing) {
 		struct natural_wonder_district_config * cfg = &is->natural_wonder_configs[existing_index];
@@ -10962,25 +10969,27 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
-	} else if (slice_matches_str (key, "impassible")) {
+	// Match misspelling of "impassable" too so old configs still load without error
+	} else if (slice_matches_str (key, "impassable") || slice_matches_str (key, "impassible")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->impassible = (ival != 0);
-			def->has_impassible = true;
+			def->impassable = (ival != 0);
+			def->has_impassable = true;
 		} else {
-			def->has_impassible = false;
+			def->has_impassable = false;
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
-	} else if (slice_matches_str (key, "impassible_to_wheeled")) {
+	// Match misspelling of "impassable" too so old configs still load without error
+	} else if (slice_matches_str (key, "impassable_to_wheeled") || slice_matches_str (key, "impassible_to_wheeled")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->impassible_to_wheeled = (ival != 0);
-			def->has_impassible_to_wheeled = true;
+			def->impassable_to_wheeled = (ival != 0);
+			def->has_impassable_to_wheeled = true;
 		} else {
-			def->has_impassible_to_wheeled = false;
+			def->has_impassable_to_wheeled = false;
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
@@ -17756,7 +17765,7 @@ patch_init_floating_point ()
 		{"naval_units_use_port_districts_not_cities"             , false, offsetof (struct c3x_config, naval_units_use_port_districts_not_cities)},
 		{"show_natural_wonder_name_on_map"                       , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
 		{"ai_defends_districts"                                  , false, offsetof (struct c3x_config, ai_defends_districts)},
-		{"great_wall_districts_impassible_by_others"             , false, offsetof (struct c3x_config, great_wall_districts_impassible_by_others)},
+		{"great_wall_districts_impassable_by_others"             , false, offsetof (struct c3x_config, great_wall_districts_impassable_by_others)},
 		{"auto_build_great_wall_around_territory"                , false, offsetof (struct c3x_config, auto_build_great_wall_around_territory)},
 		{"disable_great_wall_city_defense_bonus"                 , false, offsetof (struct c3x_config, disable_great_wall_city_defense_bonus)},
 		{"expand_water_tile_checks_to_city_work_area"            , false, offsetof (struct c3x_config, expand_water_tile_checks_to_city_work_area)},
@@ -20677,12 +20686,12 @@ is_allowed_to_trespass (Unit * unit)
 }
 
 bool
-get_tile_district_impassibility (Tile * tile, bool * out_impassible, bool * out_impassible_to_wheeled)
+get_tile_district_impassability (Tile * tile, bool * out_impassable, bool * out_impassable_to_wheeled)
 {
-	if (out_impassible != NULL)
-		*out_impassible = false;
-	if (out_impassible_to_wheeled != NULL)
-		*out_impassible_to_wheeled = false;
+	if (out_impassable != NULL)
+		*out_impassable = false;
+	if (out_impassable_to_wheeled != NULL)
+		*out_impassable_to_wheeled = false;
 
 	if ((tile == NULL) || (tile == p_null_tile))
 		return false;
@@ -20699,10 +20708,10 @@ get_tile_district_impassibility (Tile * tile, bool * out_impassible, bool * out_
 		int natural_id = inst->natural_wonder_info.natural_wonder_id;
 		if ((natural_id < 0) || (natural_id >= is->natural_wonder_count))
 			return false;
-		if (out_impassible != NULL)
-			*out_impassible = is->natural_wonder_configs[natural_id].impassible;
-		if (out_impassible_to_wheeled != NULL)
-			*out_impassible_to_wheeled = is->natural_wonder_configs[natural_id].impassible_to_wheeled;
+		if (out_impassable != NULL)
+			*out_impassable = is->natural_wonder_configs[natural_id].impassable;
+		if (out_impassable_to_wheeled != NULL)
+			*out_impassable_to_wheeled = is->natural_wonder_configs[natural_id].impassable_to_wheeled;
 		return true;
 	}
 
@@ -20711,10 +20720,10 @@ get_tile_district_impassibility (Tile * tile, bool * out_impassible, bool * out_
 	if ((inst->district_id < 0) || (inst->district_id >= is->district_count))
 		return false;
 
-	if (out_impassible != NULL)
-		*out_impassible = is->district_configs[inst->district_id].impassible;
-	if (out_impassible_to_wheeled != NULL)
-		*out_impassible_to_wheeled = is->district_configs[inst->district_id].impassible_to_wheeled;
+	if (out_impassable != NULL)
+		*out_impassable = is->district_configs[inst->district_id].impassable;
+	if (out_impassable_to_wheeled != NULL)
+		*out_impassable_to_wheeled = is->district_configs[inst->district_id].impassable_to_wheeled;
 	return true;
 }
 
@@ -20801,7 +20810,7 @@ great_wall_blocks_civ (Tile * tile, int civ_id)
 {
 	if (! is->current_config.enable_districts ||
 	    ! is->current_config.enable_great_wall_districts ||
-	    ! is->current_config.great_wall_districts_impassible_by_others)
+	    ! is->current_config.great_wall_districts_impassable_by_others)
 		return false;
 
 	if ((tile == NULL) || (tile == p_null_tile))
@@ -20853,12 +20862,12 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 		if ((unit != NULL) && great_wall_blocks_civ (to, unit->Body.CivID))
 			return -1;
 		if ((unit != NULL) && to_valid) {
-			bool impassible = false;
-			bool impassible_to_wheeled = false;
-			if (get_tile_district_impassibility (to, &impassible, &impassible_to_wheeled)) {
-				if (impassible)
+			bool impassable = false;
+			bool impassable_to_wheeled = false;
+			if (get_tile_district_impassability (to, &impassable, &impassable_to_wheeled)) {
+				if (impassable)
 					return -1;
-				if (impassible_to_wheeled && Unit_has_ability (unit, __, UTA_Wheeled)) {
+				if (impassable_to_wheeled && Unit_has_ability (unit, __, UTA_Wheeled)) {
 					Tile * from = tile_at (from_x, from_y);
 					bool connected_by_road = (from != NULL) && (to != NULL) &&
 					                         (from->vtable->m25_Check_Roads (from, __, 0) != 0) &&
@@ -22670,12 +22679,12 @@ patch_Unit_disembark_passengers (Unit * this, int edx, int tile_x, int tile_y)
 
 		bool blocked_by_district = false, blocked_by_district_for_wheeled = false; {
 			if (is->current_config.enable_districts) {
-				bool impassible, impassible_to_wheeled;
+				bool impassable, impassable_to_wheeled;
 				if (great_wall_blocks_civ (target, this->Body.CivID))
 					blocked_by_district = blocked_by_district_for_wheeled = true;
-				else if (get_tile_district_impassibility (target, &impassible, &impassible_to_wheeled)) {
-					blocked_by_district = impassible;
-					blocked_by_district_for_wheeled = impassible || impassible_to_wheeled;
+				else if (get_tile_district_impassability (target, &impassable, &impassable_to_wheeled)) {
+					blocked_by_district = impassable;
+					blocked_by_district_for_wheeled = impassable || impassable_to_wheeled;
 				}
 			}
 		}
@@ -28117,12 +28126,12 @@ patch_Unit_can_disembark_anything (Unit * this, int edx, int tile_x, int tile_y)
 		if (great_wall_blocks_civ (target_tile, this->Body.CivID))
 			return false;
 
-		bool impassible = false, impassible_to_wheeled = false;
-		if (get_tile_district_impassibility (target_tile, &impassible, &impassible_to_wheeled)) {
-			if (impassible)
+		bool impassable = false, impassable_to_wheeled = false;
+		if (get_tile_district_impassability (target_tile, &impassable, &impassable_to_wheeled)) {
+			if (impassable)
 				return false;
 
-			if (impassible_to_wheeled) {
+			if (impassable_to_wheeled) {
 				bool any_non_wheeled_passengers = false;
 				FOR_UNITS_ON (uti, this_tile)
 					if ((uti.unit->Body.Container_Unit == this->Body.ID) && ! Unit_has_ability (uti.unit, __, UTA_Wheeled)) {
@@ -35476,12 +35485,12 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 		if (great_wall_blocks_civ (to, this->Body.CivID))
 			return PBV_GENERIC_INVALID_MOVE;
 		if (to_valid) {
-			bool impassible = false;
-			bool impassible_to_wheeled = false;
-			if (get_tile_district_impassibility (to, &impassible, &impassible_to_wheeled)) {
-				if (impassible)
+			bool impassable = false;
+			bool impassable_to_wheeled = false;
+			if (get_tile_district_impassability (to, &impassable, &impassable_to_wheeled)) {
+				if (impassable)
 					return PBV_GENERIC_INVALID_MOVE;
-				if (impassible_to_wheeled && Unit_has_ability (this, __, UTA_Wheeled)) {
+				if (impassable_to_wheeled && Unit_has_ability (this, __, UTA_Wheeled)) {
 					Tile * from = tile_at (from_x, from_y);
 					bool connected_by_road = (from != NULL) && (to != NULL) &&
 					                         (from->vtable->m25_Check_Roads (from, __, 0) != 0) &&
