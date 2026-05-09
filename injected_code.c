@@ -34398,7 +34398,6 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 	}
 
 	// If the worker has arrived
-	// If the worker has arrived
 	if ((worker->Body.X == req->target_x) && (worker->Body.Y == req->target_y)) {
 
 		// ToC-24: Performance optimization — if the worker is already actively building
