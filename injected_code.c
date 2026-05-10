@@ -253,9 +253,13 @@ bool tile_has_matching_resource_animation_for_draw (Tile * tile, int tile_x, int
 bool tile_has_matching_resource_animation_for_draw_with_resource (Tile * tile, int tile_x, int tile_y, int resource_id, int * out_effect_id);
 void tile_animation_scheduler_tick ();
 void rebuild_tile_animation_rule_match_cache ();
+void free_tile_animation_selected_matrix ();
+void clear_tile_animation_pcx_sprite_lookup ();
+void refresh_tile_animation_pcx_rule_mask ();
 void __fastcall patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effect, int tile_x, int tile_y, bool randomize_start_frame, enum direction dummy_dir);
 void reset_tile_animation_runtime_state ();
 void trigger_tile_destruct_animation (int tile_x, int tile_y, int trigger);
+void spawn_selected_tile_animation_for_tile (int tile_x, int tile_y, bool destruct_only);
 void clear_tile_destruct_animation (int tile_x, int tile_y);
 void refresh_tile_animation_selection_for_tile (int tile_x, int tile_y);
 void age_tile_destruct_animations ();
@@ -27046,7 +27050,11 @@ void * __cdecl
 patch_do_load_game (char * param_1)
 {
 	void * tr = do_load_game (param_1);
-	reset_tile_animation_runtime_state ();
+	free_tile_animation_selected_matrix ();
+	clear_tile_animation_pcx_sprite_lookup ();
+	refresh_tile_animation_pcx_rule_mask ();
+	is->tile_animation_spawn_effect_override = 0;
+	is->tile_animation_spawn_effect_override_active = false;
 
 	if (is->current_config.restore_unit_directions_on_game_load && (p_units->Units != NULL))
 		for (int n = 0; n <= p_units->LastIndex; n++) {
@@ -30923,8 +30931,10 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							int tile_index = tile_coords_to_index (&p_bic_data->Map, x, y);
 							if ((is->tile_destruct_animation_ages != NULL) &&
 							    (tile_index >= 0) &&
-							    (tile_index < p_bic_data->Map.TileCount))
+							    (tile_index < p_bic_data->Map.TileCount)) {
 								is->tile_destruct_animation_ages[tile_index] = clamp (0, 255, age);
+								spawn_selected_tile_animation_for_tile (x, y, true);
+							}
 						}
 						success = true;
 					}
@@ -38277,6 +38287,45 @@ refresh_tile_animation_selection_for_tile (int tile_x, int tile_y)
 }
 
 void
+spawn_selected_tile_animation_for_tile (int tile_x, int tile_y, bool destruct_only)
+{
+	if (! is->current_config.enable_custom_animations)
+		return;
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile) || Tile_has_city (tile))
+		return;
+
+	int tile_index = tile_coords_to_index (&p_bic_data->Map, tile_x, tile_y);
+	if ((tile_index < 0) || (tile_index >= p_bic_data->Map.TileCount))
+		return;
+
+	refresh_tile_animation_selection_for_tile (tile_x, tile_y);
+	if ((! is->tile_animation_selected_valid) ||
+	    (is->tile_animation_selected_next_index == NULL) ||
+	    (tile_index >= is->tile_animation_selected_tile_count))
+		return;
+
+	int winner = is->tile_animation_selected_next_index[tile_index];
+	if ((winner >= 0) && (winner < is->tile_animation_count)) {
+		struct tile_animation_config * cfg = &is->tile_animation_configs[winner];
+		if ((cfg == NULL) || (! cfg->in_use))
+			return;
+		if (destruct_only && ! is_tile_destruct_animation_type (cfg->type))
+			return;
+		bool can_spawn = tile->Body.active_tile_effect == NULL;
+		if (! can_spawn) {
+			struct tile_animation_config * active_cfg = get_tile_animation_for_effect (tile->Body.active_tile_effect->V[2]);
+			can_spawn = (active_cfg != NULL) &&
+				(is_tile_destruct_animation_type (active_cfg->type) ||
+				 (get_tile_animation_type_priority (active_cfg->type) < get_tile_animation_type_priority (cfg->type)));
+		}
+		if (can_spawn)
+			patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true, DIR_SW);
+	}
+}
+
+void
 trigger_tile_destruct_animation (int tile_x, int tile_y, int trigger)
 {
 	if (! is->current_config.enable_custom_animations)
@@ -38296,25 +38345,7 @@ trigger_tile_destruct_animation (int tile_x, int tile_y, int trigger)
 		return;
 
 	is->tile_destruct_animation_ages[tile_index] = 1;
-	refresh_tile_animation_selection_for_tile (tile_x, tile_y);
-	if ((! is->tile_animation_selected_valid) ||
-	    (is->tile_animation_selected_next_index == NULL) ||
-	    (tile_index >= is->tile_animation_selected_tile_count))
-		return;
-
-	int winner = is->tile_animation_selected_next_index[tile_index];
-	if ((winner >= 0) && (winner < is->tile_animation_count)) {
-		struct tile_animation_config * cfg = &is->tile_animation_configs[winner];
-		bool can_spawn = tile->Body.active_tile_effect == NULL;
-		if (! can_spawn) {
-			struct tile_animation_config * active_cfg = get_tile_animation_for_effect (tile->Body.active_tile_effect->V[2]);
-			can_spawn = (active_cfg != NULL) &&
-				(is_tile_destruct_animation_type (active_cfg->type) ||
-				 (get_tile_animation_type_priority (active_cfg->type) < get_tile_animation_type_priority (cfg->type)));
-		}
-		if ((cfg != NULL) && cfg->in_use && can_spawn)
-			patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true, DIR_SW);
-	}
+	spawn_selected_tile_animation_for_tile (tile_x, tile_y, true);
 }
 
 void
@@ -38351,7 +38382,7 @@ age_tile_destruct_animations ()
 		if (age > max_turns)
 			clear_tile_destruct_animation (tile_x, tile_y);
 		else
-			refresh_tile_animation_selection_for_tile (tile_x, tile_y);
+			spawn_selected_tile_animation_for_tile (tile_x, tile_y, true);
 	}
 }
 
@@ -39580,7 +39611,8 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effe
 				(inst->district_id != NATURAL_WONDER_DISTRICT_ID) &&
 				((cfg->district_id < 0) || (inst->district_id == cfg->district_id));
 			bool allow_resource_on_district_tile = (cfg != NULL) && (cfg->type == TAT_RESOURCE);
-			if (! allow_natural_wonder_tile && ! allow_district_tile && ! allow_resource_on_district_tile)
+			bool allow_destruct_tile = (cfg != NULL) && is_tile_destruct_animation_type (cfg->type);
+			if (! allow_natural_wonder_tile && ! allow_district_tile && ! allow_resource_on_district_tile && ! allow_destruct_tile)
 				return;
 		}
 		enum direction effective_direction = DIR_ZERO;
