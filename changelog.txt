@@ -1,5 +1,7 @@
 - Add ability to apply perfume to resources under option named resource_perfume
 - Option do_not_place_barb_huts_or_camps_on_impassable_tiles
+- Show more unit stats on the right click menu and in the unit status box, option named expand_right_click_menu_unit_stats
+  - Shows rate of fire, range, anti-air strength, passenger count & transport capacity, worker strength, and moves for immobile units
 - Limit workers to entering coast from land or bridge tile
 - Don't add walls to cities automatically if disable_great_wall_city_defense_bonus is true
 - Fix AI not loading units onto naval transports when naval_units_use_port_districts_not_cities is true
