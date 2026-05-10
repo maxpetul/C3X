@@ -1,5 +1,11 @@
 - Add ability to apply perfume to resources under option named resource_perfume
 - Option do_not_place_barb_huts_or_camps_on_impassable_tiles
+- Limit workers to entering coast from land or bridge tile
+- Don't add walls to cities automatically if disable_great_wall_city_defense_bonus is true
+- Fix AI not loading units onto naval transports when naval_units_use_port_districts_not_cities is true
+- Fix workers being interrupted during go-to orders over bridges
+- Don't visually connect great wall tiles if not same territory owner
+- Set Port districts to require Alphabet by default
 - Fix incorrect usage of "impassible" in several config options (old config files with the misspelling will still work)
 
 * RELEASE 27 PREVIEW 2
