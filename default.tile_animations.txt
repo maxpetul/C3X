@@ -169,6 +169,7 @@ type                    = destruct-initial
 name                    = DestructAfter
 ini_path                = Destruction\DestructAfter.INI
 type                    = destruct-after
+y_offset                = 45
 
 ;===Example PCX animation of river segment===
 ;#Animation

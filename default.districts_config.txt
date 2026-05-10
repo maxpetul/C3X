@@ -55,11 +55,12 @@
   ;  - x_offset                        : Number (pixels). Push the sprite farther to the right (or left, if negative). (default: 0)
   ;  - y_offset                        : Number (pixels). Push the sprite farther down (or up, if negative). (default: 0)
   ;  - animation                       : Custom FLC animation shown over completed districts. May be repeated; the most specific matching entry is chosen.
-  ;                                       Syntax: ini=<path>; hours=<0..23 list>; seasons=<season list>; cultures=<culture list>; eras=<era list>; offsets=<x,y>
+  ;                                       Syntax: ini=<path>; hours=<0..23 list>; seasons=<season list>; cultures=<culture list>; eras=<era list>; frame_time_seconds=<float>; offsets=<x,y>
   ;                                       ini is under Art/Animations. Optional hours accepts values/ranges like 7-17 or 18-5.
   ;                                       Optional seasons: spring, summer, fall, winter. Optional cultures: AMER, EURO, ROMAN, MIDEAST, ASIAN.
-  ;                                       Optional eras: ancient, middle, industrial, modern, or 0..3. Optional offsets shift the animation in pixels.
-  ;                                       Example: animation = ini=Districts\Smoke.INI; hours=7-17; seasons=spring,summer; cultures=AMER,EURO; eras=industrial,modern; offsets=0,-10
+  ;                                       Optional eras: ancient, middle, industrial, modern, or 0..3. Optional frame_time_seconds controls playback speed.
+  ;                                       Optional offsets shift the animation in pixels.
+  ;                                       Example: animation = ini=Districts\Smoke.INI; hours=7-17; seasons=spring,summer; cultures=AMER,EURO; eras=industrial,modern; frame_time_seconds=0.12; offsets=0,-10
   ;  - align_to_coast                  : 0 or 1. Aligns art to coastline, slightly adjusting x & y pixels. (default: 0)
   ;  - auto_add_road                   : 0 or 1. Auto-add road on completion. (default: 0)
   ;  - auto_add_railroad               : 0 or 1. Auto-add railroad on completion. (default: 0)

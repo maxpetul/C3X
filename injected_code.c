@@ -34774,6 +34774,26 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 
 		struct district_config const * cfg = &is->district_configs[district_id];
 		struct district_infos * district_info = &is->district_infos[district_id];
+
+		if (is->current_config.enable_custom_animations && (tile->Body.active_tile_effect == NULL)) {
+			refresh_tile_animation_selection_for_tile (tile_x, tile_y);
+			int tile_index = tile_coords_to_index (&p_bic_data->Map, tile_x, tile_y);
+			if ((tile_index >= 0) &&
+			    is->tile_animation_selected_valid &&
+			    (is->tile_animation_selected_next_index != NULL) &&
+			    (tile_index < is->tile_animation_selected_tile_count)) {
+				int animation_index = is->tile_animation_selected_next_index[tile_index];
+				if ((animation_index >= 0) && (animation_index < is->tile_animation_count)) {
+					struct tile_animation_config * anim_cfg = &is->tile_animation_configs[animation_index];
+					if ((anim_cfg != NULL) &&
+					    anim_cfg->in_use &&
+					    (anim_cfg->type == TAT_DISTRICT) &&
+					    ((anim_cfg->district_id < 0) || (anim_cfg->district_id == district_id)))
+						patch_Tile_spawn_animated_effect (tile, __, anim_cfg->effect_id, tile_x, tile_y, true, DIR_SW);
+				}
+			}
+		}
+
         int territory_owner_id = tile->Territory_OwnerID;
         int variant = 0;
 		int era = 0;
@@ -38018,6 +38038,16 @@ tile_animation_matches_time_filters (struct tile_animation_config const * cfg)
 }
 
 bool
+district_animation_instance_is_complete (Tile * tile, struct district_instance * inst)
+{
+	if ((tile == NULL) || (tile == p_null_tile) || (inst == NULL))
+		return false;
+	if (inst->state == DS_COMPLETED)
+		return true;
+	return tile->vtable->m18_Check_Mines (tile, __, 0) != 0;
+}
+
+bool
 get_district_animation_culture_and_era (Tile * tile, struct district_instance * inst, int * out_culture, int * out_era)
 {
 	if ((tile == NULL) || (tile == p_null_tile) || (inst == NULL))
@@ -38069,7 +38099,7 @@ tile_animation_rule_matches_tile_base (struct tile_animation_config const * cfg,
 			return false;
 		if ((cfg->district_id >= 0) && (inst->district_id != cfg->district_id))
 			return false;
-		if (inst->state != DS_COMPLETED)
+		if (! district_animation_instance_is_complete (tile, inst))
 			return false;
 		if ((cfg->culture_group_mask != 0) || (cfg->era_mask != 0)) {
 			int culture = 0, era = 0;
@@ -39546,8 +39576,11 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effe
 			bool allow_natural_wonder_tile = (cfg != NULL) && (cfg->type == TAT_NATURAL_WONDER) &&
 				(inst->district_id == NATURAL_WONDER_DISTRICT_ID) &&
 				((cfg->natural_wonder_id < 0) || (inst->natural_wonder_info.natural_wonder_id == cfg->natural_wonder_id));
+			bool allow_district_tile = (cfg != NULL) && (cfg->type == TAT_DISTRICT) &&
+				(inst->district_id != NATURAL_WONDER_DISTRICT_ID) &&
+				((cfg->district_id < 0) || (inst->district_id == cfg->district_id));
 			bool allow_resource_on_district_tile = (cfg != NULL) && (cfg->type == TAT_RESOURCE);
-			if (! allow_natural_wonder_tile && ! allow_resource_on_district_tile)
+			if (! allow_natural_wonder_tile && ! allow_district_tile && ! allow_resource_on_district_tile)
 				return;
 		}
 		enum direction effective_direction = DIR_ZERO;
