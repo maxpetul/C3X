@@ -12685,7 +12685,6 @@ reset_district_state (bool reset_tile_map)
 	}
 	table_deinit (&is->city_pending_building_orders);
 
-	is->great_wall_auto_build = GWABS_NOT_STARTED;
 	// ToC-3: Reset the per-civ completion bitmask so every faction can auto-build
 	// walls again from scratch (e.g. on a new game or scenario load).
 	// Auto-built walls (for district config) should be tied to a Small Wonder so each civ can build once.
@@ -24420,8 +24419,6 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 	if (civ_id == p_main_screen_form->Player_CivID)
 		patch_show_popup (popup, __, 0, 0);
 
-	is->great_wall_auto_build = GWABS_RUNNING;
-
 	unsigned int const replaceable_flags = TILE_FLAG_MINE | TILE_FLAG_IRRIGATION;
 	bool require_other_civ_border = (! is_human) && is->current_config.ai_auto_build_great_wall_strategy == AAGWS_OTHER_CIV_BORDERED_ONLY;
 
@@ -24587,9 +24584,7 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 	// Other civs still have their bits clear and will run their own passes
 	// when their turn is processed.
 	is->great_wall_auto_build_done_civs |= (1u << civ_id);
-	// Reset the running-state flag so the next civ's call is not blocked by
-	// the re-entrancy guard added at the top of this function.
-	is->great_wall_auto_build = GWABS_NOT_STARTED;
+
 	is->focused_tile = NULL;
 }
 
@@ -29978,17 +29973,8 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		}
 	}
 
-	// ToC-3: (ToC-3-CH8) Save both the global run-state enum AND the per-civ completion bitmask.
-	// We write them whenever any civ has completed its auto-build (bitmask != 0) OR
-	// the system is currently mid-run (GWABS_RUNNING), so nothing is lost on reload.
-	// Both chunks are always written as a pair; the load code handles each chunk
-	// independently via match_save_chunk_name so order does not matter.
-	if (is->great_wall_auto_build_done_civs != 0 || is->great_wall_auto_build == GWABS_RUNNING) {
-		// Serialize the run-state enum (NOT_STARTED or RUNNING; GWABS_DONE is no longer
-		// used as a global flag but is still a valid enum value for old-save compatibility)
-		serialize_aligned_text ("great_wall_auto_build_state", &mod_data);
-		*(int *)buffer_allocate (&mod_data, sizeof(int)) = (int)is->great_wall_auto_build;
-		// Serialize the per-civ bitmask (bit N set = civ N has finished its auto-build pass)
+	// ToC-3: (ToC-3-CH8) Save the great wall per-civ completion bitmask when not all zero.
+	if (is->great_wall_auto_build_done_civs != 0) {
 		serialize_aligned_text ("great_wall_auto_build_done_civs", &mod_data);
 		*(unsigned int *)buffer_allocate (&mod_data, sizeof(unsigned int)) = is->great_wall_auto_build_done_civs;
 	}  // END ToC
@@ -30244,15 +30230,11 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 			
 				// ToC-3
 			} else if (match_save_chunk_name (&cursor, "great_wall_auto_build_state")) {
-				// Restore the global run-state enum as before.
-				// In the new system this will typically be NOT_STARTED or RUNNING;
-				// GWABS_DONE is no longer written by Change 8, but we still accept it
-				// here in case this save was made before this change was applied.
+				// Read the single great wall autobuild state variable from the save. Interpret a state of 2 to mean no more great
+				// walls can be built (originally 2 was GWABS_DONE in a now-deleted enum). Otherwise, this variable is no longer used.
 				int state = *((int *)cursor)++;
-				if ((state >= GWABS_NOT_STARTED) && (state <= GWABS_DONE))
-					is->great_wall_auto_build = (enum great_wall_auto_build_state)state;
-				else
-					is->great_wall_auto_build = GWABS_NOT_STARTED;
+				if (state == 2)
+					is->great_wall_auto_build_done_civs = 0xFFFFFFFF;
 
 			} else if (match_save_chunk_name (&cursor, "great_wall_auto_build_done_civs")) {
 				// ToC-3: Restore the per-civ completion bitmask saved by Change 8 above.  (search for ToC-3-CH8).

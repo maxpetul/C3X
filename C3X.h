@@ -711,12 +711,6 @@ enum district_bonus_entry_type {
 	DBET_BUILDING = 1
 };
 
-enum great_wall_auto_build_state {
-	GWABS_NOT_STARTED = 0,
-	GWABS_RUNNING,
-	GWABS_DONE
-};
-
 struct district_bonus_entry {
 	enum district_bonus_entry_type type;
 	int bonus;
@@ -2233,8 +2227,7 @@ struct district_button_image_set {
 	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp and so on for flagging whether to draw forests over roads on the tile being rendered
 	bool draw_forests_over_roads_on_tile;
 
-	// Set to true once the auto-build process for the Great Wall is complete to avoid running it again
-	enum great_wall_auto_build_state great_wall_auto_build;
+	// Variables related to great wall district
 	unsigned int great_wall_auto_build_done_civs;  // Ha Luu line add - ToC-3 - to make EACH CIV able to get auto-build of walls, not just one civ
 	Tile * focused_tile;
 
