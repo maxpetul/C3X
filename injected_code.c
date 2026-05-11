@@ -214,7 +214,7 @@ get_city_ptr (int id)
 // Forward declarations for unit counter system (defined after their dependencies)
 enum recognizable_parse_result parse_unit_counter_group (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_group);
 enum recognizable_parse_result parse_counter_rule (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_rule);
-Unit * find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded, bool require_visible);
+Unit * find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded, bool require_visible, bool * out_any_counter_effect);
 
 // Declare various functions needed for districts and hard to untangle and reorder here
 void __fastcall patch_City_recompute_yields_and_happiness (City * this);
@@ -8014,6 +8014,8 @@ is_counter_rule_option_token (struct string_slice const * token)
 	       slice_matches_str (token, "self-def") ||
 	       slice_matches_str (token, "enemy-atk") ||
 	       slice_matches_str (token, "enemy-def") ||
+	       slice_matches_str (token, "self-bombard") ||
+	       slice_matches_str (token, "enemy-bombard") ||
 	       slice_matches_str (token, "terrain") ||
 	       slice_matches_str (token, "district") ||
 	       is_counter_rule_self_experience_token (token) ||
@@ -8161,6 +8163,8 @@ parse_counter_rule (char ** p_cursor,
 		.self_def_pct   = 100,
 		.enemy_atk_pct  = 100,
 		.enemy_def_pct  = 100,
+		.self_bombard_pct  = 100,
+		.enemy_bombard_pct = 100,
 	};
 
 	if (! slice_matches_str (&attacker_name, "*")) {
@@ -8201,6 +8205,12 @@ parse_counter_rule (char ** p_cursor,
 		} else if (slice_matches_str (&token, "enemy-def")) {
 			if (! parse_int (&cur, &r->enemy_def_pct))
 				return RPR_PARSE_ERROR;
+		} else if (slice_matches_str (&token, "self-bombard")) {
+			if (! parse_int (&cur, &r->self_bombard_pct))
+				return RPR_PARSE_ERROR;
+		} else if (slice_matches_str (&token, "enemy-bombard")) {
+			if (! parse_int (&cur, &r->enemy_bombard_pct))
+				return RPR_PARSE_ERROR;
 		} else if (is_counter_rule_self_experience_token (&token)) {
 			enum recognizable_parse_result res =
 				read_counter_rule_experience_mask (&cur,
@@ -8239,6 +8249,28 @@ parse_counter_rule (char ** p_cursor,
 	return RPR_OK;
 }
 
+bool
+counter_rule_environment_matches (struct c3x_config * cfg,
+                                  struct counter_rule * r,
+                                  Tile * target_tile)
+{
+	if ((target_tile == NULL) || (target_tile == p_null_tile))
+		return false;
+
+	if (r->only_in_city && ! Tile_has_city (target_tile))
+		return false;
+	if (r->terrain_mask != 0 &&
+	    ! tile_matches_square_type_mask (target_tile, r->terrain_mask))
+		return false;
+	if (r->district_name != NULL &&
+	    ! ((r->district_id != -1) &&
+	       cfg->enable_districts &&
+	       district_is_complete (target_tile, r->district_id)))
+		return false;
+
+	return true;
+}
+
 void
 apply_counter_rules (struct c3x_config * cfg,
                      Unit * attacker, Unit * defender, Tile * def_tile,
@@ -8247,7 +8279,6 @@ apply_counter_rules (struct c3x_config * cfg,
 {
 	int a_type   = attacker->Body.UnitTypeID;
 	int d_type   = defender->Body.UnitTypeID;
-	bool in_city = Tile_has_city (def_tile);
 
 	int aa = 100, dd = 100;
 	bool ignore = false;
@@ -8287,15 +8318,7 @@ apply_counter_rules (struct c3x_config * cfg,
 			continue;
 
 		// Environment checks are based on the defender's tile
-		if (r->only_in_city && ! in_city)
-			continue;
-		if (r->terrain_mask != 0 &&
-		    ! tile_matches_square_type_mask (def_tile, r->terrain_mask))
-			continue;
-		if (r->district_name != NULL &&
-		    ! ((r->district_id != -1) &&
-		       cfg->enable_districts &&
-		       district_is_complete (def_tile, r->district_id)))
+		if (! counter_rule_environment_matches (cfg, r, def_tile))
 			continue;
 
 		if (forward) {
@@ -8313,6 +8336,89 @@ apply_counter_rules (struct c3x_config * cfg,
 	*out_attacker_atk  = aa;
 	*out_defender_def  = dd;
 	*out_ignore_terrain = ignore;
+}
+
+int
+get_counter_rule_bombard_modifier (struct c3x_config * cfg,
+                                   Unit * bombarder, Unit * target,
+                                   Tile * target_tile)
+{
+	if (! (cfg->enable_unit_counters &&
+	       (bombarder != NULL) &&
+	       (target != NULL) &&
+	       (bombarder->Body.UnitTypeID >= 0) &&
+	       (bombarder->Body.UnitTypeID < p_bic_data->UnitTypeCount) &&
+	       (target->Body.UnitTypeID >= 0) &&
+	       (target->Body.UnitTypeID < p_bic_data->UnitTypeCount)))
+		return 100;
+
+	int b_type = bombarder->Body.UnitTypeID;
+	int t_type = target->Body.UnitTypeID;
+	int bombard_pct = 100;
+
+	for (int i = 0; i < cfg->count_counter_rules; i++) {
+		struct counter_rule * r = &cfg->counter_rules[i];
+
+		bool forward = unit_matches_counter_side (cfg, b_type,
+		                   r->attacker_match, r->attacker_group) &&
+		               unit_matches_counter_side (cfg, t_type,
+		                   r->defender_match, r->defender_group);
+
+		bool reverse = unit_matches_counter_side (cfg, b_type,
+		                   r->defender_match, r->defender_group) &&
+		               unit_matches_counter_side (cfg, t_type,
+		                   r->attacker_match, r->attacker_group);
+
+		if (forward &&
+		    ! counter_rule_experience_conditions_match (
+		        r,
+		        bombarder->Body.Combat_Experience,
+		        target->Body.Combat_Experience))
+			forward = false;
+
+		if (reverse &&
+		    ! counter_rule_experience_conditions_match (
+		        r,
+		        target->Body.Combat_Experience,
+		        bombarder->Body.Combat_Experience))
+			reverse = false;
+
+		if ((! forward && ! reverse) ||
+		    ! counter_rule_environment_matches (cfg, r, target_tile))
+			continue;
+
+		if (forward)
+			bombard_pct = bombard_pct * r->self_bombard_pct / 100;
+		if (reverse)
+			bombard_pct = bombard_pct * r->enemy_bombard_pct / 100;
+	}
+
+	return bombard_pct;
+}
+
+int
+counter_adjusted_bombard_strength (int base_strength, int bombard_pct)
+{
+	long long adjusted = (long long)base_strength * bombard_pct / 100;
+	if (adjusted < 0)
+		return 0;
+	if (adjusted > 0x3FFFFFFF)
+		return 0x3FFFFFFF;
+	return (int)adjusted;
+}
+
+int
+counter_adjusted_bombard_target_defense (int base_defense_strength, int bombard_pct)
+{
+	if (bombard_pct <= 0)
+		return 0x3FFFFFFF;
+
+	long long adjusted = (long long)base_defense_strength * 100 / bombard_pct;
+	if (adjusted < 0)
+		return 0;
+	if (adjusted > 0x3FFFFFFF)
+		return 0x3FFFFFFF;
+	return (int)adjusted;
 }
 
 bool
@@ -19119,11 +19225,16 @@ patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 		}
 	}
 
+	struct unit_display_override saved_bombard_udo = is->unit_display_override;
+	struct unit_display_override saved_bombard_udo_2 = is->unit_display_override_2;
+
 	is->bombarding_unit = this;
 	record_ai_unit_seen (this, x, y);
 	Unit_bombard_tile (this, __, x, y);
 	is->bombard_stealth_target = NULL;
 	is->bombarding_unit = NULL;
+	is->unit_display_override = saved_bombard_udo;
+	is->unit_display_override_2 = saved_bombard_udo_2;
 
 	if (had_district_before && target_tile != NULL && target_tile != p_null_tile && inst->district_id != NATURAL_WONDER_DISTRICT_ID) {
 		unsigned int overlays = target_tile->vtable->m42_Get_Overlays (target_tile, __, 0);
@@ -25174,7 +25285,7 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 			this->attacker, defender_tile,
 			this->defender_location_x,
 			this->defender_location_y,
-			NULL, false);
+			NULL, false, NULL);
 		if (counter_best != NULL)
 			this->defender = counter_best;
 	}
@@ -26707,13 +26818,125 @@ patch_Leader_begin_unit_turns (Leader * this)
 	Leader_begin_unit_turns (this);
 }
 
+bool
+bombard_counter_target_is_eligible (Unit * bombarder, Unit * target,
+                                    UnitType * bombarder_type, Tile * target_tile,
+                                    int bombarder_civ_id, bool require_visible,
+                                    int * out_defense_strength)
+{
+	if ((bombarder == NULL) ||
+	    (target == NULL) ||
+	    (bombarder_type == NULL) ||
+	    (target_tile == NULL) ||
+	    (target_tile == p_null_tile) ||
+	    (bombarder->Body.UnitTypeID < 0) ||
+	    (bombarder->Body.UnitTypeID >= p_bic_data->UnitTypeCount) ||
+	    (target->Body.UnitTypeID < 0) ||
+	    (target->Body.UnitTypeID >= p_bic_data->UnitTypeCount) ||
+	    (target->Body.Container_Unit >= 0) ||
+	    (target->Body.CivID == bombarder_civ_id) ||
+	    ! target->vtable->is_enemy_of_civ (target, __, bombarder_civ_id, 0) ||
+	    (require_visible &&
+	     ! patch_Unit_is_visible_to_civ (target, __, bombarder_civ_id, 0)) ||
+	    ! can_damage_bombarding (bombarder_type, target, target_tile))
+		return false;
+
+	int defense_strength = Unit_get_defense_strength (target);
+	if (defense_strength <= 0)
+		return false;
+
+	if (out_defense_strength != NULL)
+		*out_defense_strength = defense_strength;
+	return true;
+}
+
+Unit *
+find_counter_best_bombard_defender_against (Unit * bombarder, int tile_x,
+                                            int tile_y, int bombarder_civ_id,
+                                            bool require_visible,
+                                            Unit * excluded)
+{
+	if (! is->current_config.enable_unit_counters ||
+	    (is->current_config.count_counter_rules <= 0) ||
+	    (bombarder == NULL) ||
+	    (bombarder->Body.UnitTypeID < 0) ||
+	    (bombarder->Body.UnitTypeID >= p_bic_data->UnitTypeCount))
+		return NULL;
+
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * target_tile = tile_at (tile_x, tile_y);
+	if ((target_tile == NULL) || (target_tile == p_null_tile))
+		return NULL;
+
+	UnitType * bombarder_type = &p_bic_data->UnitTypes[bombarder->Body.UnitTypeID];
+	Unit * best = NULL;
+	int best_adjusted_defense = -1,
+	    best_base_defense = -1,
+	    best_hp = -1,
+	    best_cost = -1;
+	bool any_counter_effect = false;
+
+	FOR_UNITS_ON (uti, target_tile) {
+		Unit * candidate = uti.unit;
+		int base_defense = 0;
+		if (candidate == excluded)
+			continue;
+		if (! bombard_counter_target_is_eligible (
+			bombarder, candidate, bombarder_type, target_tile,
+			bombarder_civ_id, require_visible, &base_defense))
+			continue;
+
+		int bombard_pct = get_counter_rule_bombard_modifier (
+			&is->current_config, bombarder, candidate, target_tile);
+		if (bombard_pct != 100)
+			any_counter_effect = true;
+
+		int adjusted_defense =
+			counter_adjusted_bombard_target_defense (base_defense, bombard_pct);
+		int hp = Unit_get_max_hp (candidate) - candidate->Body.Damage;
+		int cost = p_bic_data->UnitTypes[candidate->Body.UnitTypeID].Cost;
+
+		if ((best == NULL) ||
+		    (adjusted_defense > best_adjusted_defense) ||
+		    ((adjusted_defense == best_adjusted_defense) &&
+		     (base_defense > best_base_defense)) ||
+		    ((adjusted_defense == best_adjusted_defense) &&
+		     (base_defense == best_base_defense) &&
+		     (hp > best_hp)) ||
+		    ((adjusted_defense == best_adjusted_defense) &&
+		     (base_defense == best_base_defense) &&
+		     (hp == best_hp) &&
+		     (cost > best_cost))) {
+			best = candidate;
+			best_adjusted_defense = adjusted_defense;
+			best_base_defense = base_defense;
+			best_hp = hp;
+			best_cost = cost;
+		}
+	}
+
+	return any_counter_effect ? best : NULL;
+}
+
 Unit * __fastcall
 patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bombarder, int tile_x, int tile_y, int bombarder_civ_id, bool land_lethal, bool sea_lethal)
 {
-	if (is->bombard_stealth_target == NULL)
-		return Fighter_find_defender_against_bombardment (this, __, bombarder, tile_x, tile_y, bombarder_civ_id, land_lethal, sea_lethal);
-	else
+	if (is->bombard_stealth_target != NULL)
 		return is->bombard_stealth_target;
+
+	Unit * counter_defender = find_counter_best_bombard_defender_against (
+		bombarder, tile_x, tile_y, bombarder_civ_id, true, NULL);
+	if (counter_defender != NULL) {
+		is->unit_display_override = (struct unit_display_override) {
+			counter_defender->Body.ID,
+			counter_defender->Body.X,
+			counter_defender->Body.Y
+		};
+		is->unit_display_override_2 = is->unit_display_override;
+		return counter_defender;
+	}
+
+	return Fighter_find_defender_against_bombardment (this, __, bombarder, tile_x, tile_y, bombarder_civ_id, land_lethal, sea_lethal);
 }
 
 Unit *
@@ -26721,7 +26944,10 @@ select_stealth_attack_bombard_target (Unit * unit, int tile_x, int tile_y)
 {
 	bool land_lethal = Unit_has_ability (unit, __, UTA_Lethal_Land_Bombardment),
 	     sea_lethal  = Unit_has_ability (unit, __, UTA_Lethal_Sea_Bombardment);
-	Unit * defender = Fighter_find_defender_against_bombardment (&p_bic_data->fighter, __, unit, tile_x, tile_y, unit->Body.CivID, land_lethal, sea_lethal);
+	Unit * defender = find_counter_best_bombard_defender_against (
+		unit, tile_x, tile_y, unit->Body.CivID, true, NULL);
+	if (defender == NULL)
+		defender = Fighter_find_defender_against_bombardment (&p_bic_data->fighter, __, unit, tile_x, tile_y, unit->Body.CivID, land_lethal, sea_lethal);
 	if (defender != NULL) {
 		Unit * target;
 		is->selecting_stealth_target_for_bombard = 1;
@@ -27983,6 +28209,7 @@ patch_Unit_get_attack_strength_for_land_zoc (Unit * this)
 }
 
 Unit * find_counter_best_visible_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded);
+Unit * find_counter_best_visible_defender_against_with_effect (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded, bool * out_any_counter_effect);
 
 Unit * __fastcall
 patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int tile_x, int tile_y, Unit * excluded)
@@ -28004,24 +28231,50 @@ patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int 
 		}
 	}
 
-	if (is->current_config.enable_unit_counters &&
-	    (this->Current_Unit != NULL) &&
-	    (this->Current_Unit->Body.CivID == this->Player_CivID) &&
-	    ((this->Current_Unit->Body.X != tile_x) || (this->Current_Unit->Body.Y != tile_y)) &&
-	    (this->Mode_Action != UMA_Bombard) &&
-	    (this->Mode_Action != UMA_Air_Bombard) &&
-	    (this->Mode_Action != UMA_Auto_Bombard) &&
-	    (this->Mode_Action != UMA_Auto_Air_Bombard) &&
+	bool unit_counter_display_enabled =
+		is->current_config.enable_unit_counters &&
+		(this->Current_Unit != NULL) &&
+		(this->Current_Unit->Body.CivID == this->Player_CivID) &&
+		((this->Current_Unit->Body.X != tile_x) || (this->Current_Unit->Body.Y != tile_y));
+	bool unit_counter_bombard_display_mode =
+		(this->Mode_Action == UMA_Bombard) ||
+		(this->Mode_Action == UMA_Air_Bombard) ||
+		(this->Mode_Action == UMA_Auto_Bombard) ||
+		(this->Mode_Action == UMA_Auto_Air_Bombard);
+
+	// Default selection display considers normal combat counters first. If no
+	// combat counter applies to the stack, bombard counters may decide display.
+	if (unit_counter_display_enabled &&
+	    ! unit_counter_bombard_display_mode &&
 	    (this->Mode_Action != UMA_Precision_Strike) &&
 	    (this->Mode_Action != UMA_Auto_Precision_Strike)) {
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile) &&
 		    tile_has_enemy_unit (tile, this->Current_Unit->Body.CivID)) {
-			Unit * best = find_counter_best_visible_defender_against (
-				this->Current_Unit, tile, tile_x, tile_y, excluded);
-			if (best != NULL)
-				return best;
+			bool combat_counter_effect = false;
+			Unit * combat_best = find_counter_best_visible_defender_against_with_effect (
+				this->Current_Unit, tile, tile_x, tile_y, excluded,
+				&combat_counter_effect);
+			if (combat_counter_effect && (combat_best != NULL))
+				return combat_best;
+
+			Unit * bombard_best = find_counter_best_bombard_defender_against (
+				this->Current_Unit, tile_x, tile_y,
+				this->Current_Unit->Body.CivID, true, excluded);
+			if (bombard_best != NULL)
+				return bombard_best;
+
+			if (combat_best != NULL)
+				return combat_best;
 		}
+	}
+
+	if (unit_counter_display_enabled &&
+	    unit_counter_bombard_display_mode) {
+		Unit * best = find_counter_best_bombard_defender_against (
+			this->Current_Unit, tile_x, tile_y, this->Current_Unit->Body.CivID, true, excluded);
+		if (best != NULL)
+			return best;
 	}
 
 	return Main_Screen_Form_find_visible_unit (this, __, tile_x, tile_y, excluded);
@@ -28351,7 +28604,11 @@ Unit * __fastcall
 patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker, Unit * defender)
 {
 	int special_db_rules = is->current_config.special_defensive_bombard_rules;
-	if ((special_db_rules == 0) &&
+	bool apply_counter_bombard_rules =
+		is->current_config.enable_unit_counters &&
+		(is->current_config.count_counter_rules > 0);
+	if ((! apply_counter_bombard_rules) &&
+	    (special_db_rules == 0) &&
 	    ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) == 0) &&
 	    ((is->current_config.special_helicopter_rules & SHR_NO_DEFENSE_FROM_INSIDE) == 0))
 		return Fighter_find_defensive_bombarder (this, __, attacker, defender);
@@ -28368,12 +28625,20 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 
 		Unit * tr = NULL;
 		int highest_strength = -1;
+		Tile * bombard_target_tile = tile_at (attacker->Body.X, attacker->Body.Y);
 		enum UnitTypeAbilities lethal_bombard_req = (attacker_class == UTC_Sea) ? UTA_Lethal_Sea_Bombardment : UTA_Lethal_Land_Bombardment;
 		FOR_UNITS_ON (uti, defender_tile) {
 			Unit * candidate = uti.unit;
 			UnitType * candidate_type = &p_bic_data->UnitTypes[candidate->Body.UnitTypeID];
+			int candidate_strength = counter_adjusted_bombard_strength (
+				candidate_type->Bombard_Strength,
+				get_counter_rule_bombard_modifier (
+					&is->current_config,
+					candidate,
+					attacker,
+					bombard_target_tile));
 			if (can_do_defensive_bombard (candidate, candidate_type) &&
-			    (candidate_type->Bombard_Strength > highest_strength) &&
+			    (candidate_strength > highest_strength) &&
 			    (candidate != defender) &&
 			    (Unit_get_containing_army (candidate) != defender) &&
 			    ((attacker_class == candidate_type->Unit_Class) ||
@@ -28385,7 +28650,7 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 			      (get_city_ptr (defender_tile->CityID) != NULL))) &&
 			    ((! attacker_has_one_hp) || UnitType_has_ability (candidate_type, __, lethal_bombard_req))) {
 				tr = candidate;
-				highest_strength = candidate_type->Bombard_Strength;
+				highest_strength = candidate_strength;
 			}
 		}
 		return tr;
@@ -28459,6 +28724,40 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 		is->unit_display_override = saved_udo;
 		is->unit_display_override_2 = saved_udo_2;
 	}
+}
+
+int __fastcall
+patch_Fighter_get_odds_for_bombardment (Fighter * this, int edx, Unit * attacker, Unit * defender, bool bombarding, bool ignore_defensive_bonuses)
+{
+	if (! (bombarding &&
+	       is->current_config.enable_unit_counters &&
+	       (attacker != NULL) &&
+	       (defender != NULL) &&
+	       (attacker->Body.UnitTypeID >= 0) &&
+	       (attacker->Body.UnitTypeID < p_bic_data->UnitTypeCount) &&
+	       (defender->Body.UnitTypeID >= 0) &&
+	       (defender->Body.UnitTypeID < p_bic_data->UnitTypeCount)))
+		return Fighter_get_combat_odds (this, __, attacker, defender, bombarding, ignore_defensive_bonuses);
+
+	Tile * target_tile = tile_at (defender->Body.X, defender->Body.Y);
+	int bombard_pct = get_counter_rule_bombard_modifier (
+		&is->current_config,
+		attacker,
+		defender,
+		target_tile);
+
+	if (bombard_pct == 100)
+		return Fighter_get_combat_odds (this, __, attacker, defender, bombarding, ignore_defensive_bonuses);
+
+	UnitType * attacker_type = &p_bic_data->UnitTypes[attacker->Body.UnitTypeID];
+	int saved_bombard_strength = attacker_type->Bombard_Strength;
+	attacker_type->Bombard_Strength =
+		counter_adjusted_bombard_strength (saved_bombard_strength, bombard_pct);
+
+	int result = Fighter_get_combat_odds (this, __, attacker, defender, bombarding, ignore_defensive_bonuses);
+
+	attacker_type->Bombard_Strength = saved_bombard_strength;
+	return result;
 }
 
 int __fastcall
@@ -28759,8 +29058,12 @@ patch_Fighter_prefer_first_defender_1 (Fighter * this, int edx, Unit * first, in
 Unit *
 find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x,
                                     int tile_y, Unit * excluded,
-                                    bool require_visible)
+                                    bool require_visible,
+                                    bool * out_any_counter_effect)
 {
+	if (out_any_counter_effect != NULL)
+		*out_any_counter_effect = false;
+
 	if (! (unit_has_valid_type_id (attacker) &&
 	       (tile != NULL) &&
 	       (tile != p_null_tile)))
@@ -28799,6 +29102,19 @@ find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x,
 		if (! Fighter_unit_can_defend (&p_bic_data->fighter, __, unit, tile_x, tile_y))
 			continue;
 
+		if (out_any_counter_effect != NULL) {
+			int attacker_atk_pct, defender_def_pct;
+			bool ignore_terrain;
+			apply_counter_rules (
+				&is->current_config, attacker, unit, tile,
+				&attacker_atk_pct, &defender_def_pct,
+				&ignore_terrain);
+			if ((attacker_atk_pct != 100) ||
+			    (defender_def_pct != 100) ||
+			    ignore_terrain)
+				*out_any_counter_effect = true;
+		}
+
 		if ((best == NULL) ||
 		    patch_Fighter_prefer_first_defender_1 (
 			&p_bic_data->fighter, __,
@@ -28822,7 +29138,15 @@ Unit *
 find_counter_best_visible_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded)
 {
 	return find_counter_best_defender_against (attacker, tile, tile_x,
-	                                           tile_y, excluded, true);
+	                                           tile_y, excluded, true, NULL);
+}
+
+Unit *
+find_counter_best_visible_defender_against_with_effect (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded, bool * out_any_counter_effect)
+{
+	return find_counter_best_defender_against (attacker, tile, tile_x,
+	                                           tile_y, excluded, true,
+	                                           out_any_counter_effect);
 }
 
 byte __fastcall

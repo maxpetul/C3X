@@ -229,6 +229,8 @@ struct counter_rule {
 	int    self_def_pct;
 	int    enemy_atk_pct;
 	int    enemy_def_pct;
+	int    self_bombard_pct;
+	int    enemy_bombard_pct;
 };
 
 struct c3x_config {
