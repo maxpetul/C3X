@@ -22,8 +22,8 @@
   ;  - gold_bonus            : Number. Gold yield bonus when worked.
   ;  - shield_bonus          : Number. Shield yield bonus when worked.
   ;  - happiness_bonus       : Number. Happiness bonus when worked.
-  ;  - impassible            : 0 or 1. If 1, completed natural wonder tile is impassible to units. (default: 0)
-  ;  - impassible_to_wheeled : 0 or 1. If 1, completed natural wonder tile is impassible to wheeled units unless connected by road. (default: 0)
+  ;  - impassable            : 0 or 1. If 1, completed natural wonder tile is impassable to units. (default: 0)
+  ;  - impassable_to_wheeled : 0 or 1. If 1, completed natural wonder tile is impassable to wheeled units unless connected by road. (default: 0)
   ;  - animation             : Text. Optional custom animation entry; may be repeated multiple times per wonder (up to 8).
   ;                            Format: ini=<relative ini path>; hours=<comma-delimited 0..23>; seasons=<comma-delimited season list>; direction=<dir>; frame_time_seconds=<float>; offsets=<x,y>
   ;                            Subkeys also accept ':' instead of '='. Seasons: summer, fall, winter, spring.
