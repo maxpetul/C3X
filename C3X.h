@@ -338,6 +338,7 @@ struct c3x_config {
 	enum unit_cycle_search_criteria unit_cycle_search_criteria;
 	bool reformat_turns_remaining_on_domestic_advisor_screen;
 	bool expand_civilopedia_unit_stats;
+	bool expand_right_click_menu_unit_stats;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
@@ -516,7 +517,7 @@ struct c3x_config {
 	int ai_city_district_max_build_wait_turns;
 
 	bool disable_great_wall_city_defense_bonus;
-	bool great_wall_districts_impassible_by_others;
+	bool great_wall_districts_impassable_by_others;
 	bool auto_build_great_wall_around_territory;
 	char * great_wall_auto_build_wonder_name;
 	int great_wall_auto_build_wonder_improv_id;
@@ -752,12 +753,6 @@ enum district_bonus_entry_type {
 	DBET_BUILDING = 1
 };
 
-enum great_wall_auto_build_state {
-	GWABS_NOT_STARTED = 0,
-	GWABS_RUNNING,
-	GWABS_DONE
-};
-
 struct district_bonus_entry {
 	enum district_bonus_entry_type type;
 	int bonus;
@@ -845,8 +840,8 @@ struct district_config {
 	struct district_bonus_list defense_bonus_extras;
 	int defense_bonus_percent;
 	bool heal_units_in_one_turn;
-	bool impassible;
-	bool impassible_to_wheeled;
+	bool impassable;
+	bool impassable_to_wheeled;
 	char const * generated_resource;
 	int generated_resource_id;
 	short generated_resource_flags;
@@ -951,8 +946,8 @@ struct natural_wonder_district_config {
 	int gold_bonus;
 	int shield_bonus;
 	int happiness_bonus;
-	bool impassible;
-	bool impassible_to_wheeled;
+	bool impassable;
+	bool impassable_to_wheeled;
 	bool is_dynamic;
 };
 
@@ -1023,7 +1018,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port", .display_name = "Port",
-		.advance_prereqs = {"Map Making"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 2, .align_to_coast = true,
+		.advance_prereqs = {"Alphabet"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 2, .align_to_coast = true,
 		.img_paths = {"Port_NW.pcx", "Port_NE.pcx", "Port_SE.pcx", "Port_SW.pcx"}, .dependent_improvements = {"Harbor", "Commercial Dock"},
 		.buildable_square_types_mask = (1 << SQ_Coast),
 		.img_path_count = 4, .img_column_count = 4, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .align_to_coast = true,
@@ -1110,8 +1105,8 @@ struct parsed_district_definition {
 	bool allow_irrigation_from;
 	bool auto_add_road;
 	bool auto_add_railroad;
-	bool impassible;
-	bool impassible_to_wheeled;
+	bool impassable;
+	bool impassable_to_wheeled;
 	int custom_width;
 	int custom_height;
 	int x_offset;
@@ -1209,8 +1204,8 @@ struct parsed_district_definition {
 	bool has_allow_irrigation_from;
 	bool has_auto_add_road;
 	bool has_auto_add_railroad;
-	bool has_impassible;
-	bool has_impassible_to_wheeled;
+	bool has_impassable;
+	bool has_impassable_to_wheeled;
 };
 
 struct parsed_wonder_definition {
@@ -1283,8 +1278,8 @@ struct parsed_natural_wonder_definition {
 	int gold_bonus;
 	int shield_bonus;
 	int happiness_bonus;
-	bool impassible;
-	bool impassible_to_wheeled;
+	bool impassable;
+	bool impassable_to_wheeled;
 	bool has_name;
 	bool has_img_path;
 	bool has_img_row;
@@ -1298,8 +1293,8 @@ struct parsed_natural_wonder_definition {
 	bool has_gold_bonus;
 	bool has_shield_bonus;
 	bool has_happiness_bonus;
-	bool has_impassible;
-	bool has_impassible_to_wheeled;
+	bool has_impassable;
+	bool has_impassable_to_wheeled;
 };
 
 struct scenario_district_entry {
@@ -2287,8 +2282,8 @@ struct district_button_image_set {
 	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp and so on for flagging whether to draw forests over roads on the tile being rendered
 	bool draw_forests_over_roads_on_tile;
 
-	// Set to true once the auto-build process for the Great Wall is complete to avoid running it again
-	enum great_wall_auto_build_state great_wall_auto_build;
+	// Variables related to great wall district
+	unsigned int great_wall_auto_build_done_civs;  // Ha Luu line add - ToC-3 - to make EACH CIV able to get auto-build of walls, not just one civ
 	Tile * focused_tile;
 
 	// Stores the improve ID currently being evaluated inside patch_City_can_build_improvement.

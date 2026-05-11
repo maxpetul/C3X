@@ -1,5 +1,17 @@
 - Add ability to apply perfume to resources under option named resource_perfume
 - Option do_not_place_barb_huts_or_camps_on_impassable_tiles
+- Show more unit stats on the right click menu and in the unit status box, option named expand_right_click_menu_unit_stats
+  - Shows rate of fire, range, anti-air strength, passenger count & transport capacity, worker strength, and moves for immobile units
+- Allow multiple players to place great wall districts on the map when great_wall_auto_build_wonder_name is set to a small wonder
+- Limit workers to entering coast from land or bridge tile
+- Don't add walls to cities automatically if disable_great_wall_city_defense_bonus is true
+- Stop AI players from placing great wall districts next to walls owned by other players
+- Fix AI not loading units onto naval transports when naval_units_use_port_districts_not_cities is true
+- Fix workers being interrupted during go-to orders over bridges
+- Don't visually connect great wall tiles if not same territory owner
+- Set Port districts to require Alphabet by default
+- Improve late game performance related to AI worker district construction
+- Fix incorrect usage of "impassible" in several config options (old config files with the misspelling will still work)
 
 * RELEASE 27 PREVIEW 2
 - Show more unit stats on the Civilopedia page, option named expand_civilopedia_unit_stats
@@ -9,7 +21,7 @@
 - Add option allow_multiple_battle_created_units_per_player to remove the rule that stops battle-created units (typically MGLs) from spawning for players that already have one
 - Fix crash in modded naval missile transport unit AI that occurs when districts are turned off
 - Fix crash when an army unit steps onto a bridge
-- Fix crash caused by AI disembarking onto tile made impassible by districts
+- Fix crash caused by AI disembarking onto tile made impassable by districts
 - Fix possible crash when spawning unit during movement phase (e.g. popping a settler from a hut) with non-standard unit cycling turned on
 - Fix free buildings from small wonder palaces not appearing after the palace has been moved
 - Stop "name tile" option from appearing in right-click production selection menu
