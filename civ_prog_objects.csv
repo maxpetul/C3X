@@ -563,7 +563,8 @@ inlead,	   0x4B9C60,	0x4C12E0,	0x4B9CF0,	"City_draw_hud_icon",				"void (__fastc
 inlead,	   0x4B9BB0,	0x4C1230,	0x4B9C40,	"City_has_hud_icon",				"bool (__fastcall *) (City * this)"
 inlead,	   0x4BFBF0,	0x4C71B0,	0x4BFC80,	"City_draw_on_map",				"void (__fastcall *) (City * this, int edx, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7)"
 inlead,	   0x4E7E30,	0x4F08F0,	0x4E7EF0,	"MenuUnitItem_write_text_to_temp_str",		"void (__fastcall *) (MenuUnitItem * this)"
-define,	   0xCAB2D8,	0xCCDB88,	0xCAB298,	"temp_str",					"char[4096]"
+define,	   0xCAB2D8,	0xCCDB88,	0xCAB298,	"temp_str",					"char *"
+define,	   4096,	4096,		4096,		"sizeof_temp_str",				"unsigned"
 repl call, 0x5EDD89,	0x5FD7BE,	0x5EDCB9,	"Tile_m74_Set_Square_Type_for_hill_gen",	""
 inlead,	   0x5D1EA0,	0x5E1140,	0x5D1DD0,	"Map_place_scenario_things",			"void (__fastcall *) (Map * this)"
 repl vptr, 0x66C3EC,	0x6894D8,	0x66C3EC,	"Advisor_Base_Form_domestic_m95",		"bool (__fastcall *) (Advisor_Base_Form * this)"
@@ -942,6 +943,8 @@ repl call, 0x4D5464,	0x4DDC29,	0x4D5524,	"PCX_Image_draw_pedia_unit_stats_2nd_co
 define,	   0x1A5,	0x1A6,		0x1A5,		"LBL_OPERATIONAL_RANGE",			"int"
 define,	   0x4D519C,	0x4DD953,	0x4D525C,	"ADDR_AIR_UNIT_CHECK_TO_DRAW_PEDIA_STATS",	"byte *"
 define,	   0x1A8,	0x1A9,		0x1A8,		"LBL_BOMBARD_RANGE",				"int"
+define,	   0x437F20,	0x439AC0,	0x437FA0,	"Unit_get_transport_capacity",			"int (__fastcall *) (Unit * this)"
+inlead,	   0x5543B0,	0x55FB10,	0x554360,	"Main_GUI_get_unit_stat_str",			"void (__fastcall *) (Main_GUI * this, int edx, char * out_str, Unit * unit)"
 
 ignore,	   0x5FC710,	0x0,		0x0,		"PCX_Image_create_and_init_jgl_image",		"int (__fastcall *) (PCX_Image * this, int edx, int width, int height, int bit_depth, int param_4, int param_5, int param_6)"
 ignore,	   0x5FCC50,	0x0,		0x0,		"PCX_Image_draw_region_to_location",		"void (__fastcall *) (PCX_Image * this, int edx, PCX_Image * canvas, int src_x, int src_y, int dest_x, int dest_y, int width, int height)"

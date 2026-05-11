@@ -2688,6 +2688,11 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->share_visibility_in_hotseat = ival != 0;
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
+				} else if (slice_matches_str (&p.key, "great_wall_districts_impassible_by_others")) {
+					if (read_int (&value, &ival))
+						cfg->great_wall_districts_impassable_by_others = ival != 0;
+					else
+						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
@@ -8632,10 +8637,10 @@ override_special_district_from_definition (struct parsed_district_definition * d
 	}
 	if (def->has_heal_units_in_one_turn)
 		cfg->heal_units_in_one_turn = def->heal_units_in_one_turn;
-	if (def->has_impassible)
-		cfg->impassible = def->impassible;
-	if (def->has_impassible_to_wheeled)
-		cfg->impassible_to_wheeled = def->impassible_to_wheeled;
+	if (def->has_impassable)
+		cfg->impassable = def->impassable;
+	if (def->has_impassable_to_wheeled)
+		cfg->impassable_to_wheeled = def->impassable_to_wheeled;
 	if (def->has_culture_bonus) {
 		cfg->culture_bonus = def->culture_bonus;
 		free_bonus_entry_list_override (&cfg->culture_bonus_extras, &defaults->culture_bonus_extras);
@@ -8932,8 +8937,8 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.btn_tile_sheet_row = def->has_btn_tile_sheet_row ? def->btn_tile_sheet_row : 0;
 	new_cfg.defense_bonus_percent = def->has_defense_bonus_percent ? def->defense_bonus_percent : 0;
 	new_cfg.heal_units_in_one_turn = def->has_heal_units_in_one_turn ? def->heal_units_in_one_turn : false;
-	new_cfg.impassible = def->has_impassible ? def->impassible : false;
-	new_cfg.impassible_to_wheeled = def->has_impassible_to_wheeled ? def->impassible_to_wheeled : false;
+	new_cfg.impassable = def->has_impassable ? def->impassable : false;
+	new_cfg.impassable_to_wheeled = def->has_impassable_to_wheeled ? def->impassable_to_wheeled : false;
 	new_cfg.culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
 	new_cfg.science_bonus = def->has_science_bonus ? def->science_bonus : 0;
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
@@ -9597,21 +9602,23 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
-	} else if (slice_matches_str (key, "impassible")) {
+	// Match misspelling of "impassable" too so old configs still load without error
+	} else if (slice_matches_str (key, "impassable") || slice_matches_str (key, "impassible")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->impassible = (ival != 0);
-			def->has_impassible = true;
+			def->impassable = (ival != 0);
+			def->has_impassable = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
-	} else if (slice_matches_str (key, "impassible_to_wheeled")) {
+	// Match misspelling of "impassable" too so old configs still load without error
+	} else if (slice_matches_str (key, "impassable_to_wheeled") || slice_matches_str (key, "impassible_to_wheeled")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->impassible_to_wheeled = (ival != 0);
-			def->has_impassible_to_wheeled = true;
+			def->impassable_to_wheeled = (ival != 0);
+			def->has_impassable_to_wheeled = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
@@ -10813,8 +10820,8 @@ add_natural_wonder_from_definition (struct parsed_natural_wonder_definition * de
 	new_cfg.gold_bonus = def->has_gold_bonus ? def->gold_bonus : 0;
 	new_cfg.shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
 	new_cfg.happiness_bonus = def->has_happiness_bonus ? def->happiness_bonus : 0;
-	new_cfg.impassible = def->has_impassible ? def->impassible : false;
-	new_cfg.impassible_to_wheeled = def->has_impassible_to_wheeled ? def->impassible_to_wheeled : false;
+	new_cfg.impassable = def->has_impassable ? def->impassable : false;
+	new_cfg.impassable_to_wheeled = def->has_impassable_to_wheeled ? def->impassable_to_wheeled : false;
 
 	if (has_existing) {
 		struct natural_wonder_district_config * cfg = &is->natural_wonder_configs[existing_index];
@@ -11045,25 +11052,27 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
-	} else if (slice_matches_str (key, "impassible")) {
+	// Match misspelling of "impassable" too so old configs still load without error
+	} else if (slice_matches_str (key, "impassable") || slice_matches_str (key, "impassible")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->impassible = (ival != 0);
-			def->has_impassible = true;
+			def->impassable = (ival != 0);
+			def->has_impassable = true;
 		} else {
-			def->has_impassible = false;
+			def->has_impassable = false;
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
-	} else if (slice_matches_str (key, "impassible_to_wheeled")) {
+	// Match misspelling of "impassable" too so old configs still load without error
+	} else if (slice_matches_str (key, "impassable_to_wheeled") || slice_matches_str (key, "impassible_to_wheeled")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->impassible_to_wheeled = (ival != 0);
-			def->has_impassible_to_wheeled = true;
+			def->impassable_to_wheeled = (ival != 0);
+			def->has_impassable_to_wheeled = true;
 		} else {
-			def->has_impassible_to_wheeled = false;
+			def->has_impassable_to_wheeled = false;
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
@@ -12737,8 +12746,11 @@ reset_district_state (bool reset_tile_map)
 	}
 	table_deinit (&is->city_pending_building_orders);
 
-	is->great_wall_auto_build = GWABS_NOT_STARTED;
-}
+	// ToC-3: Reset the per-civ completion bitmask so every faction can auto-build
+	// walls again from scratch (e.g. on a new game or scenario load).
+	// Auto-built walls (for district config) should be tied to a Small Wonder so each civ can build once.
+	is->great_wall_auto_build_done_civs = 0;
+}  // END ToC update
 
 void
 clear_city_district_request (City * city, int district_id)
@@ -18006,6 +18018,7 @@ patch_init_floating_point ()
 		{"allow_multipage_civilopedia_descriptions"              , true , offsetof (struct c3x_config, allow_multipage_civilopedia_descriptions)},
 		{"reformat_turns_remaining_on_domestic_advisor_screen"   , true , offsetof (struct c3x_config, reformat_turns_remaining_on_domestic_advisor_screen)},
 		{"expand_civilopedia_unit_stats"                         , true , offsetof (struct c3x_config, expand_civilopedia_unit_stats)},
+		{"expand_right_click_menu_unit_stats"                    , true , offsetof (struct c3x_config, expand_right_click_menu_unit_stats)},
 		{"enable_trade_net_x"                                    , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                            , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                    , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -18058,7 +18071,7 @@ patch_init_floating_point ()
 		{"naval_units_use_port_districts_not_cities"             , false, offsetof (struct c3x_config, naval_units_use_port_districts_not_cities)},
 		{"show_natural_wonder_name_on_map"                       , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
 		{"ai_defends_districts"                                  , false, offsetof (struct c3x_config, ai_defends_districts)},
-		{"great_wall_districts_impassible_by_others"             , false, offsetof (struct c3x_config, great_wall_districts_impassible_by_others)},
+		{"great_wall_districts_impassable_by_others"             , false, offsetof (struct c3x_config, great_wall_districts_impassable_by_others)},
 		{"auto_build_great_wall_around_territory"                , false, offsetof (struct c3x_config, auto_build_great_wall_around_territory)},
 		{"disable_great_wall_city_defense_bonus"                 , false, offsetof (struct c3x_config, disable_great_wall_city_defense_bonus)},
 		{"expand_water_tile_checks_to_city_work_area"            , false, offsetof (struct c3x_config, expand_water_tile_checks_to_city_work_area)},
@@ -20993,12 +21006,12 @@ is_allowed_to_trespass (Unit * unit)
 }
 
 bool
-get_tile_district_impassibility (Tile * tile, bool * out_impassible, bool * out_impassible_to_wheeled)
+get_tile_district_impassability (Tile * tile, bool * out_impassable, bool * out_impassable_to_wheeled)
 {
-	if (out_impassible != NULL)
-		*out_impassible = false;
-	if (out_impassible_to_wheeled != NULL)
-		*out_impassible_to_wheeled = false;
+	if (out_impassable != NULL)
+		*out_impassable = false;
+	if (out_impassable_to_wheeled != NULL)
+		*out_impassable_to_wheeled = false;
 
 	if ((tile == NULL) || (tile == p_null_tile))
 		return false;
@@ -21015,10 +21028,10 @@ get_tile_district_impassibility (Tile * tile, bool * out_impassible, bool * out_
 		int natural_id = inst->natural_wonder_info.natural_wonder_id;
 		if ((natural_id < 0) || (natural_id >= is->natural_wonder_count))
 			return false;
-		if (out_impassible != NULL)
-			*out_impassible = is->natural_wonder_configs[natural_id].impassible;
-		if (out_impassible_to_wheeled != NULL)
-			*out_impassible_to_wheeled = is->natural_wonder_configs[natural_id].impassible_to_wheeled;
+		if (out_impassable != NULL)
+			*out_impassable = is->natural_wonder_configs[natural_id].impassable;
+		if (out_impassable_to_wheeled != NULL)
+			*out_impassable_to_wheeled = is->natural_wonder_configs[natural_id].impassable_to_wheeled;
 		return true;
 	}
 
@@ -21027,10 +21040,10 @@ get_tile_district_impassibility (Tile * tile, bool * out_impassible, bool * out_
 	if ((inst->district_id < 0) || (inst->district_id >= is->district_count))
 		return false;
 
-	if (out_impassible != NULL)
-		*out_impassible = is->district_configs[inst->district_id].impassible;
-	if (out_impassible_to_wheeled != NULL)
-		*out_impassible_to_wheeled = is->district_configs[inst->district_id].impassible_to_wheeled;
+	if (out_impassable != NULL)
+		*out_impassable = is->district_configs[inst->district_id].impassable;
+	if (out_impassable_to_wheeled != NULL)
+		*out_impassable_to_wheeled = is->district_configs[inst->district_id].impassable_to_wheeled;
 	return true;
 }
 
@@ -21121,7 +21134,7 @@ great_wall_blocks_civ (Tile * tile, int civ_id)
 {
 	if (! is->current_config.enable_districts ||
 	    ! is->current_config.enable_great_wall_districts ||
-	    ! is->current_config.great_wall_districts_impassible_by_others)
+	    ! is->current_config.great_wall_districts_impassable_by_others)
 		return false;
 
 	if ((tile == NULL) || (tile == p_null_tile))
@@ -21173,12 +21186,12 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 		if ((unit != NULL) && great_wall_blocks_civ (to, unit->Body.CivID))
 			return -1;
 		if ((unit != NULL) && to_valid) {
-			bool impassible = false;
-			bool impassible_to_wheeled = false;
-			if (get_tile_district_impassibility (to, &impassible, &impassible_to_wheeled)) {
-				if (impassible)
+			bool impassable = false;
+			bool impassable_to_wheeled = false;
+			if (get_tile_district_impassability (to, &impassable, &impassable_to_wheeled)) {
+				if (impassable)
 					return -1;
-				if (impassible_to_wheeled && Unit_has_ability (unit, __, UTA_Wheeled)) {
+				if (impassable_to_wheeled && Unit_has_ability (unit, __, UTA_Wheeled)) {
 					Tile * from = tile_at (from_x, from_y);
 					bool connected_by_road = (from != NULL) && (to != NULL) &&
 					                         (from->vtable->m25_Check_Roads (from, __, 0) != 0) &&
@@ -23055,12 +23068,12 @@ patch_Unit_disembark_passengers (Unit * this, int edx, int tile_x, int tile_y)
 
 		bool blocked_by_district = false, blocked_by_district_for_wheeled = false; {
 			if (is->current_config.enable_districts) {
-				bool impassible, impassible_to_wheeled;
+				bool impassable, impassable_to_wheeled;
 				if (great_wall_blocks_civ (target, this->Body.CivID))
 					blocked_by_district = blocked_by_district_for_wheeled = true;
-				else if (get_tile_district_impassibility (target, &impassible, &impassible_to_wheeled)) {
-					blocked_by_district = impassible;
-					blocked_by_district_for_wheeled = impassible || impassible_to_wheeled;
+				else if (get_tile_district_impassability (target, &impassable, &impassable_to_wheeled)) {
+					blocked_by_district = impassable;
+					blocked_by_district_for_wheeled = impassable || impassable_to_wheeled;
 				}
 			}
 		}
@@ -23557,11 +23570,12 @@ patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3
 
 				// Print entry text including dup count to new_text. Biggest complication here is that we want to print the dup count
 				// after any leading spaces to preserve indentation.
+				// Insert a few spaces at the end so widen_for_text widens a bit more. Otherwise, the ending paren may get cut off.
 				{
 					int num_spaces = 0;
 					while (item->Text[num_spaces] == ' ')
 						num_spaces++;
-					snprintf (new_text, new_text_len, "%.*s%dx %s", num_spaces, item->Text, is->unit_menu_duplicates[n] + 1, &item->Text[num_spaces]);
+					snprintf (new_text, new_text_len, "%.*s%dx %s   ", num_spaces, item->Text, is->unit_menu_duplicates[n] + 1, &item->Text[num_spaces]);
 					new_text[new_text_len - 1] = '\0';
 				}
 
@@ -24682,18 +24696,23 @@ grant_existing_district_buildings_to_city (City * city)
 void
 auto_build_great_wall_districts_for_civ (int civ_id)
 {
+	// ToC-3: Guard block — replaces the old single global GWABS_DONE check.
+	// Now each civ is checked independently via a 32-bit bitmask so every faction
+	// can auto-build its own Wall Districts exactly once.
 	if ((! is->current_config.enable_districts) ||
 	    (! is->current_config.enable_great_wall_districts) ||
 	    (! is->current_config.auto_build_great_wall_around_territory) ||
-	    (is->great_wall_auto_build == GWABS_DONE) ||
-	    (civ_id < 0) ||
+	    (civ_id < 0) || (civ_id >= 32) ||
+	    // Per-civ completion check: skip if this civ's bit is already set in the bitmask
+	    (is->great_wall_auto_build_done_civs & (1u << civ_id)) ||
 	    is->is_placing_scenario_things)
 		return;
 
 	bool is_human = (*p_human_player_bits & (1 << civ_id)) != 0;
 
 	if ((GREAT_WALL_DISTRICT_ID < 0) || (GREAT_WALL_DISTRICT_ID >= is->district_count)) {
-		is->great_wall_auto_build = GWABS_DONE;
+		// ToC-3: Mark only THIS civ as done (per-civ bitmask), not all civs globally
+		is->great_wall_auto_build_done_civs |= (1u << civ_id);
 		return;
 	}
 
@@ -24701,17 +24720,17 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 
 	struct district_config const * cfg = &is->district_configs[GREAT_WALL_DISTRICT_ID];
 	if ((cfg->command == -1) || (! leader_can_build_district (&leaders[civ_id], GREAT_WALL_DISTRICT_ID))) {
-		is->great_wall_auto_build = GWABS_DONE;
+		// ToC-3: This civ cannot build Wall Districts (no build command or no leader ability).
+		// Mark only this civ as done so the system doesn't retry it every turn.
+		is->great_wall_auto_build_done_civs |= (1u << civ_id);
 		return;
-	}
+	}  // END ToC-3
 
 	PopupForm * popup = get_popup_form ();
 	set_popup_str_param (0, (char *)is->district_configs[GREAT_WALL_DISTRICT_ID].display_name, -1, -1);
 	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_BEGIN_GREAT_WALL_AUTO_BUILD", -1, 0, 0, 0);
 	if (civ_id == p_main_screen_form->Player_CivID)
 		patch_show_popup (popup, __, 0, 0);
-
-	is->great_wall_auto_build = GWABS_RUNNING;
 
 	unsigned int const replaceable_flags = TILE_FLAG_MINE | TILE_FLAG_IRRIGATION;
 	bool require_other_civ_border = (! is_human) && is->current_config.ai_auto_build_great_wall_strategy == AAGWS_OTHER_CIV_BORDERED_ONLY;
@@ -24746,13 +24765,50 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 					}
 				}
 			}
-			if (! has_border)
-				continue;
-			if (require_other_civ_border && (! has_other_civ_border))
+		if (! has_border)
+			continue;
+		if (require_other_civ_border && (! has_other_civ_border))
+			continue;
+
+		// ToC-5: For AI civs only — skip this tile if any adjacent tile already has
+		// a *completed* Wall District belonging to a different civ.
+		// This prevents double-walls from forming along shared borders when multiple
+		// factions auto-build walls at the same time.
+		// Human players are excluded from this restriction: they keep full control
+		// via the confirmation popup and should never have tiles silently skipped.
+		if (! is_human) {
+			// Efficiency guard: only scan neighbor walls for tiles actually inside
+			// our own territory.  This avoids an expensive O(tiles²) nested scan
+			// when multiple civs auto-build walls in the same turn.
+			int tile_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+			if (tile_owner != civ_id)
 				continue;
 
-			if (! district_is_buildable_on_tile (cfg, tile))
+			bool neighbor_has_rival_wall = false;
+			FOR_TILES_AROUND (wai, 9, x, y) {
+				if (wai.n == 0)
+					continue;
+				Tile * wn = wai.tile;
+				if ((wn == NULL) || (wn == p_null_tile))
+					continue;
+				struct district_instance * wn_inst = get_district_instance (wn);
+				// Check: is there a completed Wall District here that belongs to a rival?
+				if ((wn_inst != NULL) &&
+				    (wn_inst->district_id == GREAT_WALL_DISTRICT_ID) &&
+				    district_is_complete (wn, GREAT_WALL_DISTRICT_ID) &&
+				    (wn->vtable->m38_Get_Territory_OwnerID (wn) != civ_id)) {
+					neighbor_has_rival_wall = true;
+					break;
+				}
+			}
+			// If a rival already has a wall next to this tile, skip it to avoid a double-wall
+			if (neighbor_has_rival_wall)
 				continue;
+		}
+		// END ToC-5
+
+		if (! district_is_buildable_on_tile (cfg, tile))
+			continue;
 			if (! district_resource_prereqs_met (tile, x, y, GREAT_WALL_DISTRICT_ID))
 				continue;
 
@@ -24837,7 +24893,11 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 			set_tile_unworkable_for_all_cities (tile, x, y);
 	}
 
-	is->great_wall_auto_build = GWABS_DONE;
+	// ToC-3: Mark only THIS civ as having completed its auto-build pass.
+	// Other civs still have their bits clear and will run their own passes
+	// when their turn is processed.
+	is->great_wall_auto_build_done_civs |= (1u << civ_id);
+
 	is->focused_tile = NULL;
 }
 
@@ -28505,12 +28565,12 @@ patch_Unit_can_disembark_anything (Unit * this, int edx, int tile_x, int tile_y)
 		if (great_wall_blocks_civ (target_tile, this->Body.CivID))
 			return false;
 
-		bool impassible = false, impassible_to_wheeled = false;
-		if (get_tile_district_impassibility (target_tile, &impassible, &impassible_to_wheeled)) {
-			if (impassible)
+		bool impassable = false, impassable_to_wheeled = false;
+		if (get_tile_district_impassability (target_tile, &impassable, &impassable_to_wheeled)) {
+			if (impassable)
 				return false;
 
-			if (impassible_to_wheeled) {
+			if (impassable_to_wheeled) {
 				bool any_non_wheeled_passengers = false;
 				FOR_UNITS_ON (uti, this_tile)
 					if ((uti.unit->Body.Container_Unit == this->Body.ID) && ! Unit_has_ability (uti.unit, __, UTA_Wheeled)) {
@@ -29675,12 +29735,69 @@ get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 		return false;
 }
 
+void
+write_expanded_unit_stats (Unit * unit, char * out_str, int str_capacity)
+{
+	UnitType * unit_type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
+
+	char attack[30];
+	if (unit_type->Unit_Class != UTC_Air && unit_type->Bombard_Strength == 0)
+		snprintf (attack, sizeof attack, "%d", Unit_get_attack_strength (unit));
+	else {
+		int range = unit_type->Unit_Class == UTC_Air ? unit_type->OperationalRange : unit_type->Bombard_Range;
+		snprintf (attack, sizeof attack, "%d(%d.%d.%d)", Unit_get_attack_strength (unit), unit_type->Bombard_Strength, unit_type->FireRate, range);
+	}
+	attack[(sizeof attack) - 1] = '\0';
+
+	char defense[30];
+	if (unit_type->Air_Defence == 0)
+		snprintf (defense, sizeof defense, ".%d", Unit_get_defense_strength (unit));
+	else
+		snprintf (defense, sizeof defense, ".%d(%d)", Unit_get_defense_strength (unit), unit_type->Air_Defence);
+	defense[(sizeof defense) - 1] = '\0';
+
+	char moves[30];
+	if (Unit_get_containing_army (unit) == NULL) {
+		int rmr = p_bic_data->General.RoadsMovementRate,
+			max_moves = Unit_get_max_move_points (unit) / rmr;
+		if (unit->Body.CivID == p_main_screen_form->Player_CivID) {
+			int remaining_move_points = clamp (0, 9999, Unit_get_max_move_points (unit) - unit->Body.Moves),
+				remaining_moves = (remaining_move_points + rmr - 1) / rmr;
+			snprintf (moves, sizeof moves, ".%d/%d", remaining_moves, max_moves);
+		} else
+			snprintf (moves, sizeof moves, ".%d", max_moves);
+	} else
+		moves[0] = '\0';
+	moves[(sizeof moves) - 1] = '\0';
+
+	char transport[30];
+	if (unit->Body.CivID == p_main_screen_form->Player_CivID && Unit_get_transport_capacity (unit) > 0)
+		snprintf (transport, sizeof transport, ".%d/%d", Unit_count_contained_units (unit), Unit_get_transport_capacity (unit));
+	else
+		transport[0] = '\0';
+	transport[(sizeof transport) - 1] = '\0';
+
+	bool is_captured = unit->Body.RaceID != leaders[unit->Body.CivID].RaceID;
+	int rounded_worker_strength = ((int)(unit_type->WorkerStrength * 10000.0f * (is_captured ? 0.5f : 1.0f)) + 50) / 100;
+	char worker_strength[30];
+	if (rounded_worker_strength != 0)
+		snprintf (worker_strength, sizeof worker_strength, ".%d%%", rounded_worker_strength);
+	else
+		worker_strength[0] = '\0';
+	worker_strength[(sizeof worker_strength) - 1] = '\0';
+
+	snprintf (out_str, str_capacity, "%s%s%s%s%s", attack, defense, moves, transport, worker_strength);
+	out_str[str_capacity - 1] = '\0';
+}
+
 void __fastcall
 patch_MenuUnitItem_write_text_to_temp_str (MenuUnitItem * this)
 {
 	MenuUnitItem_write_text_to_temp_str (this);
 
 	Unit * unit = this->unit;
+	char s[500];
+
 	char repl_verb[32];
 	if (is->current_config.describe_states_of_units_on_menu &&
 	    (unit->Body.CivID == p_main_screen_form->Player_CivID) &&
@@ -29689,13 +29806,56 @@ patch_MenuUnitItem_write_text_to_temp_str (MenuUnitItem * this)
 		char * verb = (unit->Body.UnitState == UnitState_Fortifying) ? (*p_labels)[LBL_WAKE] : (*p_labels)[LBL_ACTIVATE];
 		char * verb_str_start = strstr (temp_str, verb);
 		if (verb_str_start != NULL) {
-			char s[500];
 			char * verb_str_end = verb_str_start + strlen (verb);
 			snprintf (s, sizeof s, "%.*s%s%s", verb_str_start - temp_str, temp_str, repl_verb, verb_str_end);
 			s[(sizeof s) - 1] = '\0';
 			strncpy (temp_str, s, sizeof s);
 		}
 	}
+
+	if (is->current_config.expand_right_click_menu_unit_stats) {
+		char * stats_start_paren = NULL,
+		     * stats_end_paren = NULL; {
+			int len = strlen (temp_str);
+			for (int n = len - 1; n >= 0; n--)
+				if (temp_str[n] == ')') {
+					stats_end_paren = &temp_str[n];
+					break;
+				}
+
+			if (stats_end_paren != NULL) {
+				int nesting = 0;
+				for (char * c = stats_end_paren; c != temp_str; c--) {
+					if (*c == ')')
+						nesting++;
+					else if (*c == '(') {
+						nesting--;
+						if (nesting == 0) {
+							stats_start_paren = c;
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		if (stats_start_paren != NULL && stats_end_paren != NULL) {
+			char z[500];
+			write_expanded_unit_stats (unit, z, sizeof z);
+			snprintf (s, sizeof s, "%.*s(%s)", stats_start_paren - temp_str, temp_str, z);
+			s[(sizeof s) - 1] = '\0';
+			strncpy (temp_str, s, sizeof s);
+		}
+	}
+}
+
+void __fastcall
+patch_Main_GUI_get_unit_stat_str (Main_GUI * this, int edx, char * out_str, Unit * unit)
+{
+	if (is->current_config.expand_right_click_menu_unit_stats)
+		write_expanded_unit_stats (unit, out_str, sizeof_temp_str);
+	else
+		Main_GUI_get_unit_stat_str (this, __, out_str, unit);
 }
 
 void __fastcall
@@ -30251,10 +30411,11 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		}
 	}
 
-	if (is->great_wall_auto_build != GWABS_NOT_STARTED) {
-		serialize_aligned_text ("great_wall_auto_build_state", &mod_data);
-		*(int *)buffer_allocate (&mod_data, sizeof(int)) = (int)is->great_wall_auto_build;
-	}
+	// ToC-3: (ToC-3-CH8) Save the great wall per-civ completion bitmask when not all zero.
+	if (is->great_wall_auto_build_done_civs != 0) {
+		serialize_aligned_text ("great_wall_auto_build_done_civs", &mod_data);
+		*(unsigned int *)buffer_allocate (&mod_data, sizeof(unsigned int)) = is->great_wall_auto_build_done_civs;
+	}  // END ToC
 
 	if (is->ai_candidate_bridge_or_canals_initialized || (is->ai_candidate_bridge_or_canals_count > 0)) {
 		serialize_aligned_text ("ai_candidate_bridge_or_canals", &mod_data);
@@ -30514,18 +30675,32 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 			} else if (match_save_chunk_name (&cursor, "turns_in_current_season")) {
 				is->turns_in_current_season = not_below (0, *((int *)cursor)++);
 			
+				// ToC-3
 			} else if (match_save_chunk_name (&cursor, "great_wall_auto_build_state")) {
+				// Read the single great wall autobuild state variable from the save. Interpret a state of 2 to mean no more great
+				// walls can be built (originally 2 was GWABS_DONE in a now-deleted enum). Otherwise, this variable is no longer used.
 				int state = *((int *)cursor)++;
-				if ((state >= GWABS_NOT_STARTED) && (state <= GWABS_DONE))
-					is->great_wall_auto_build = (enum great_wall_auto_build_state)state;
-				else
-					is->great_wall_auto_build = GWABS_NOT_STARTED;
+				if (state == 2)
+					is->great_wall_auto_build_done_civs = 0xFFFFFFFF;
+
+			} else if (match_save_chunk_name (&cursor, "great_wall_auto_build_done_civs")) {
+				// ToC-3: Restore the per-civ completion bitmask saved by Change 8 above.  (search for ToC-3-CH8).
+				// Each bit N indicates civ N has already completed its auto-build pass
+				// and should not be triggered again.
+				unsigned int mask = *((unsigned int *)cursor)++;
+				is->great_wall_auto_build_done_civs = mask;
 
 			} else if (match_save_chunk_name (&cursor, "great_wall_auto_build_is_done")) {
+				// Legacy compatibility: this chunk was written by saves made before the
+				// per-civ bitmask existed.  If the old global "done" flag was set, mark
+				// ALL civs as done so no faction re-runs auto-build against an already-
+				// walled map loaded from an old save file.
 				bool was_done = (*((int *)cursor)++ != 0);
-				is->great_wall_auto_build = was_done ? GWABS_DONE : GWABS_NOT_STARTED;
+				if (was_done)
+					is->great_wall_auto_build_done_civs = 0xFFFFFFFF;
 
 			} else if (match_save_chunk_name (&cursor, "district_pending_requests")) {
+				// end ToC update
 				bool success = false;
 				int remaining_bytes = (seg + seg_size) - cursor;
 				if (remaining_bytes >= (int)sizeof(int)) {
@@ -34673,6 +34848,28 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 	// If the worker has arrived
 	if ((worker->Body.X == req->target_x) && (worker->Body.Y == req->target_y)) {
 
+		// ToC-24: Performance optimization — if the worker is already actively building
+		// this exact district (correct tile, correct district id, not yet complete, and
+		// already in the Build_Mines unit state), skip all re-initialization and return
+		// immediately.  Without this check, Unit_set_state and snprintf fire on every
+		// single turn for every assigned worker until the district finishes.  This causes
+		// noticeable lag during AI turns when many Wall Districts are being built at once,
+		// which is a direct side effect of ToC-3 enabling per-civ auto-build for all factions.
+		{
+			Tile * check_tile = tile_at (worker->Body.X, worker->Body.Y);
+			if (check_tile != NULL && check_tile != p_null_tile) {
+				struct district_instance * check_inst = get_district_instance (check_tile);
+				if (check_inst != NULL &&
+				    check_inst->district_id == req->district_id &&
+				    ! district_is_complete (check_tile, req->district_id) &&
+				    worker->Body.UnitState == UnitState_Build_Mines) {
+					// Worker is already building — nothing to re-initialize this turn
+					return true;
+				}
+			}
+		}
+		// END ToC-24
+
 		snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d arrived at (%d,%d) to build district\n", worker->Body.ID, worker->Body.X, worker->Body.Y);
 		(*p_OutputDebugStringA) (ss);
 
@@ -35905,12 +36102,12 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 		if (great_wall_blocks_civ (to, this->Body.CivID))
 			return PBV_GENERIC_INVALID_MOVE;
 		if (to_valid) {
-			bool impassible = false;
-			bool impassible_to_wheeled = false;
-			if (get_tile_district_impassibility (to, &impassible, &impassible_to_wheeled)) {
-				if (impassible)
+			bool impassable = false;
+			bool impassable_to_wheeled = false;
+			if (get_tile_district_impassability (to, &impassable, &impassable_to_wheeled)) {
+				if (impassable)
 					return PBV_GENERIC_INVALID_MOVE;
-				if (impassible_to_wheeled && Unit_has_ability (this, __, UTA_Wheeled)) {
+				if (impassable_to_wheeled && Unit_has_ability (this, __, UTA_Wheeled)) {
 					Tile * from = tile_at (from_x, from_y);
 					bool connected_by_road = (from != NULL) && (to != NULL) &&
 					                         (from->vtable->m25_Check_Roads (from, __, 0) != 0) &&
