@@ -22263,7 +22263,7 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 		if (prereq_id >= 0 && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id))
 			return false;
 
-		if (! Leader_can_build_unit (&leaders[this->Body.CivID], __, unit_type_id, 1, false))
+		if (! Leader_can_build_unit (&leaders[this->Body.CivID], __, unit_type_id, 1, allow_kings))
 			return false;
 
 		// Superficially allow the AI to choose the unit for scoring and production.
