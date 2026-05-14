@@ -29420,9 +29420,10 @@ void
 write_expanded_unit_stats (Unit * unit, char * out_str, int str_capacity)
 {
 	UnitType * unit_type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
+	bool is_tactical_nuke = UnitType_has_ability (unit_type, __, UTA_Nuclear_Weapon) && ! UnitType_has_ability (unit_type, __, UTA_Infinite_Bombard_Range);
 
 	char attack[30];
-	if (unit_type->Unit_Class != UTC_Air && unit_type->Bombard_Strength == 0)
+	if (unit_type->Unit_Class != UTC_Air && unit_type->Bombard_Strength == 0 && ! is_tactical_nuke)
 		snprintf (attack, sizeof attack, "%d", Unit_get_attack_strength (unit));
 	else {
 		int range = unit_type->Unit_Class == UTC_Air ? unit_type->OperationalRange : unit_type->Bombard_Range;
@@ -32784,7 +32785,7 @@ patch_Civilopedia_Article_m01_Draw_UNIT (Civilopedia_Article * this)
 		    this->unit_type->Unit_Class == UTC_Land &&
 		    this->unit_type->Bombard_Strength == 0 &&
 		    UnitType_has_ability (this->unit_type, __, UTA_Nuclear_Weapon) &&
-		    UnitType_has_ability (this->unit_type, __, UTA_Tacticle_Missile)) {
+		    ! UnitType_has_ability (this->unit_type, __, UTA_Infinite_Bombard_Range)) {
 			snprintf (s, (sizeof s) - 1, "%s: %d", (*p_labels)[LBL_BOMBARD_RANGE], this->unit_type->Bombard_Range);
 			entries[entry_count++] = strdup (s);
 		}
