@@ -18170,6 +18170,8 @@ patch_init_floating_point ()
 	is->count_extra_capture_despawns = 0;
 	is->extra_capture_despawns_capacity = 0;
 
+	is->drawing_pedia_for_unit_type = NULL;
+
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config, true);
@@ -32741,6 +32743,8 @@ print_pedia_unit_stats (PCX_Image * canvas, int x, char ** entries, int entry_co
 void __fastcall
 patch_Civilopedia_Article_m01_Draw_UNIT (Civilopedia_Article * this)
 {
+	is->drawing_pedia_for_unit_type = this->unit_type;
+
 	// Make sure list of second column stat strings is clear before drawing
 	char ** entries = is->pedia_unit_stats_second_column_strs;
 	int capacity = ARRAY_LEN (is->pedia_unit_stats_second_column_strs);
@@ -32807,18 +32811,31 @@ patch_Civilopedia_Article_m01_Draw_UNIT (Civilopedia_Article * this)
 			print_pedia_unit_stats (&p_civilopedia_form->Base.Data.Canvas, 355, &entries[second_count], third_count);
 		}
 	}
+
+	is->drawing_pedia_for_unit_type = NULL;
 }
 
 int __fastcall
 patch_PCX_Image_draw_pedia_unit_stats_2nd_column (PCX_Image * this, int edx, char * str, int x, int y, int width)
 {
-	if (is->current_config.expand_civilopedia_unit_stats)
+	int * p_stack = (int *)&str;
+	int ret_addr = p_stack[-1];
+
+	if (is->current_config.expand_civilopedia_unit_stats) {
+		// Skip drawing of bombard range for aircraft if it's zero
+		if (ret_addr == DRAW_PEDIA_BOMBARD_RANGE_RETURN &&
+		    is->drawing_pedia_for_unit_type != NULL &&
+		    is->drawing_pedia_for_unit_type->Unit_Class == UTC_Air &&
+		    is->drawing_pedia_for_unit_type->Bombard_Range == 0)
+			return y;
+
 		for (int n = 0; n < ARRAY_LEN (is->pedia_unit_stats_second_column_strs); n++)
 			if (is->pedia_unit_stats_second_column_strs[n] == NULL) {
 				is->pedia_unit_stats_second_column_strs[n] = strdup (str); // Record what would have been drawn here
 				str = " "; // Draw empty string. Can't skip draw call entirely b/c we need the return value
 				break;
 			}
+	}
 
 	return PCX_Image_draw_and_wrap_text (this, __, str, x, y, width);
 }

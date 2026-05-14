@@ -13,6 +13,7 @@
 - Improve late game performance related to AI worker district construction
 - Fix incorrect usage of "impassible" in several config options (old config files with the misspelling will still work)
 - Fix inability to upgrade king-flagged units when districts are activated
+- When expand_civilopedia_unit_stats is activated, do not show bombard range for aircraft if zero
 
 * RELEASE 27 PREVIEW 2
 - Show more unit stats on the Civilopedia page, option named expand_civilopedia_unit_stats

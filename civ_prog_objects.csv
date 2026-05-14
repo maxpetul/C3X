@@ -937,6 +937,7 @@ define,	   0x5FF750,	0x6149E0,	0x5FF630,	"PCX_Image_draw_and_wrap_text",			"int 
 repl call, 0x4D5283,	0x4DDA46,	0x4D5343,	"PCX_Image_draw_pedia_unit_stats_2nd_column",	""
 repl call, 0x4D52EA,	0x4DDAAE,	0x4D53AA,	"PCX_Image_draw_pedia_unit_stats_2nd_column",	""
 repl call, 0x4D5340,	0x4DDB05,	0x4D5400,	"PCX_Image_draw_pedia_unit_stats_2nd_column",	""
+define,	   0x4D5345,	0x4DDB0A,	0x4D5405,	"DRAW_PEDIA_BOMBARD_RANGE_RETURN",		"int"
 repl call, 0x4D5396,	0x4DDB5C,	0x4D5456,	"PCX_Image_draw_pedia_unit_stats_2nd_column",	""
 repl call, 0x4D5400,	0x4DDBC5,	0x4D54C0,	"PCX_Image_draw_pedia_unit_stats_2nd_column",	""
 repl call, 0x4D5464,	0x4DDC29,	0x4D5524,	"PCX_Image_draw_pedia_unit_stats_2nd_column",	""

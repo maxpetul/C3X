@@ -2258,6 +2258,9 @@ struct district_button_image_set {
 	int count_extra_capture_despawns;
 	int extra_capture_despawns_capacity;
 
+	// While Civilopedia_Article::m01_Draw_UNIT is running, this variable is set to the relevant unit type. Otherwise it's NULL.
+	UnitType * drawing_pedia_for_unit_type;
+
 	// ==========
 	// }
 	// ==========
