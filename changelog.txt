@@ -1,3 +1,4 @@
+* RELEASE 27
 - Add ability to apply perfume to resources under option named resource_perfume
 - Option do_not_place_barb_huts_or_camps_on_impassable_tiles
 - Show more unit stats on the right click menu and in the unit status box, option named expand_right_click_menu_unit_stats
