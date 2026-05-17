@@ -3891,11 +3891,12 @@ wai_init_cities (int x, int y)
 			     (aerodrome_inst->district_id == AERODROME_DISTRICT_ID) && \
 			     district_is_complete (aerodrome_tile, AERODROME_DISTRICT_ID); \
 			     aerodrome_inst = NULL) \
-				for (int aerodrome_x = 0, aerodrome_y = 0; \
+				for (int aerodrome_x = 0, aerodrome_y = 0, _iter_count = 0; \
+				     _iter_count == 0 && \
 				     district_instance_get_coords (aerodrome_inst, aerodrome_tile, &aerodrome_x, &aerodrome_y) && \
 				     (aerodrome_tile->vtable->m38_Get_Territory_OwnerID (aerodrome_tile) == (unit_ptr)->Body.CivID) && \
 				     patch_Unit_is_in_rebase_range ((unit_ptr), __, aerodrome_x, aerodrome_y); \
-				     aerodrome_x = 0, aerodrome_y = 0)
+				     _iter_count++)
 
 struct tile_rings_iter {
 	int center_x, center_y;
@@ -5880,7 +5881,8 @@ generate_ai_canal_and_bridge_targets ()
 {
 	if (is->ai_candidate_bridge_or_canals_initialized)
 		return;
-	if ((! is->current_config.enable_canal_districts) && (! is->current_config.enable_bridge_districts))
+	if (((! is->current_config.enable_canal_districts) || (is->current_config.max_contiguous_canal_districts <= 0)) &&
+	    ((! is->current_config.enable_bridge_districts) || (is->current_config.max_contiguous_bridge_districts <= 0)))
 		return;
 
 	Map * map = &p_bic_data->Map;
@@ -5893,14 +5895,18 @@ generate_ai_canal_and_bridge_targets ()
 	if (block_size <= 0)
 		block_size = 10;
 
-	if (is->current_config.enable_bridge_districts && is->current_config.ai_builds_bridges) {
+	if (is->current_config.enable_bridge_districts &&
+	    is->current_config.ai_builds_bridges &&
+	    (is->current_config.max_contiguous_bridge_districts > 0)) {
 		generate_ai_bridge_candidates_by_block (
 			map,
 			block_size,
 			is->current_config.max_contiguous_bridge_districts);
 	}
 
-	if (is->current_config.enable_canal_districts && is->current_config.ai_builds_canals) {
+	if (is->current_config.enable_canal_districts &&
+	    is->current_config.ai_builds_canals &&
+	    (is->current_config.max_contiguous_canal_districts > 0)) {
 		generate_ai_canal_candidates_by_block (
 			map,
 			block_size,
@@ -13599,6 +13605,9 @@ district_line_is_straight (int tile_x, int tile_y, int district_id)
 bool
 bridge_district_tile_is_valid (int tile_x, int tile_y)
 {
+	if (is->current_config.max_contiguous_bridge_districts <= 0)
+		return false;
+
 	if (! tile_is_coastal_water (tile_x, tile_y))
 		return false;
 
@@ -13619,29 +13628,27 @@ bridge_district_tile_is_valid (int tile_x, int tile_y)
 	if (! has_adjacent_land_or_bridge)
 		return false;
 
-	if (is->current_config.max_contiguous_bridge_districts > 0) {
-		int max_bridges = is->current_config.max_contiguous_bridge_districts;
+	int max_bridges = is->current_config.max_contiguous_bridge_districts;
 
-		int ns_count = count_contiguous_bridge_districts (tile_x, tile_y, 0, -2) +
-			       count_contiguous_bridge_districts (tile_x, tile_y, 0, 2);
-		if (ns_count >= max_bridges)
-			return false;
+	int ns_count = count_contiguous_bridge_districts (tile_x, tile_y, 0, -2) +
+		       count_contiguous_bridge_districts (tile_x, tile_y, 0, 2);
+	if (ns_count >= max_bridges)
+		return false;
 
-		int we_count = count_contiguous_bridge_districts (tile_x, tile_y, -2, 0) +
-			       count_contiguous_bridge_districts (tile_x, tile_y, 2, 0);
-		if (we_count >= max_bridges)
-			return false;
+	int we_count = count_contiguous_bridge_districts (tile_x, tile_y, -2, 0) +
+		       count_contiguous_bridge_districts (tile_x, tile_y, 2, 0);
+	if (we_count >= max_bridges)
+		return false;
 
-		int swne_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, 1) +
-				 count_contiguous_bridge_districts (tile_x, tile_y, 1, -1);
-		if (swne_count >= max_bridges)
-			return false;
+	int swne_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, 1) +
+			 count_contiguous_bridge_districts (tile_x, tile_y, 1, -1);
+	if (swne_count >= max_bridges)
+		return false;
 
-		int nwse_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, -1) +
-				 count_contiguous_bridge_districts (tile_x, tile_y, 1, 1);
-		if (nwse_count >= max_bridges)
-			return false;
-	}
+	int nwse_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, -1) +
+			 count_contiguous_bridge_districts (tile_x, tile_y, 1, 1);
+	if (nwse_count >= max_bridges)
+		return false;
 
 	return district_line_is_straight (tile_x, tile_y, BRIDGE_DISTRICT_ID);
 }
@@ -13649,14 +13656,15 @@ bridge_district_tile_is_valid (int tile_x, int tile_y)
 bool
 canal_district_tile_is_valid (int tile_x, int tile_y)
 {
+	if (is->current_config.max_contiguous_canal_districts <= 0)
+		return false;
+
 	if (tile_is_water (tile_x, tile_y))
 		return false;
 
-	if (is->current_config.max_contiguous_canal_districts > 0) {
-		int count = count_contiguous_canal_districts (tile_x, tile_y, is->current_config.max_contiguous_canal_districts);
-		if (count > is->current_config.max_contiguous_canal_districts)
-			return false;
-	}
+	int count = count_contiguous_canal_districts (tile_x, tile_y, is->current_config.max_contiguous_canal_districts);
+	if (count > is->current_config.max_contiguous_canal_districts)
+		return false;
 
 	Map * map = &p_bic_data->Map;
 	int const adj_dx[8] = { 0, 0, -2, 2, 1, 1, -1, -1 };
@@ -13704,6 +13712,7 @@ can_build_district_on_tile (Tile * tile, int district_id, int civ_id)
 	if ((cfg->command == UCV_Build_Aerodrome)       && !is->current_config.enable_aerodrome_districts)        return false;
 	if ((cfg->command == UCV_Build_Port)            && !is->current_config.enable_port_districts)             return false;
 	if ((cfg->command == UCV_Build_Bridge)          && !is->current_config.enable_bridge_districts)           return false;
+	if ((cfg->command == UCV_Build_Canal)           && !is->current_config.enable_canal_districts)            return false;
 	if ((cfg->command == UCV_Build_CentralRailHub)  && !is->current_config.enable_central_rail_hub_districts) return false;
 	if ((cfg->command == UCV_Build_EnergyGrid)      && !is->current_config.enable_energy_grid_districts)      return false;
 	if ((cfg->command == UCV_Build_GreatWall)       && !is->current_config.enable_great_wall_districts)       return false;
@@ -18814,6 +18823,8 @@ patch_init_floating_point ()
 	is->saved_improv_counts = NULL;
 	is->saved_improv_counts_capacity = 0;
 
+	memset (is->pedia_unit_stats_second_column_strs, 0, sizeof is->pedia_unit_stats_second_column_strs);
+
 	memset (is->last_main_screen_key_up_events, 0, sizeof is->last_main_screen_key_up_events);
 
 	reset_district_state (true);
@@ -22242,7 +22253,18 @@ patch_Game_get_wonder_city_id (Game * this, int edx, int wonder_improvement_id)
 		Improvement * improv = &p_bic_data->Improvements[wonder_improvement_id];
 		if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
 			// Need to check if Small_Wonders array is NULL b/c recompute_auto_improvements gets called with leaders that are absent/dead.
-			return (leader->Small_Wonders != NULL) ? leader->Small_Wonders[wonder_improvement_id] : -1;
+			int tr = (leader->Small_Wonders != NULL) ? leader->Small_Wonders[wonder_improvement_id] : -1;
+
+			// If the palace has been set as a small wonder, the Small_Wonders entry for it may not have been updated properly. In that
+			// case, check the player's CapitalID as well.
+			City * capital;
+			if (tr == -1 &&
+			    improv->ImprovementFlags & ITF_Center_of_Empire &&
+			    (capital = get_city_ptr (leader->CapitalID)) != NULL &&
+			    patch_City_has_improvement (capital, __, wonder_improvement_id, false))
+				tr = capital->Body.ID;
+
+			return tr;
 		}
 	}
 	return Game_get_wonder_city_id (this, __, wonder_improvement_id);
@@ -22404,11 +22426,12 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 bool __fastcall
 patch_Unit_can_hurry_production (Unit * this, int edx, City * city, bool exclude_cheap_improvements)
 {
-	if (is->current_config.allow_military_leaders_to_hurry_wonders && Unit_has_ability (this, __, UTA_Leader)) {
-		LeaderKind actual_kind = this->Body.leader_kind;
+	if (is->current_config.allow_military_leaders_to_hurry_wonders &&
+	    Unit_has_ability (this, __, UTA_Leader) &&
+	    this->Body.leader_kind == LK_Military) {
 		this->Body.leader_kind = LK_Scientific;
 		bool tr = Unit_can_hurry_production (this, __, city, exclude_cheap_improvements);
-		this->Body.leader_kind = actual_kind;
+		this->Body.leader_kind = LK_Military;
 		return tr;
 	} else
 		return Unit_can_hurry_production (this, __, city, exclude_cheap_improvements);
@@ -23447,7 +23470,10 @@ patch_Unit_disembark_passengers (Unit * this, int edx, int tile_x, int tile_y)
 				|| (   is->current_config.disallow_trespassing
 				    && check_trespassing (uti.unit->Body.CivID, tile, target)
 				    && ! is_allowed_to_trespass (uti.unit))
-				|| Unit_is_terrain_impassable (uti.unit, __, target_terrain)))
+				|| Unit_is_terrain_impassable (uti.unit, __, target_terrain)
+				|| blocked_by_district
+				|| (   blocked_by_district_for_wheeled
+				    && Unit_has_ability (uti.unit, __, UTA_Wheeled))))
 				Unit_set_escortee (uti.unit, __, -1);
 		}
 	}
@@ -30925,6 +30951,13 @@ patch_Map_place_scenario_things (Map * this)
 
 	Map_place_scenario_things (this);
 
+	if (is->current_config.initialize_preplaced_scenario_leaders_as_mgls && p_units->Units != NULL)
+		for (int n = 0; n <= p_units->LastIndex; n++) {
+			Unit * unit = get_unit_ptr (n);
+			if (unit != NULL && Unit_has_ability (unit, __, UTA_Leader) && unit->Body.leader_kind == 0)
+				unit->Body.leader_kind = LK_Military;
+		}
+
 	// If there are any mills in the config then recompute yields & happiness in all cities. This must be done because we avoid doing this as
 	// mills are added to cities while placing scenario things.
 	if (is->current_config.count_mills > 0)
@@ -30974,7 +31007,10 @@ void __fastcall
 patch_Main_Screen_Form_open_quick_build_chooser (Main_Screen_Form * this, int edx, City * city, int mouse_x, int mouse_y)
 {
 	recompute_resources_if_necessary ();
+	bool restore_named_tile_menu = is->named_tile_menu_active;
+	is->named_tile_menu_active = false;
 	Main_Screen_Form_open_quick_build_chooser (this, __, city, mouse_x, mouse_y);
+	is->named_tile_menu_active = restore_named_tile_menu;
 }
 
 int __fastcall
@@ -33510,11 +33546,13 @@ patch_find_nearest_city_for_ai_alliance_eval (int tile_x, int tile_y, int owner_
 int __fastcall
 patch_Unit_get_max_move_points (Unit * this)
 {
-	if (Unit_has_ability (this, __, UTA_Army) && is->current_config.patch_empty_army_movement) {
+	bool is_army = Unit_has_ability (this, __, UTA_Army);
+	if (is_army && is->current_config.patch_empty_army_movement) {
 		int slowest_member_mp = INT_MAX;
 		bool any_units_in_army = false;
 		FOR_UNITS_ON (uti, tile_at (this->Body.X, this->Body.Y)) {
-			if (uti.unit->Body.Container_Unit == this->Body.ID) {
+			// Must check 'uni.unit != this' to prevent recursive crash mentioned below
+			if (uti.unit != this && uti.unit->Body.Container_Unit == this->Body.ID) {
 				any_units_in_army = true;
 				slowest_member_mp = not_above (Unit_get_max_move_points (uti.unit), slowest_member_mp);
 			}
@@ -33523,6 +33561,15 @@ patch_Unit_get_max_move_points (Unit * this)
 			return slowest_member_mp + p_bic_data->General.RoadsMovementRate;
 		else
 			return get_max_move_points (&p_bic_data->UnitTypes[this->Body.UnitTypeID], this->Body.CivID);
+
+	// If the unit is an army and has been set as contained inside itself for a coast walk, the game will crash due to recursive calls computing
+	// the max MP of each member. In that case, temporarily restore its true container.
+	} else if (is_army && is->coast_walk_transport_override && this->Body.Container_Unit == this->Body.ID) {
+		this->Body.Container_Unit = is->coast_walk_prev_container;
+		int tr = Unit_get_max_move_points (this);
+		this->Body.Container_Unit = this->Body.ID;
+		return tr;
+
 	} else
 		return Unit_get_max_move_points (this);
 }
@@ -37329,7 +37376,7 @@ try_path_to_friendly_port_district (Unit * unit, bool require_damaged, bool requ
 					continue;
 			}
 
-			if (! is_below_stack_limit (tile, unit->Body.CivID, UTC_Sea))
+			if (! is_below_stack_limit (tile, unit->Body.CivID, unit->Body.UnitTypeID))
 				continue;
 
 			int path_len = 0;
@@ -37522,8 +37569,7 @@ patch_Unit_ai_move_air_bombard_unit (Unit * this)
 	int best_base_score = 0x7fffffff;
 	int base_x = -1, base_y = -1;
 	FOR_AERODROMES_AROUND (this) {
-		if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID,
-			p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+		if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID, this->Body.UnitTypeID))
 			continue;
 
 		int count = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 6, -1, -1);
@@ -37578,8 +37624,7 @@ patch_Unit_ai_move_air_defense_unit (Unit * this)
 	int best_base_score = 0x7fffffff;
 	int base_x = -1, base_y = -1;
 	FOR_AERODROMES_AROUND (this) {
-		if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID,
-			p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+		if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID, this->Body.UnitTypeID))
 			continue;
 
 		int count = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 7, -1, -1);
@@ -37650,8 +37695,7 @@ patch_Unit_ai_move_air_transport (Unit * this)
 		int best_score = -1;
 		int base_x = -1, base_y = -1;
 		FOR_AERODROMES_AROUND (this) {
-			if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID,
-				p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+			if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID, this->Body.UnitTypeID))
 				continue;
 
 			int score = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 0, -1, -1) +
