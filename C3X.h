@@ -222,7 +222,7 @@ struct counter_rule {
 	char * district_name;     // Resolved after district configs are loaded
 	unsigned int self_experience_mask;  // 0 = no restriction
 	unsigned int enemy_experience_mask; // 0 = no restriction
-	bool   ignore_terrain;    // true = set defender terrain defense to 0
+	bool   ignore_defensive_bonuses; // true = the first side ignores the second side's defensive bonuses when attacking
 
 	// Effects (percent values, 100 = no change)
 	int    self_atk_pct;
@@ -1883,7 +1883,7 @@ struct injected_state {
 		Unit * defender;
 		int    attacker_atk_pct;  // Attacker attack multiplier (combines forward self-atk and reverse enemy-atk)
 		int    defender_def_pct;  // Defender defense multiplier (combines forward enemy-def and reverse self-def)
-		bool   ignore_terrain;
+		bool   ignore_defensive_bonuses; // Counter rule makes the defender receive no defensive bonuses
 	} counter_combat_ctx;
 
 	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
