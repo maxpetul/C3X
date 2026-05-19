@@ -3088,7 +3088,7 @@ struct Base_Form_vtable
   int m24;
   int m25_Process_Mouse_Wheel;
   void (__fastcall * m26_on_mouse_hover) (Base_Form * this, __, int local_x, int local_y, int param_3);
-  int m27;
+  void (__fastcall * m27_process_mouse_hover) (Base_Form * this, __, int local_x, int local_y);
   int m28;
 //  void (__thiscall *m29_On_Left_Click)(Base_Form *, int, int);
   void *m29_On_Left_Click;
@@ -6052,12 +6052,29 @@ struct Main_GUI
   int field_13370;
   Base_Form Sub_Form_1;
   int field_138E8[392];
+
+  // 0. upper left
+  // 1. some upper right MP button?
+  // 2. flat-ish upper right box to the right of [1]
   RECT Rects1[3];
+
   RECT Mini_Map_Drag_Rect;
+
+  // 0. empty, not used?
+  // 1. top of button area left of minimap above 'G' button
+  // 2-9. tiny box stacked near upper right, must be for MP
   RECT Rects2[10];
+
   RECT Unit_Status_Rect;
   RECT Mini_Map_Click_Rect;
+
+  // 0. top two unit button rows
+  // 1. tall rect near the right edge of the screen
+  // 2. large box on the left edge of the screen below the menu buttons
+  // 3. large rectangle near the top right
+  // 4. large box upper left
   RECT Rects3[5];
+
   int field_14058[32];
   Sprite Images[252];
   Sprite Image2;

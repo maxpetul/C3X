@@ -10,7 +10,7 @@ typedef unsigned char byte;
 #include "Civ3Conquests.h"
 
 #define MOD_VERSION 2700
-#define MOD_PREVIEW_VERSION 2
+#define MOD_PREVIEW_VERSION 0
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -222,13 +222,15 @@ struct counter_rule {
 	char * district_name;     // Resolved after district configs are loaded
 	unsigned int self_experience_mask;  // 0 = no restriction
 	unsigned int enemy_experience_mask; // 0 = no restriction
-	bool   ignore_defensive_bonuses; // true = the first side ignores the second side's defensive bonuses when attacking
+	bool   ignore_terrain;    // true = set defender terrain defense to 0
 
 	// Effects (percent values, 100 = no change)
 	int    self_atk_pct;
 	int    self_def_pct;
 	int    enemy_atk_pct;
 	int    enemy_def_pct;
+	int    self_bombard_pct;
+	int    enemy_bombard_pct;
 };
 
 struct c3x_config {
@@ -336,6 +338,7 @@ struct c3x_config {
 	enum unit_cycle_search_criteria unit_cycle_search_criteria;
 	bool reformat_turns_remaining_on_domestic_advisor_screen;
 	bool expand_civilopedia_unit_stats;
+	bool expand_right_click_menu_unit_stats;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
@@ -514,7 +517,7 @@ struct c3x_config {
 	int ai_city_district_max_build_wait_turns;
 
 	bool disable_great_wall_city_defense_bonus;
-	bool great_wall_districts_impassible_by_others;
+	bool great_wall_districts_impassable_by_others;
 	bool auto_build_great_wall_around_territory;
 	char * great_wall_auto_build_wonder_name;
 	int great_wall_auto_build_wonder_improv_id;
@@ -750,12 +753,6 @@ enum district_bonus_entry_type {
 	DBET_BUILDING = 1
 };
 
-enum great_wall_auto_build_state {
-	GWABS_NOT_STARTED = 0,
-	GWABS_RUNNING,
-	GWABS_DONE
-};
-
 struct district_bonus_entry {
 	enum district_bonus_entry_type type;
 	int bonus;
@@ -843,8 +840,8 @@ struct district_config {
 	struct district_bonus_list defense_bonus_extras;
 	int defense_bonus_percent;
 	bool heal_units_in_one_turn;
-	bool impassible;
-	bool impassible_to_wheeled;
+	bool impassable;
+	bool impassable_to_wheeled;
 	char const * generated_resource;
 	int generated_resource_id;
 	short generated_resource_flags;
@@ -949,8 +946,8 @@ struct natural_wonder_district_config {
 	int gold_bonus;
 	int shield_bonus;
 	int happiness_bonus;
-	bool impassible;
-	bool impassible_to_wheeled;
+	bool impassable;
+	bool impassable_to_wheeled;
 	bool is_dynamic;
 };
 
@@ -1021,7 +1018,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port", .display_name = "Port",
-		.advance_prereqs = {"Map Making"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 2, .align_to_coast = true,
+		.advance_prereqs = {"Alphabet"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 2, .align_to_coast = true,
 		.img_paths = {"Port_NW.pcx", "Port_NE.pcx", "Port_SE.pcx", "Port_SW.pcx"}, .dependent_improvements = {"Harbor", "Commercial Dock"},
 		.buildable_square_types_mask = (1 << SQ_Coast),
 		.img_path_count = 4, .img_column_count = 4, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .align_to_coast = true,
@@ -1108,8 +1105,8 @@ struct parsed_district_definition {
 	bool allow_irrigation_from;
 	bool auto_add_road;
 	bool auto_add_railroad;
-	bool impassible;
-	bool impassible_to_wheeled;
+	bool impassable;
+	bool impassable_to_wheeled;
 	int custom_width;
 	int custom_height;
 	int x_offset;
@@ -1207,8 +1204,8 @@ struct parsed_district_definition {
 	bool has_allow_irrigation_from;
 	bool has_auto_add_road;
 	bool has_auto_add_railroad;
-	bool has_impassible;
-	bool has_impassible_to_wheeled;
+	bool has_impassable;
+	bool has_impassable_to_wheeled;
 };
 
 struct parsed_wonder_definition {
@@ -1281,8 +1278,8 @@ struct parsed_natural_wonder_definition {
 	int gold_bonus;
 	int shield_bonus;
 	int happiness_bonus;
-	bool impassible;
-	bool impassible_to_wheeled;
+	bool impassable;
+	bool impassable_to_wheeled;
 	bool has_name;
 	bool has_img_path;
 	bool has_img_row;
@@ -1296,8 +1293,8 @@ struct parsed_natural_wonder_definition {
 	bool has_gold_bonus;
 	bool has_shield_bonus;
 	bool has_happiness_bonus;
-	bool has_impassible;
-	bool has_impassible_to_wheeled;
+	bool has_impassable;
+	bool has_impassable_to_wheeled;
 };
 
 struct scenario_district_entry {
@@ -1874,6 +1871,10 @@ struct injected_state {
 	} unit_display_override, unit_display_override_2;
 	bool combat_unit_display_override_active;
 	struct unit_display_override saved_combat_unit_display_override;
+	bool bombard_target_display_override_active;
+	struct unit_display_override saved_bombard_target_display_override;
+	struct unit_display_override saved_bombard_target_display_override_2;
+	struct unit_display_override current_bombard_target_display_override;
 
 	// Set in patch_Fighter_get_odds_for_main_combat_loop, read by patch_Unit_get_attack/defense_strength.
 	// Stores counter multipliers for the current combat. Active only during Fighter_get_combat_odds call.
@@ -1883,7 +1884,7 @@ struct injected_state {
 		Unit * defender;
 		int    attacker_atk_pct;  // Attacker attack multiplier (combines forward self-atk and reverse enemy-atk)
 		int    defender_def_pct;  // Defender defense multiplier (combines forward enemy-def and reverse self-def)
-		bool   ignore_defensive_bonuses; // Counter rule makes the defender receive no defensive bonuses
+		bool   ignore_terrain; // Counter rule makes the defender receive no terrain bonus
 	} counter_combat_ctx;
 
 	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
@@ -2285,8 +2286,8 @@ struct district_button_image_set {
 	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp and so on for flagging whether to draw forests over roads on the tile being rendered
 	bool draw_forests_over_roads_on_tile;
 
-	// Set to true once the auto-build process for the Great Wall is complete to avoid running it again
-	enum great_wall_auto_build_state great_wall_auto_build;
+	// Variables related to great wall district
+	unsigned int great_wall_auto_build_done_civs;  // Ha Luu line add - ToC-3 - to make EACH CIV able to get auto-build of walls, not just one civ
 	Tile * focused_tile;
 
 	// Stores the improve ID currently being evaluated inside patch_City_can_build_improvement.
@@ -2314,6 +2315,9 @@ struct district_button_image_set {
 	Unit ** extra_capture_despawns;
 	int count_extra_capture_despawns;
 	int extra_capture_despawns_capacity;
+
+	// While Civilopedia_Article::m01_Draw_UNIT is running, this variable is set to the relevant unit type. Otherwise it's NULL.
+	UnitType * drawing_pedia_for_unit_type;
 
 	// ==========
 	// }
