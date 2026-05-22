@@ -55,6 +55,11 @@ struct c3c_binary pcg_binary   = {"PCGames.de", 3395072,    (void *)0x665000,   
 char const * standard_exe_filename = "Civ3Conquests.exe";
 char const * backup_exe_filename = "Civ3Conquests-Unmodded.exe";
 
+#ifdef C3X_RUN
+HANDLE civ_proc;
+HANDLE civ_thread;
+#endif
+
 char *
 vformat (char const * str, va_list args)
 {
@@ -98,7 +103,17 @@ temp_format (char const * str, ...)
 void
 quit_on_error (char const * err_str)
 {
+#ifdef C3X_TEST_INJECTED_CODE_COMPILE
+	fprintf (stderr, "%s\n", err_str);
+	if (civ_proc) {
+		TerminateProcess (civ_proc, 1);
+		CloseHandle (civ_proc);
+	}
+	if (civ_thread)
+		CloseHandle (civ_thread);
+#else
 	MessageBox (NULL, err_str, NULL, MB_ICONERROR);
+#endif
         ExitProcess (1);
 }
 
@@ -267,9 +282,7 @@ va_to_file_ptr (struct civ_pe const * pe, void const * virt_addr, int * out_sect
 
 
 
-#ifdef C3X_RUN
-HANDLE civ_proc;
-#else
+#ifdef C3X_INSTALL
 struct civ_pe civ_exe;
 byte * civ_exe_contents; // Buffer contains the contents of the EXE file
 int civ_exe_buf_size;
@@ -852,7 +865,7 @@ ENTRY_POINT ()
 		civ_startup_info.cb = sizeof (civ_startup_info);
 		CloseHandle (bin_file);
 		char * cmd_line = strdup (bin_file_name); // TODO: Pass command line args through
-		CreateProcessA (
+		success = CreateProcessA (
 			NULL,
 			cmd_line,         // lpCommandLine
 			NULL,             // lpProcessAttributes
@@ -865,7 +878,9 @@ ENTRY_POINT ()
 			&civ_proc_info    // lpProcessInformation
 			);
 		free (cmd_line);
+		REQUIRE (success, format ("Failed to start %s:\n%s", bin_file_name, get_last_error_str ()));
 		civ_proc = civ_proc_info.hProcess;
+		civ_thread = civ_proc_info.hThread;
 	}
 #else
 	{
@@ -1218,12 +1233,23 @@ ENTRY_POINT ()
 #endif
 
 #ifdef C3X_RUN
+#ifdef C3X_TEST_INJECTED_CODE_COMPILE
+	TerminateProcess (civ_proc_info.hProcess, 0);
+	CloseHandle (civ_proc_info.hProcess);
+	CloseHandle (civ_proc_info.hThread);
+	civ_proc = NULL;
+	civ_thread = NULL;
+	printf ("Injected code compiled successfully.\n");
+#else
 	ResumeThread (civ_proc_info.hThread);
 
 	WaitForSingleObject (civ_proc, INFINITE);
 	TerminateProcess (civ_proc_info.hProcess, 0);
 	CloseHandle (civ_proc_info.hProcess);
 	CloseHandle (civ_proc_info.hThread);
+	civ_proc = NULL;
+	civ_thread = NULL;
+#endif
 
 #else
 	// If about to overwrite the standard EXE, make a backup copy first

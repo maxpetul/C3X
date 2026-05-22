@@ -772,6 +772,12 @@ enum Unit_Command_Values
   UCV_Build_WonderDistrict = -10000002,
   UCV_Build_DistributionHub = -10000003,
   UCV_Build_Aerodrome = -10000004,
+  UCV_Build_Port = -10000005,
+  UCV_Build_CentralRailHub = -10000006,
+  UCV_Build_EnergyGrid = -10000007,
+  UCV_Build_Bridge = -10000008,
+  UCV_Build_Canal = -10000009,
+  UCV_Build_GreatWall = -10000010,
 };
 
 enum Unit_Mode_Actions
@@ -2687,14 +2693,14 @@ struct Unit_vtable
   int (__fastcall * eval_total_defense) (Unit *);
   byte (__fastcall * has_enough_escorters_present) (Unit *);
   void (__fastcall * check_escorter_health) (Unit *, __, byte *, byte *);
-  int m10;
+  int (__fastcall * pillage_if_ai_army) (Unit *, __, int, int);
   int m11;
   int m12;
   int (__fastcall * get_sea_id) (Unit *);
   byte (__fastcall * ai_is_good_army_addition) (Unit *, __, Unit *);
   byte (__fastcall * is_enemy_of_civ) (Unit *, __, int, byte);
   byte (__fastcall * is_enemy_of_unit) (Unit *, __, Unit *, int);
-  int m17;
+  void (__fastcall * upgrade_checking_ga_and_strat) (Unit *);
   int m18;
   int (__fastcall * Move) (Unit *, int, int, char);
   int (__fastcall * teleport) (Unit *, int, int, int, Unit *);
@@ -3082,7 +3088,7 @@ struct Base_Form_vtable
   int m24;
   int m25_Process_Mouse_Wheel;
   void (__fastcall * m26_on_mouse_hover) (Base_Form * this, __, int local_x, int local_y, int param_3);
-  int m27;
+  void (__fastcall * m27_process_mouse_hover) (Base_Form * this, __, int local_x, int local_y);
   int m28;
 //  void (__thiscall *m29_On_Left_Click)(Base_Form *, int, int);
   void *m29_On_Left_Click;
@@ -6046,12 +6052,29 @@ struct Main_GUI
   int field_13370;
   Base_Form Sub_Form_1;
   int field_138E8[392];
+
+  // 0. upper left
+  // 1. some upper right MP button?
+  // 2. flat-ish upper right box to the right of [1]
   RECT Rects1[3];
+
   RECT Mini_Map_Drag_Rect;
+
+  // 0. empty, not used?
+  // 1. top of button area left of minimap above 'G' button
+  // 2-9. tiny box stacked near upper right, must be for MP
   RECT Rects2[10];
+
   RECT Unit_Status_Rect;
   RECT Mini_Map_Click_Rect;
+
+  // 0. top two unit button rows
+  // 1. tall rect near the right edge of the screen
+  // 2. large box on the left edge of the screen below the menu buttons
+  // 3. large rectangle near the top right
+  // 4. large box upper left
   RECT Rects3[5];
+
   int field_14058[32];
   Sprite Images[252];
   Sprite Image2;
