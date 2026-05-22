@@ -21996,7 +21996,7 @@ int calc_max_visibility_range ()
 		struct unit_visibility_rule rule = is->current_config.unit_visibility_rule_list[i];
 		int unitsight = rule.base_visibility + max_bonus * rule.terrain_bonus_multiplier + rule.fortification_bonus;
 		
-		if (is->current_config.terrain_visibility.terrain_visibility_flat_bonus_can_stack) {
+		if (is->current_config.terrain_visibility_flat_bonus_can_stack) {
 			unitsight += is->current_config.terrain_visibility_flat_bonus_limit;
 		} else {
 			int altmax = rule.base_visibility + is->current_config.terrain_visibility_flat_bonus_limit + rule.fortification_bonus;
