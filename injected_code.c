@@ -2270,7 +2270,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				}
 
 				//Just default test values don't mind me
-				cfg->base_visibility_range = 5;
+				cfg->enable_alternate_view_distance_logic = false;
+				
+				cfg->base_visibility_range = 1;
 				cfg->terrain_visibility_see_height[0] = 1;
 				cfg->terrain_visibility_see_height[1] = 1;
 				cfg->terrain_visibility_see_height[2] = 1;
@@ -14722,6 +14724,8 @@ void map_tile_coords_to_abstract_coords(int * dx, int * dy, int reference_x, int
 
 int calc_max_visibility_range ()
 {
+	if (!is->current_config.enable_alternate_view_distance_logic)
+		return 3;
 	//Technically this calculates vanilla at 4 rather than 3 as expected in the binary.
 	//This is because a boat on a mountain would theoretically achieve this.
 	int max_bonus = 0;
@@ -14756,6 +14760,8 @@ int calc_max_visibility_range ()
 bool __fastcall
 deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 {
+	if (!is->current_config.enable_alternate_view_distance_logic)
+		return Unit_can_see_tile(this, edx, x, y);
 	int dist = Map_chebyshev_distance(&p_bic_data->Map, edx, this->Body.X, this->Body.Y, x, y);
 	if (dist >= 8) return false;
 	if (dist == 0) return true;
@@ -14832,9 +14838,10 @@ deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 		return false;
 	}
 
+	//Include radar!!
 	if (current_rules.fortification_bonus_continent_lock && fortification_bonus > 0) {
 		if (local_tile->vtable->m46_Get_ContinentID(local_tile) == seen_tile->vtable->m46_Get_ContinentID(seen_tile)) {
-			if (dist <= sightDistance && seen_type > 10)
+			if (dist <= sightDistance && seen_type > 10)//why am i hacking this so bad
 				return true;
 		}
 		//temp hack

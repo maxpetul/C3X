@@ -406,6 +406,7 @@ struct c3x_config {
 
 	bool enable_city_work_radii_highlights;
 
+	bool enable_alternate_view_distance_logic; //enable the whole system or not
 	int base_visibility_range; //should default to 1
 	int terrain_visibility_see_height[14]; //most tiles are 1, mountains+volcanoes are 2
 	int terrain_visibility_seen_height[14]; //most tiles are 0, forest+jungle are 1, hills are 2, mountains+volcanoes are 3
