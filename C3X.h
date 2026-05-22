@@ -11,7 +11,7 @@ typedef unsigned char byte;
 #include "Civ3Conquests.h"
 
 #define MOD_VERSION 2700
-#define MOD_PREVIEW_VERSION 2
+#define MOD_PREVIEW_VERSION 0
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -2279,6 +2279,9 @@ struct district_button_image_set {
 	Unit ** extra_capture_despawns;
 	int count_extra_capture_despawns;
 	int extra_capture_despawns_capacity;
+
+	// While Civilopedia_Article::m01_Draw_UNIT is running, this variable is set to the relevant unit type. Otherwise it's NULL.
+	UnitType * drawing_pedia_for_unit_type;
 
 	// ==========
 	// }
