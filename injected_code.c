@@ -2269,6 +2269,72 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					handle_config_error (&p, CPE_BAD_KEY);
 				}
 
+				//Just default test values don't mind me
+				cfg->base_visibility_range = 5;
+				cfg->terrain_visibility_see_height[0] = 1;
+				cfg->terrain_visibility_see_height[1] = 1;
+				cfg->terrain_visibility_see_height[2] = 1;
+				cfg->terrain_visibility_see_height[3] = 1;
+				cfg->terrain_visibility_see_height[4] = 1;
+				cfg->terrain_visibility_see_height[5] = 1;
+				cfg->terrain_visibility_see_height[6] = 2;
+				cfg->terrain_visibility_see_height[7] = 1;
+				cfg->terrain_visibility_see_height[8] = 1;
+				cfg->terrain_visibility_see_height[9] = 1;
+				cfg->terrain_visibility_see_height[10] = 2;
+				cfg->terrain_visibility_see_height[11] = 1;
+				cfg->terrain_visibility_see_height[12] = 1;
+				cfg->terrain_visibility_see_height[13] = 1;
+
+				cfg->terrain_visibility_seen_height[0] = 0;
+				cfg->terrain_visibility_seen_height[1] = 0;
+				cfg->terrain_visibility_seen_height[2] = 0;
+				cfg->terrain_visibility_seen_height[3] = 0;
+				cfg->terrain_visibility_seen_height[4] = 0;
+				cfg->terrain_visibility_seen_height[5] = 1;
+				cfg->terrain_visibility_seen_height[6] = 2;
+				cfg->terrain_visibility_seen_height[7] = 1;
+				cfg->terrain_visibility_seen_height[8] = 1;
+				cfg->terrain_visibility_seen_height[9] = 0;
+				cfg->terrain_visibility_seen_height[10] = 2;
+				cfg->terrain_visibility_seen_height[11] = 0;
+				cfg->terrain_visibility_seen_height[12] = 0;
+				cfg->terrain_visibility_seen_height[13] = 0;
+				
+				cfg->terrain_visibility_bonus[0] = 0;
+				cfg->terrain_visibility_bonus[1] = 0;
+				cfg->terrain_visibility_bonus[2] = 0;
+				cfg->terrain_visibility_bonus[3] = 0;
+				cfg->terrain_visibility_bonus[4] = 0;
+				cfg->terrain_visibility_bonus[5] = 1;
+				cfg->terrain_visibility_bonus[6] = 1;
+				cfg->terrain_visibility_bonus[7] = 0;
+				cfg->terrain_visibility_bonus[8] = 0;
+				cfg->terrain_visibility_bonus[9] = 0;
+				cfg->terrain_visibility_bonus[10] = 1;
+				cfg->terrain_visibility_bonus[11] = 0;
+				cfg->terrain_visibility_bonus[12] = 0;
+				cfg->terrain_visibility_bonus[13] = 0;
+				cfg->terrain_visibility_bonus_can_stack = false;
+
+				cfg->terrain_visibility_flat_bonus[0] = false;
+				cfg->terrain_visibility_flat_bonus[1] = false;
+				cfg->terrain_visibility_flat_bonus[2] = false;
+				cfg->terrain_visibility_flat_bonus[3] = false;
+				cfg->terrain_visibility_flat_bonus[4] = false;
+				cfg->terrain_visibility_flat_bonus[5] = false;
+				cfg->terrain_visibility_flat_bonus[6] = false;
+				cfg->terrain_visibility_flat_bonus[7] = false;
+				cfg->terrain_visibility_flat_bonus[8] = false;
+				cfg->terrain_visibility_flat_bonus[9] = false;
+				cfg->terrain_visibility_flat_bonus[10] = false;
+				cfg->terrain_visibility_flat_bonus[11] = true;
+				cfg->terrain_visibility_flat_bonus[12] = true;
+				cfg->terrain_visibility_flat_bonus[13] = true;
+				cfg->terrain_visibility_flat_bonus_limit = 1;
+				cfg->terrain_visibility_flat_bonus_can_stack = false;
+
+				cfg->c_unit_visibility_rules = 0;
 
 			} else { // Failed to parse value
 				handle_config_error (&p, CPE_BAD_VALUE);
@@ -10161,6 +10227,26 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	// Insert amount added to building decorruption effect just for the capital
 	WITH_MEM_PROTECTION (ADDR_ADD_CAPITAL_CORRUPTION_BUILDING_EFFECT, 3, PAGE_EXECUTE_READWRITE)
 		*(ADDR_ADD_CAPITAL_CORRUPTION_BUILDING_EFFECT + 2) = clamp (0, 100, cfg->special_capital_decorruption_effect);
+
+	int max_sight_range = calc_max_visibility_range();
+	int max_tile_iter = (2*max_sight_range+1)*(2*max_sight_range+1);
+	int max_tile_iter_2 = (2*max_sight_range-1)*(2*max_sight_range-1);
+	// Modify iterator limits for updating unit visibility
+	WITH_MEM_PROTECTION (ADDR_UNIT_VISIBILITY_RADIUS_1, 1, PAGE_EXECUTE_READWRITE) {
+		*ADDR_UNIT_VISIBILITY_RADIUS_1 = (byte)(max_tile_iter);
+	}
+	WITH_MEM_PROTECTION (ADDR_UNIT_VISIBILITY_RADIUS_2, 1, PAGE_EXECUTE_READWRITE) {
+		*ADDR_UNIT_VISIBILITY_RADIUS_2 = (byte)(max_tile_iter);
+	}
+	WITH_MEM_PROTECTION (ADDR_UNIT_VISIBILITY_RADIUS_3, 1, PAGE_EXECUTE_READWRITE) {
+		*ADDR_UNIT_VISIBILITY_RADIUS_3 = (byte)(max_tile_iter);
+	}
+	WITH_MEM_PROTECTION (ADDR_UNIT_TO_UNIT_VISIBILITY_RADIUS, 1, PAGE_EXECUTE_READWRITE) {
+		*ADDR_UNIT_TO_UNIT_VISIBILITY_RADIUS = (byte)(max_tile_iter);
+	}
+	WITH_MEM_PROTECTION (ADDR_CIV_UNIT_VISIBILITY_RADIUS, 1, PAGE_EXECUTE_READWRITE) {
+		*ADDR_CIV_UNIT_VISIBILITY_RADIUS = (byte)(max_tile_iter_2);
+	}
 }
 
 Sprite* 
@@ -14519,6 +14605,316 @@ patch_Unit_can_load (Unit * this, int edx, Unit * passenger)
 
 	is->can_load_transport = is->can_load_passenger = NULL;
 	return tr;
+}
+void error_message2(char* cstr, int num1, int num2, int num3)
+{
+	PopupForm * popup = get_popup_form ();
+	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "DEBUG_ERROR", -1, 0, 0, 0);
+	char s[200];
+	snprintf (s, sizeof s, cstr, num1, num2, num3);
+	s[(sizeof s) - 1] = '\0';
+	PopupForm_add_text (popup, __, s, false);
+	patch_show_popup (popup, __, 0, 0);
+}
+void error_message(char* cstr)
+{
+	error_message2(cstr, 0, 0, 0);
+}
+
+bool check_tile_heights_less_than(int tx1, int ty1, int tx2, int ty2, int height)
+{
+	Tile * inter_tile = tile_at(tx1, ty1);
+	enum SquareTypes inter_type = inter_tile->vtable->m50_Get_Square_BaseType (inter_tile);
+	if (inter_type < 0 || inter_type >= 14) {
+		error_message("invalid type 1");
+		return false; //Unhandled!!!
+	}
+	int inter_height = is->current_config.terrain_visibility_seen_height[inter_type];
+	if (inter_height < height) {
+		return true;
+	}
+	if (tx1 != tx2 || ty1 != ty2) {
+		inter_tile = tile_at(tx2, ty2);
+		inter_type = inter_tile->vtable->m50_Get_Square_BaseType (inter_tile);
+		if (inter_type < 0 || inter_type >= 14) {
+			error_message("invalid type 2");
+			return false; //Unhandled!!!
+		}
+
+		inter_height = is->current_config.terrain_visibility_seen_height[inter_type];
+		if (inter_height < height) {
+			return true;
+		}
+	}
+	return false;
+}
+void add_tile_flat_bonus(int * flat_bonus, int tx, int dx, int tx1, int ty1, int tx2, int ty2)
+{
+	if (*flat_bonus >= is->current_config.terrain_visibility_flat_bonus_limit) {
+		return;
+	}
+	int total_diff = int_abs(dx) - int_abs(tx);
+	if (total_diff > is->current_config.terrain_visibility_flat_bonus_limit) {
+		return;
+	}
+	Tile * inter_tile = tile_at(tx1, ty1);
+	enum SquareTypes inter_type = inter_tile->vtable->m50_Get_Square_BaseType (inter_tile);
+	if (inter_type < 0 || inter_type >= 14) {
+		error_message("invalid type 1");
+		return; //Unhandled!!!
+	}
+	if (is->current_config.terrain_visibility_flat_bonus[inter_type]) {
+		*flat_bonus += 1;
+		return;
+	}
+	if (tx1 != tx2 || ty1 != ty2) {
+		inter_tile = tile_at(tx2, ty2);
+		inter_type = inter_tile->vtable->m50_Get_Square_BaseType (inter_tile);
+		if (inter_type < 0 || inter_type >= 14) {
+			error_message("invalid type 2");
+			return; //Unhandled!!!
+		}
+		if (is->current_config.terrain_visibility_flat_bonus[inter_type]) {
+			*flat_bonus += 1;
+			return;
+		}
+	}
+	return;
+}
+
+void map_abstract_coords_to_tile_coords(int * dx, int * dy, int reference_x, int reference_y)
+{
+	int tx = *dx-*dy + reference_x;
+	int ty = *dy+*dx + reference_y;
+	wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
+	*dx = tx;
+	*dy = ty;
+	/**dx = *dx + reference_x;
+	*dy = *dy + reference_y;*/
+}
+void map_tile_coords_to_abstract_coords(int * dx, int * dy, int reference_x, int reference_y)
+{
+	int diffx = *dx-reference_x;
+	int diffy = *dy-reference_y;
+	Map * map = &p_bic_data->Map;
+	if (map->Flags & 1) {
+		if (diffx < -(map->Width/2)) {
+			diffx += map->Width;
+		} else if (diffx > (map->Width/2)) {
+			diffx -= map->Width;
+		}
+	}
+	if (map->Flags & 2) {
+		if (diffy < -(map->Height/2)) {
+			diffy += map->Height;
+		} else if (diffy > (map->Height/2)) {
+			diffy -= map->Height;
+		}
+	}
+	int ax = (diffx + diffy)/2;
+	int ay = (diffy - diffx)/2;
+	//maybe minimise somehow
+	*dx = ax;
+	*dy = ay;
+	/**dx = *dx - reference_x;
+	*dy = *dy - reference_y;*/
+}
+
+int calc_max_visibility_range ()
+{
+	//Technically this calculates vanilla at 4 rather than 3 as expected in the binary.
+	//This is because a boat on a mountain would theoretically achieve this.
+	int max_bonus = 0;
+	for (int i=0; i<14; i++) {
+		int bonus = is->current_config.terrain_visibility_bonus[i];
+		if (bonus > max_bonus) max_bonus = bonus;
+	}
+	if (is->current_config.terrain_visibility_bonus_can_stack)
+		max_bonus *= 2;
+
+	int max = is->current_config.base_visibility_range + max_bonus;
+	for (int i=0; i<is->current_config.c_unit_visibility_rules; i++) {
+		struct unit_visibility_rule rule = is->current_config.unit_visibility_rule_list[i];
+		int unitsight = rule.base_visibility + max_bonus * rule.terrain_bonus_multiplier + rule.fortification_bonus;
+		
+		if (is->current_config.terrain_visibility.terrain_visibility_flat_bonus_can_stack) {
+			unitsight += is->current_config.terrain_visibility_flat_bonus_limit;
+		} else {
+			int altmax = rule.base_visibility + is->current_config.terrain_visibility_flat_bonus_limit + rule.fortification_bonus;
+			if (altmax > unitsight)
+				unitsight = altmax;
+		}
+		if (unitsight > max) max = unitsight;
+	}
+
+	if (max < 0) max = 0;
+	if (max > 7) max = 7;
+	//Limited to 7. 7*2+1 = 15; 15*15 = 225; largest value in one byte.
+	return max;
+}
+
+bool __fastcall
+deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
+{
+	int dist = Map_chebyshev_distance(&p_bic_data->Map, edx, this->Body.X, this->Body.Y, x, y);
+	if (dist >= 8) return false;
+	if (dist == 0) return true;
+
+	struct unit_visibility_rule current_rules;
+	current_rules.base_visibility = is->current_config.base_visibility_range;
+	current_rules.terrain_bonus_multiplier = 1;
+	current_rules.fortification_bonus = 0;
+	current_rules.fortification_bonus_continent_lock = false;
+
+	for (int i=0; i<is->current_config.c_unit_visibility_rules; i++) {
+		struct unit_visibility_rule rule = is->current_config.unit_visibility_rule_list[i];
+		if (rule.unit_id > 0) {
+			if (rule.unit_id == this->Body.UnitTypeID) {
+				current_rules = rule;
+				break;
+			}
+		} else {
+			UnitType const * unit_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+			if (rule.unit_class == unit_type->Unit_Class) {
+				current_rules = rule;
+				break;
+			}
+		}
+	}
+	//temp hack
+	UnitType const * unit_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+	if (unit_type->Unit_Class == 1) {
+		current_rules.fortification_bonus = 2;
+		current_rules.fortification_bonus_continent_lock = true;
+	}
+
+	Tile * local_tile = tile_at(this->Body.X, this->Body.Y);
+	Tile * seen_tile = tile_at(x, y);
+
+	int fortification_bonus;
+	if (this->Body.UnitState == 1) {
+		fortification_bonus = current_rules.fortification_bonus;
+	} else {
+		fortification_bonus = 0;
+	}
+	enum SquareTypes local_type = local_tile->vtable->m50_Get_Square_BaseType (local_tile);
+	if (local_type < 0 || local_type >= 14) {
+		error_message("invalid type 3");
+		return false; //Unhandled!!!
+	}
+	enum SquareTypes seen_type = seen_tile->vtable->m50_Get_Square_BaseType (seen_tile);
+	if (seen_type < 0 || seen_type >= 14) {
+		error_message("invalid type 3");
+		return false; //Unhandled!!!
+	}
+	int height_local = is->current_config.terrain_visibility_see_height[local_type];
+	int height_seen = is->current_config.terrain_visibility_see_height[seen_type];
+	int height_for_occlusion = height_local;
+	if (height_local >= height_seen) {
+		height_for_occlusion = height_local;
+	} else {
+		height_for_occlusion = height_seen;
+	}
+
+	int bonus_local = is->current_config.terrain_visibility_bonus[local_type];
+	int bonus_seen = is->current_config.terrain_visibility_bonus[seen_type];
+	int bonus_range;
+	if (is->current_config.terrain_visibility_bonus_can_stack) {
+		bonus_range = (bonus_seen+bonus_local) * current_rules.terrain_bonus_multiplier;
+	} else if (bonus_local >= bonus_seen) {
+		bonus_range = bonus_local * current_rules.terrain_bonus_multiplier;
+	} else {
+		bonus_range = bonus_seen * current_rules.terrain_bonus_multiplier;
+	}
+	int sightDistance = current_rules.base_visibility + bonus_range + fortification_bonus;
+
+	if (dist > sightDistance + is->current_config.terrain_visibility_flat_bonus_limit) {
+		return false;
+	}
+
+	if (current_rules.fortification_bonus_continent_lock && fortification_bonus > 0) {
+		if (local_tile->vtable->m46_Get_ContinentID(local_tile) == seen_tile->vtable->m46_Get_ContinentID(seen_tile)) {
+			if (dist <= sightDistance && seen_type > 10)
+				return true;
+		}
+		//temp hack
+		sightDistance -= 2;
+	}
+
+	int flat_bonus = 0;
+
+	int dx = x;
+	int dy = y;
+	map_tile_coords_to_abstract_coords(&dx, &dy, this->Body.X, this->Body.Y);
+	int absdx = int_abs(dx);
+	int absdy = int_abs(dy);
+	if (absdx >= absdy && dx != 0) {
+		int tx = 0;
+		while (tx != dx) {
+			if (tx < dx)	tx++; else tx--;
+			if (tx == dx) break;
+			int ty1;
+			int ty2;
+			if (dx * dy >= 0) {
+				ty1 = (2 * tx * dy + absdx)/(2 * dx);
+				ty2 = (2 * tx * dy + absdx - 1)/(2 * dx);
+			} else {
+				ty1 = -(-2 * tx * dy + absdx)/(2 * dx);
+				ty2 = -(-2 * tx * dy + absdx - 1)/(2 * dx);
+			}
+			int tx1 = tx;
+			int tx2 = tx;
+			map_abstract_coords_to_tile_coords(&tx1, &ty1, this->Body.X, this->Body.Y);
+			map_abstract_coords_to_tile_coords(&tx2, &ty2, this->Body.X, this->Body.Y);
+			if (!check_tile_heights_less_than(tx1, ty1, tx2, ty2, height_for_occlusion)) {
+				return false;
+			}
+			add_tile_flat_bonus(&flat_bonus, tx, dx, tx1, ty1, tx2, ty2);
+		}
+	} else if (absdy >= absdx && dy != 0) {
+		int ty = 0;
+		while (ty != dy) {
+			if (ty < dy)	ty++; else ty--;
+			if (ty == dy) break;
+			int tx1;
+			int tx2;
+			if (dx * dy >= 0) {
+				tx1 = (2 * ty * dx + absdy)/(2 * dy);
+				tx2 = (2 * ty * dx + absdy - 1)/(2 * dy);
+			} else {
+				tx1 = -(-2 * ty * dx + absdy)/(2 * dy);
+				tx2 = -(-2 * ty * dx + absdy - 1)/(2 * dy);
+			}
+			int ty1 = ty;
+			int ty2 = ty;
+			map_abstract_coords_to_tile_coords(&tx1, &ty1, this->Body.X, this->Body.Y);
+			map_abstract_coords_to_tile_coords(&tx2, &ty2, this->Body.X, this->Body.Y);
+			if (!check_tile_heights_less_than(tx1, ty1, tx2, ty2, height_for_occlusion)) {
+				return false;
+			}
+			add_tile_flat_bonus(&flat_bonus, ty, dy, tx1, ty1, tx2, ty2);
+			//we could exit check each tile but it's a bit much work
+		}
+	}
+	if (is->current_config.terrain_visibility_flat_bonus_can_stack) {
+		sightDistance += flat_bonus;
+	} else {
+		int flatsight = current_rules.base_visibility + fortification_bonus + flat_bonus;
+		if (flatsight > sightDistance)
+			sightDistance = flatsight;
+	}
+	return dist <= sightDistance;
+}
+
+bool __fastcall
+patch_Unit_can_see_tile (Unit * this, int edx, int x, int y)
+{
+	//bool vanilla = Unit_can_see_tile(this, edx, x, y);
+	bool modded = deferred_Unit_can_see_tile(this, edx, x, y);
+	//if (vanilla != modded) {
+	//	error_message2("behaviour mismatch! %d %d %d", x, y, vanilla?1:0);
+	//}
+	return modded;
 }
 
 void __fastcall

@@ -81,6 +81,16 @@ struct work_area_improvement {
 	int work_area_radius_bonus;
 };
 
+struct unit_visibility_rule {
+	int unit_id;
+	enum UnitTypeClasses unit_class;
+
+	int base_visibility;
+	int terrain_bonus_multiplier;
+	int fortification_bonus;
+	bool fortification_bonus_continent_lock;
+};
+
 enum retreat_rules {
 	RR_STANDARD = 0,
 	RR_NONE,
@@ -395,6 +405,18 @@ struct c3x_config {
 	bool ai_defends_districts;
 
 	bool enable_city_work_radii_highlights;
+
+	int base_visibility_range; //should default to 1
+	int terrain_visibility_see_height[14]; //most tiles are 1, mountains+volcanoes are 2
+	int terrain_visibility_seen_height[14]; //most tiles are 0, forest+jungle are 1, hills are 2, mountains+volcanoes are 3
+	int terrain_visibility_bonus[14]; //most tiles are 0, hills+mountains+volcanoes are 1
+	bool terrain_visibility_bonus_can_stack; //whether seeing hills and being on a hill provides double the bonus
+	bool terrain_visibility_flat_bonus[14]; //water tiles provide height bonus to tiles being seen across them [ie +2] / adjacent tiles always seen
+	int terrain_visibility_flat_bonus_limit; //maximum size of the flat bonus, in tiles
+	bool terrain_visibility_flat_bonus_can_stack; //whether flat bonus and regular bonus can both apply at once
+	struct unit_visibility_rule * unit_visibility_rule_list; //should default to naval unit type has +1 range in fortification with continent lock
+	int c_unit_visibility_rules;
+	//tiles blocked by obstructions are visible if *either* intermediate tile is not blocking in height.
 };
 
 enum stackable_command {
