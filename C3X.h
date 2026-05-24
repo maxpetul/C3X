@@ -735,6 +735,11 @@ enum district_ai_build_strategy {
 	DABS_TILE_IMPROVEMENT = 1
 };
 
+enum district_type {
+	DT_DISTRICT = 0,
+	DT_TILE_IMPROVEMENT = 1
+};
+
 struct district_config {
 	enum Unit_Command_Values command;
 	char const * name;
@@ -763,12 +768,15 @@ struct district_config {
 	bool vary_img_by_culture;
 	enum district_render_strategy render_strategy;
 	enum district_ai_build_strategy ai_build_strategy;
+	enum district_type type;
 	bool is_dynamic;
 	bool align_to_coast;
 	bool draw_over_resources;
+	bool subsumes_tile_resource;
 	bool allow_irrigation_from;
 	bool auto_add_road;
 	bool auto_add_railroad;
+	bool consumes_worker;
 	int custom_width;
 	int custom_height;
 	int x_offset;
@@ -1059,11 +1067,14 @@ struct parsed_district_definition {
 	bool vary_img_by_culture;
 	enum district_render_strategy render_strategy;
 	enum district_ai_build_strategy ai_build_strategy;
+	enum district_type type;
 	bool align_to_coast;
 	bool draw_over_resources;
+	bool subsumes_tile_resource;
 	bool allow_irrigation_from;
 	bool auto_add_road;
 	bool auto_add_railroad;
+	bool consumes_worker;
 	bool impassable;
 	bool impassable_to_wheeled;
 	int custom_width;
@@ -1114,8 +1125,10 @@ struct parsed_district_definition {
 	bool has_vary_img_by_culture;
 	bool has_render_strategy;
 	bool has_ai_build_strategy;
+	bool has_type;
 	bool has_align_to_coast;
 	bool has_draw_over_resources;
+	bool has_subsumes_tile_resource;
 	bool has_custom_width;
 	bool has_custom_height;
 	bool has_x_offset;
@@ -1163,6 +1176,7 @@ struct parsed_district_definition {
 	bool has_allow_irrigation_from;
 	bool has_auto_add_road;
 	bool has_auto_add_railroad;
+	bool has_consumes_worker;
 	bool has_impassable;
 	bool has_impassable_to_wheeled;
 };
