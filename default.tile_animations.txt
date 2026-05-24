@@ -1,0 +1,173 @@
+[======================================================================= NOTE =======================================================================]
+[Instead of editing this file, changes to the settings should be placed in either the scenario or user config files. The scenario config file must   ]
+[be named scenario.tile_animations.txt and must be located in your scenario search folder. Of course it only applies if you are using a scenario.    ]
+[The user config file must be named user.tile_animations.txt and located in the C3X folder, which is the folder where this file is. When creating    ]
+[scenario or user configs, note that all tile animations defined here will be removed and only your scenario or user-defined animations will be used ]
+[====================================================================================================================================================]
+
+[
+  ;  Tile Animation config fields (each Animation block begins with "#Animation")
+  ;  - name                     : Text (required). Internal animation name; must be unique.
+  ;  - ini_path                 : INI filename under Art/Animations/ (required).
+  ;  - type                     : Text (required). "terrain", "resource", "pcx", or "coastal-wave".
+  ;                               - terrain: animation can appear on matching terrain tiles.
+  ;                               - resource: animation replaces the static resource PCX draw on matching resource tiles.
+  ;                               - pcx: animation appears on tiles where a specific map sprite sheet/index is actually drawn.
+  ;                               - coastal-wave: animation appears on coast tiles and auto-computes its facing from diagonal coastline shape.
+  ;  - resource_type            : Text. Resource name. Required if type = resource.
+  ;  - pcx_file                 : Text. Required if type = pcx. Use the exact Civ3 Art\Terrain filename. Supported values:
+  ;                                 deltaRivers.pcx
+  ;                                 floodplains.pcx
+  ;                                 LMHills.pcx
+  ;                                 Mountains.pcx
+  ;                                 Mountains-snow.pcx
+  ;                                 mtnRivers.pcx
+  ;                                 Volcanos.pcx
+  ;                                 Volcanos-snow.pcx
+  ;                                 waterfalls.pcx
+  ;                                 xhills.pcx
+  ;  - pcx_index                : Integer. Required if type = pcx.
+  ;                               These are zero-based, so the first image is index 0, second is 1, etc.
+  ;                               How to find index from visual order (top-left=0, then row-major):
+  ;                                 - default: pcx_index = visual_index
+  ;                                 - deltaRivers.pcx & mtnRivers.pcx: these are combined within the game and may take trial-and-error to find index.
+  ;  - terrain_types            : Comma-delimited terrain types. Required if type = terrain.
+  ;                               Valid values: desert, plains, grassland, jungle, tundra, floodplain, swamp, hills, mountains,
+  ;                                             forest, volcano, snow-forest, snow-mountains, snow-volcano, coast, sea, ocean, land
+  ;                               Singular/plural forms are both accepted (for example, volcano/volcanoes).
+  ;                               "land" means any non-water tile.
+  ;  - adjacent_to              : Text. Optional adjacency requirements.
+  ;                               Comma-delimited values using:
+  ;                                 <terrain_or_land>
+  ;                               or
+  ;                                 <terrain_or_land>:<direction>
+  ;                               Direction values: northeast, east, southeast, south, southwest, west, northwest, north
+  ;                               Example: tundra:northwest, desert:southwest
+  ;  - direction                : Text. Optional animation facing override. Valid values: northeast, east, southeast, south, southwest, west, northwest, north 
+  ;  - x_offset                 : Integer. Optional horizontal pixel offset after centering (positive moves right).
+  ;  - y_offset                 : Integer. Optional vertical pixel offset after centering (positive moves down).
+  ;  - frame_time_seconds       : Float. Optional playback frame time. Lower values animate faster. (default: 0.15)
+  ;  - show_in_day_night_hours  : Comma-delimited numbers [0..23] and/or inclusive ranges like 6-17.
+  ;                               Optional allowed day/night cycle hours. Example: 0-5,19-23
+  ;  - show_in_seasons          : Comma-delimited seasons. Optional allowed seasons: spring, summer, fall, winter.
+  ;
+  ;  Note: A given tile can have multiple potential animations, depending on the configuration and whether a tile
+  ;        has certain resources, the time of day, season, and so on. Determining which to show is done by scoring 
+  ;        system with the following rules:
+  ;  
+  ;        1. Resource > Natural Wonder > PCX > Terrain > Coastal Wave
+  ;        2. If two candidate animations are tied, the one with seasons and/or day-night hours specified takes precedence.
+  ;        3. If still tied, whichever animation appears last takes precedence.
+]
+
+#Animation
+name                    = Wave
+ini_path                = Terrain\Wave\Wave.INI
+type                    = coastal-wave
+show_in_day_night_hours = 7-17
+
+#Animation
+name                    = Wave_night
+ini_path                = Terrain\Wave\Wave_night.INI
+type                    = coastal-wave
+show_in_day_night_hours = 18-6
+
+#Animation
+name                    = Snow
+ini_path                = Terrain\Snow\Snow.INI
+type                    = terrain
+terrain_types           = mountains, snow-mountains, volcanoes, snow-volcanoes
+show_in_seasons         = winter
+show_in_day_night_hours = 7-17
+
+#Animation
+name                    = Whales
+ini_path                = Resources\Whale\Whale.INI
+type                    = resource
+resource_type           = Whales
+
+#Animation
+name                    = Deer
+ini_path                = Resources\Deer\Deer.INI
+type                    = resource
+resource_type           = Game
+direction               = southwest
+y_offset                = -12
+frame_time_seconds      = 0.14
+show_in_day_night_hours = 7-17
+
+#Animation
+name                    = Deer_night
+ini_path                = Resources\Deer\Deer_night.INI
+type                    = resource
+resource_type           = Game
+direction               = southwest
+y_offset                = -12
+frame_time_seconds      = 0.14
+show_in_day_night_hours = 18-6
+
+#Animation
+name                    = Cattle
+;ini_path                = Resources\MilkCow\MilkCow.INI
+ini_path                = Resources\Cow\black_and_white_cow.INI
+type                    = resource
+resource_type           = Cattle
+direction               = southeast
+frame_time_seconds      = 0.2
+show_in_day_night_hours = 7-17
+
+#Animation
+name                    = Cattle_night
+ini_path                = Resources\MilkCow\MilkCow_night.INI
+type                    = resource
+resource_type           = Cattle
+direction               = southeast
+show_in_day_night_hours = 18-6
+
+#Animation
+name                    = Horses
+ini_path                = Resources\HorsePainted\HorsePainted.INI
+type                    = resource
+resource_type           = Horses
+direction               = southeast
+show_in_day_night_hours = 7-17
+
+#Animation
+name                    = Horses_night
+ini_path                = Resources\HorsePainted\HorsePainted_night.INI
+type                    = resource
+resource_type           = Horses
+direction               = southeast
+show_in_day_night_hours = 18-6
+
+#Animation
+name                    = Ivory
+ini_path                = Resources\Elephant\Elephant.ini
+type                    = resource
+resource_type           = Ivory
+direction               = southwest
+frame_time_seconds      = 0.17
+show_in_day_night_hours = 7-17
+
+#Animation
+name                    = Fish
+ini_path                = Resources\Fish\Fish.INI
+type                    = resource
+resource_type           = Fish
+direction               = southeast
+show_in_day_night_hours = 7-17
+frame_time_seconds      = 0.13
+y_offset                = -20
+x_offset                = -15
+
+;===Example PCX animation of river segment===
+;#Animation
+;name                    = DeltaRivers_12
+;ini_path                = Terrain\DeltaRivers\DeltaRivers_12.INI
+;type                    = pcx
+;pcx_file                = deltaRivers.pcx
+;pcx_index               = 12
+;y_offset                = 12
+;x_offset                = -65
+;show_in_day_night_hours = 7-17
+;frame_time_seconds      = 0.15
