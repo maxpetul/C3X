@@ -229,6 +229,7 @@ bool find_civ_trait_id_by_name (struct string_slice const * name, int * out_id);
 bool find_civ_culture_id_by_name (struct string_slice const * name, int * out_id);
 Tile * find_tile_for_district (City * city, int district_id, int * out_x, int * out_y);
 struct district_instance * get_district_instance (Tile * tile);
+bool district_instance_get_coords (struct district_instance * inst, Tile * tile, int * out_x, int * out_y);
 struct named_tile_entry * get_named_tile_entry (Tile * tile);
 bool city_has_required_district (City * city, int district_id);
 bool district_is_complete (Tile * tile, int district_id);
@@ -257,8 +258,19 @@ bool tile_has_matching_resource_animation_for_draw (Tile * tile, int tile_x, int
 bool tile_has_matching_resource_animation_for_draw_with_resource (Tile * tile, int tile_x, int tile_y, int resource_id, int * out_effect_id);
 void tile_animation_scheduler_tick ();
 void rebuild_tile_animation_rule_match_cache ();
+void free_tile_animation_selected_matrix ();
+void clear_tile_animation_pcx_sprite_lookup ();
+void refresh_tile_animation_pcx_rule_mask ();
 void __fastcall patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effect, int tile_x, int tile_y, bool randomize_start_frame, enum direction dummy_dir);
 void reset_tile_animation_runtime_state ();
+void trigger_tile_destruct_animation (int tile_x, int tile_y, int trigger);
+void spawn_selected_tile_animation_for_tile (int tile_x, int tile_y, bool destruct_only);
+void clear_tile_destruct_animation (int tile_x, int tile_y);
+void refresh_tile_animation_selection_for_tile (int tile_x, int tile_y);
+void age_tile_destruct_animations ();
+void ensure_tile_destruct_animation_ages ();
+bool tile_has_destruct_animation_age (int tile_index, int age);
+bool tile_has_any_destruct_animation_age (int tile_index);
 bool tile_animation_matches_time_filters (struct tile_animation_config const * cfg);
 bool tile_animation_cache_needs_rebuild ();
 void clear_tile_animation_pcx_matches_in_cache ();
@@ -266,8 +278,12 @@ void register_tile_animation_pcx_draw_for_current_tile (Sprite * sprite);
 void rebuild_tile_animation_pcx_sprite_lookup ();
 void refresh_tile_animation_pcx_active_mask ();
 int pick_tile_animation_winner_for_tile (unsigned int * tile_mask);
+int get_tile_animation_type_priority (enum tile_animation_type type);
 bool parse_tile_animation_hour_list (struct string_slice const * value, unsigned int * out_mask);
 bool parse_tile_animation_season_list (struct string_slice const * value, unsigned int * out_mask);
+bool parse_tile_animation_culture_group_list (struct string_slice const * value, unsigned int * out_mask);
+bool parse_tile_animation_era_list (struct string_slice const * value, unsigned int * out_mask);
+bool parse_natural_wonder_animation_entry (struct string_slice const * value, struct natural_wonder_animation_config * out_cfg);
 struct tile_animation_config * get_tile_animation_for_effect (int effect_id);
 
 struct pause_for_popup {
@@ -2537,6 +2553,16 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_defensive_bombard_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "show_tile_destruct_animation_after")) {
+					struct parsable_field_bit bits[] = {
+						{"bombard", TDAT_BOMBARD},
+						{"pillage", TDAT_PILLAGE},
+						{"bomb"   , TDAT_BOMB},
+					};
+					struct string_slice trimmed = trim_string_slice (&value, 1);
+					if (slice_matches_str (&trimmed, "all") ||
+					    (! read_bit_field (&value, bits, ARRAY_LEN (bits), &cfg->show_tile_destruct_animation_after)))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_zone_of_control_rules")) {
 					struct parsable_field_bit bits[] = {
 						{"lethal"         , SZOCR_LETHAL},
@@ -2968,8 +2994,12 @@ remove_district_instance (Tile * tile)
 
 	struct district_instance * inst = get_district_instance (tile);
 	if (inst != NULL) {
+		int tile_x = -1, tile_y = -1;
+		bool has_coords = district_instance_get_coords (inst, tile, &tile_x, &tile_y);
 		free (inst);
 		itable_remove (&is->district_tile_map, (int)tile);
+		if (has_coords)
+			refresh_tile_animation_selection_for_tile (tile_x, tile_y);
 	}
 }
 
@@ -6536,6 +6566,7 @@ district_is_complete(Tile * tile, int district_id)
 		char ss[200];
 		snprintf (ss, sizeof ss, "District %d completed at tile (%d,%d)\n", district_id, tile_x, tile_y);
 		(*p_OutputDebugStringA) (ss);
+		refresh_tile_animation_selection_for_tile (tile_x, tile_y);
 
 		if (cfg->subsumes_tile_resource && is->trade_net != NULL)
 			patch_Trade_Net_recompute_resources (is->trade_net, __, false);
@@ -7347,6 +7378,41 @@ move_bonus_entry_list (struct district_bonus_list * dest,
 }
 
 void
+free_animation_config_entries (struct natural_wonder_animation_config * animations, int * animation_count)
+{
+	if ((animations == NULL) || (animation_count == NULL))
+		return;
+
+	for (int i = 0; i < *animation_count; i++) {
+		if (animations[i].ini_path != NULL) {
+			free ((void *)animations[i].ini_path);
+			animations[i].ini_path = NULL;
+		}
+	}
+	*animation_count = 0;
+}
+
+void
+move_animation_config_entries (struct natural_wonder_animation_config * dest,
+			       int * dest_count,
+			       struct natural_wonder_animation_config * src,
+			       int * src_count,
+			       int dest_capacity)
+{
+	if ((dest == NULL) || (dest_count == NULL) || (src == NULL) || (src_count == NULL))
+		return;
+
+	*dest_count = *src_count;
+	if (*dest_count > dest_capacity)
+		*dest_count = dest_capacity;
+	for (int i = 0; i < *dest_count; i++) {
+		dest[i] = src[i];
+		src[i].ini_path = NULL;
+	}
+	*src_count = 0;
+}
+
+void
 free_dynamic_district_config (struct district_config * cfg)
 {
 	if (cfg == NULL)
@@ -7471,6 +7537,7 @@ free_dynamic_district_config (struct district_config * cfg)
 	free_bonus_entry_list (&cfg->shield_bonus_extras);
 	free_bonus_entry_list (&cfg->happiness_bonus_extras);
 	free_bonus_entry_list (&cfg->defense_bonus_extras);
+	free_animation_config_entries (cfg->animations, &cfg->animation_count);
 
 	memset (cfg, 0, sizeof *cfg);
 }
@@ -7536,13 +7603,7 @@ free_dynamic_natural_wonder_config (struct natural_wonder_district_config * cfg)
 		free ((void *)cfg->img_path);
 		cfg->img_path = NULL;
 	}
-	for (int i = 0; i < cfg->animation_count; i++) {
-		if (cfg->animations[i].ini_path != NULL) {
-			free ((void *)cfg->animations[i].ini_path);
-			cfg->animations[i].ini_path = NULL;
-		}
-	}
-	cfg->animation_count = 0;
+	free_animation_config_entries (cfg->animations, &cfg->animation_count);
 
 	memset (cfg, 0, sizeof *cfg);
 	cfg->adjacent_to = (enum SquareTypes)SQ_INVALID;
@@ -7700,6 +7761,7 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 	free_bonus_entry_list_override (&cfg->shield_bonus_extras, &defaults->shield_bonus_extras);
 	free_bonus_entry_list_override (&cfg->happiness_bonus_extras, &defaults->happiness_bonus_extras);
 	free_bonus_entry_list_override (&cfg->defense_bonus_extras, &defaults->defense_bonus_extras);
+	free_animation_config_entries (cfg->animations, &cfg->animation_count);
 }
 
 void
@@ -7913,6 +7975,7 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 	free_bonus_entry_list (&def->shield_bonus_extras);
 	free_bonus_entry_list (&def->happiness_bonus_extras);
 	free_bonus_entry_list (&def->defense_bonus_extras);
+	free_animation_config_entries (def->animations, &def->animation_count);
 
 	init_parsed_district_definition (def);
 }
@@ -8738,6 +8801,12 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		free_bonus_entry_list_override (&cfg->happiness_bonus_extras, &defaults->happiness_bonus_extras);
 		move_bonus_entry_list (&cfg->happiness_bonus_extras, &def->happiness_bonus_extras);
 	}
+	if (def->animation_count > 0) {
+		free_animation_config_entries (cfg->animations, &cfg->animation_count);
+		move_animation_config_entries (cfg->animations, &cfg->animation_count,
+					       def->animations, &def->animation_count,
+					       ARRAY_LEN (cfg->animations));
+	}
 	if (def->has_buildable_on)
 		cfg->buildable_square_types_mask = def->buildable_square_types_mask;
 	if (def->has_buildable_adjacent_to) {
@@ -9041,6 +9110,10 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		move_bonus_entry_list (&new_cfg.happiness_bonus_extras, &def->happiness_bonus_extras);
 	if (def->has_defense_bonus_percent)
 		move_bonus_entry_list (&new_cfg.defense_bonus_extras, &def->defense_bonus_extras);
+
+	move_animation_config_entries (new_cfg.animations, &new_cfg.animation_count,
+				       def->animations, &def->animation_count,
+				       ARRAY_LEN (new_cfg.animations));
 
 	if (def->has_generated_resource) {
 		new_cfg.generated_resource = def->generated_resource;
@@ -9727,6 +9800,17 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->has_impassable_to_wheeled = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "animation")) {
+		if (def->animation_count >= ARRAY_LEN (def->animations))
+			add_key_parse_error (parse_errors, line_number, key, value, "(too many animations for one district)");
+		else {
+			struct natural_wonder_animation_config anim = {0};
+			if (parse_natural_wonder_animation_entry (value, &anim))
+				def->animations[def->animation_count++] = anim;
+			else
+				add_key_parse_error (parse_errors, line_number, key, value, "(expected \"ini:<path>; hours:<0..23 list>; seasons:<season list>; cultures:<culture list>; eras:<era list>\")");
+		}
 
 	} else if (slice_matches_str (key, "custom_width")) {
 		struct string_slice val_slice = *value;
@@ -11087,6 +11171,16 @@ parse_natural_wonder_animation_entry (struct string_slice const * value,
 						ok = parse_tile_animation_season_list (&v, &mask);
 						if (ok)
 							out_cfg->season_mask = mask;
+					} else if (slice_matches_str (&k, "cultures") || slice_matches_str (&k, "culture")) {
+						unsigned int mask = 0;
+						ok = parse_tile_animation_culture_group_list (&v, &mask);
+						if (ok)
+							out_cfg->culture_group_mask = mask;
+					} else if (slice_matches_str (&k, "eras") || slice_matches_str (&k, "era")) {
+						unsigned int mask = 0;
+						ok = parse_tile_animation_era_list (&v, &mask);
+						if (ok)
+							out_cfg->era_mask = mask;
 					} else if (slice_matches_str (&k, "direction")) {
 						enum direction dir = DIR_ZERO;
 						ok = read_direction_value (&v, &dir);
@@ -15385,6 +15479,7 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 		tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, center_x, center_y);
 		tile->vtable->m60_Set_Ruins (tile, __, 1);
 	}
+	refresh_tile_animation_selection_for_tile (center_x, center_y);
 	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 }
 
@@ -18489,6 +18584,7 @@ patch_init_floating_point ()
 		{"elapsed_minutes_per_day_night_hour_transition"     ,     3,  offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
 		{"fixed_hours_per_turn_for_day_night_cycle"          ,     1,  offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
 		{"pinned_hour_for_day_night_cycle"                   ,     0,  offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
+		{"show_tile_destruction_animation_for_turns"         ,     2,  offsetof (struct c3x_config, show_tile_destruction_animation_for_turns)},
 		{"elapsed_minutes_per_season_transition"             ,     3,  offsetof (struct c3x_config, elapsed_minutes_per_season_transition)},
 		{"fixed_turns_per_season"                            ,     3,  offsetof (struct c3x_config, fixed_turns_per_season)},
 		{"transition_season_on_day_night_hour"               ,     0,  offsetof (struct c3x_config, transition_season_on_day_night_hour)},
@@ -18588,6 +18684,7 @@ patch_init_floating_point ()
 	base_config.ai_distribution_hub_build_strategy = ADHBS_BY_CITY_COUNT;
 	base_config.ai_auto_build_great_wall_strategy = AAGWS_ALL_BORDERS;
 	base_config.great_wall_auto_build_wonder_improv_id = -1;
+	base_config.show_tile_destruct_animation_after = TDAT_BOMBARD | TDAT_PILLAGE | TDAT_BOMB;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)
@@ -18795,6 +18892,7 @@ patch_init_floating_point ()
 	is->day_night_cycle_img_proxies_indexed = false;
 	is->day_night_sprite_proxy_by_season_and_hour = NULL;
 	is->cycle_imgs = NULL;
+	is->tile_destruct_animation_ages = NULL;
 	is->tile_animation_pcx_sprite_lookup = (struct table) {0};
 	is->tile_animation_pcx_rule_key_to_index = (struct table) {0};
 	is->tile_animation_pcx_rule_key_count = 0;
@@ -19262,16 +19360,20 @@ patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 {
 	Tile * target_tile = NULL;
 	bool had_district_before = false;
+	unsigned int overlays_before = 0;
 	int tile_x = x;
 	int tile_y = y;
 	struct district_instance * inst;
 
-	if (is->current_config.enable_districts) {
+	if (is->current_config.enable_districts || is->current_config.enable_custom_animations) {
 		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 		target_tile = tile_at (tile_x, tile_y);
 		if ((target_tile != NULL) && (target_tile != p_null_tile)) {
-            inst = get_district_instance (target_tile);
-            had_district_before = (inst != NULL);
+			overlays_before = target_tile->vtable->m42_Get_Overlays (target_tile, __, 0);
+			if (is->current_config.enable_districts) {
+				inst = get_district_instance (target_tile);
+				had_district_before = (inst != NULL);
+			}
 		}
 	}
 
@@ -19285,6 +19387,13 @@ patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 		unsigned int overlays = target_tile->vtable->m42_Get_Overlays (target_tile, __, 0);
 		if ((overlays & TILE_FLAG_MINE) == 0)
 			handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, false);
+	}
+	if ((target_tile != NULL) && (target_tile != p_null_tile)) {
+		unsigned int overlays_after = target_tile->vtable->m42_Get_Overlays (target_tile, __, 0);
+		if (overlays_after != overlays_before) {
+			int trigger = (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air) ? TDAT_BOMB : TDAT_BOMBARD;
+			trigger_tile_destruct_animation (tile_x, tile_y, trigger);
+		}
 	}
 }
 
@@ -27194,7 +27303,11 @@ void * __cdecl
 patch_do_load_game (char * param_1)
 {
 	void * tr = do_load_game (param_1);
-	reset_tile_animation_runtime_state ();
+	free_tile_animation_selected_matrix ();
+	clear_tile_animation_pcx_sprite_lookup ();
+	refresh_tile_animation_pcx_rule_mask ();
+	is->tile_animation_spawn_effect_override = 0;
+	is->tile_animation_spawn_effect_override_active = false;
 
 	if (is->current_config.restore_unit_directions_on_game_load && (p_units->Units != NULL))
 		for (int n = 0; n <= p_units->LastIndex; n++) {
@@ -27370,8 +27483,10 @@ patch_perform_interturn_in_main_loop ()
 		is->city_loc_display_perspective = -1;
 		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form); // Trigger map redraw
 	}
-	if (is->current_config.enable_custom_animations)
+	if (is->current_config.enable_custom_animations) {
+		age_tile_destruct_animations ();
 		rebuild_tile_animation_rule_match_cache ();
+	}
 
 	if (is->current_config.measure_turn_times) {
 		long long ts_after;
@@ -28845,10 +28960,11 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 	Tile * target_tile = NULL;
 	bool had_district_before = false;
 	int district_id_before = -1;
+	unsigned int overlays_before = 0;
 	int tile_x = x;
 	int tile_y = y;
 
-	if (is->current_config.enable_districts) {
+	if (is->current_config.enable_districts || is->current_config.enable_custom_animations) {
 
 		// Check if this is a completed wonder district that cannot be destroyed
 		if (is->current_config.enable_wonder_districts &&
@@ -28873,10 +28989,13 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 		target_tile = tile_at (tile_x, tile_y);
 		if ((target_tile != NULL) && (target_tile != p_null_tile)) {
-			struct district_instance * inst = get_district_instance (target_tile);
-			if (inst != NULL) {
-				had_district_before = true;
-				district_id_before = inst->district_id;
+			overlays_before = target_tile->vtable->m42_Get_Overlays (target_tile, __, 0);
+			if (is->current_config.enable_districts) {
+				struct district_instance * inst = get_district_instance (target_tile);
+				if (inst != NULL) {
+					had_district_before = true;
+					district_id_before = inst->district_id;
+				}
 			}
 		}
 	}
@@ -28898,6 +29017,17 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 		if (!has_district_after || !(target_tile->vtable->m42_Get_Overlays (target_tile, __, 0) & TILE_FLAG_MINE)) {
 			bool is_water_tile = target_tile != NULL && target_tile->vtable->m35_Check_Is_Water (target_tile);
 			handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, ! is_water_tile);
+		}
+	}
+	if ((target_tile != NULL) && (target_tile != p_null_tile)) {
+		unsigned int overlays_after = target_tile->vtable->m42_Get_Overlays (target_tile, __, 0);
+		if (overlays_after != overlays_before) {
+			if ((! bombarding) && (tile_x == this->Body.X) && (tile_y == this->Body.Y))
+				trigger_tile_destruct_animation (tile_x, tile_y, TDAT_PILLAGE);
+			else if (bombarding) {
+				int trigger = (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air) ? TDAT_BOMB : TDAT_BOMBARD;
+				trigger_tile_destruct_animation (tile_x, tile_y, trigger);
+			}
 		}
 	}
 
@@ -30646,6 +30776,28 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		serialize_aligned_text ("turns_in_current_season", &mod_data);
 		int_to_bytes (buffer_allocate (&mod_data, sizeof is->turns_in_current_season), is->turns_in_current_season);
 	}
+	if (is->current_config.enable_custom_animations && (is->tile_destruct_animation_ages != NULL)) {
+		int entry_count = 0;
+		for (int tile_index = 0; tile_index < p_bic_data->Map.TileCount; tile_index++)
+			if (is->tile_destruct_animation_ages[tile_index] > 0)
+				entry_count++;
+		if (entry_count > 0) {
+			serialize_aligned_text ("tile_destruct_animation_ages", &mod_data);
+			int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 3 * entry_count));
+			int * out = chunk + 1;
+			chunk[0] = entry_count;
+			for (int tile_index = 0; tile_index < p_bic_data->Map.TileCount; tile_index++) {
+				if (is->tile_destruct_animation_ages[tile_index] == 0)
+					continue;
+				int tile_x, tile_y;
+				tile_index_to_coords (&p_bic_data->Map, tile_index, &tile_x, &tile_y);
+				out[0] = tile_x;
+				out[1] = tile_y;
+				out[2] = is->tile_destruct_animation_ages[tile_index];
+				out += 3;
+			}
+		}
+	}
 	if (is->current_config.enable_districts && (is->district_count > 0)) {
 		serialize_aligned_text ("district_config_names", &mod_data);
 		int * entry_count = (int *)buffer_allocate (&mod_data, sizeof(int));
@@ -31150,10 +31302,39 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				is->seasonal_cycle_unstarted = false;
 				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
 					build_sprite_proxies (&p_bic_data->Map.Renderer);
-			
+
 			} else if (match_save_chunk_name (&cursor, "turns_in_current_season")) {
 				is->turns_in_current_season = not_below (0, *((int *)cursor)++);
-			
+
+			} else if (match_save_chunk_name (&cursor, "tile_destruct_animation_ages")) {
+				bool success = false;
+				int remaining_bytes = (seg + seg_size) - cursor;
+				if (remaining_bytes >= (int)sizeof(int)) {
+					int entry_count = *((int *)cursor)++;
+					remaining_bytes -= sizeof(int);
+					if ((entry_count >= 0) && (remaining_bytes >= entry_count * 3 * (int)sizeof(int))) {
+						ensure_tile_destruct_animation_ages ();
+						for (int n = 0; n < entry_count; n++) {
+							int x = *((int *)cursor)++;
+							int y = *((int *)cursor)++;
+							int age = *((int *)cursor)++;
+							wrap_tile_coords (&p_bic_data->Map, &x, &y);
+							int tile_index = tile_coords_to_index (&p_bic_data->Map, x, y);
+							if ((is->tile_destruct_animation_ages != NULL) &&
+							    (tile_index >= 0) &&
+							    (tile_index < p_bic_data->Map.TileCount)) {
+								is->tile_destruct_animation_ages[tile_index] = clamp (0, 255, age);
+								spawn_selected_tile_animation_for_tile (x, y, true);
+							}
+						}
+						success = true;
+					}
+				}
+				if (! success) {
+					error_chunk_name = "tile_destruct_animation_ages";
+					break;
+				}
+
 				// ToC-3
 			} else if (match_save_chunk_name (&cursor, "great_wall_auto_build_state")) {
 				// Read the single great wall autobuild state variable from the save. Interpret a state of 2 to mean no more great
@@ -31984,6 +32165,9 @@ patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
 	}
 
 	Unit_work_simple_job (this, __, job_id);
+
+	if (is_worker (this))
+		clear_tile_destruct_animation (this->Body.X, this->Body.Y);
 
 	if (is->lmify_tile_after_working_simple_job != NULL)
 		is->lmify_tile_after_working_simple_job->vtable->m31_set_landmark (is->lmify_tile_after_working_simple_job, __, true);
@@ -35087,6 +35271,26 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 
 		struct district_config const * cfg = &is->district_configs[district_id];
 		struct district_infos * district_info = &is->district_infos[district_id];
+
+		if (is->current_config.enable_custom_animations && (tile->Body.active_tile_effect == NULL)) {
+			refresh_tile_animation_selection_for_tile (tile_x, tile_y);
+			int tile_index = tile_coords_to_index (&p_bic_data->Map, tile_x, tile_y);
+			if ((tile_index >= 0) &&
+			    is->tile_animation_selected_valid &&
+			    (is->tile_animation_selected_next_index != NULL) &&
+			    (tile_index < is->tile_animation_selected_tile_count)) {
+				int animation_index = is->tile_animation_selected_next_index[tile_index];
+				if ((animation_index >= 0) && (animation_index < is->tile_animation_count)) {
+					struct tile_animation_config * anim_cfg = &is->tile_animation_configs[animation_index];
+					if ((anim_cfg != NULL) &&
+					    anim_cfg->in_use &&
+					    (anim_cfg->type == TAT_DISTRICT) &&
+					    ((anim_cfg->district_id < 0) || (anim_cfg->district_id == district_id)))
+						patch_Tile_spawn_animated_effect (tile, __, anim_cfg->effect_id, tile_x, tile_y, true, DIR_SW);
+				}
+			}
+		}
+
         int territory_owner_id = tile->Territory_OwnerID;
         int variant = 0;
 		int era = 0;
@@ -38374,6 +38578,42 @@ tile_animation_matches_time_filters (struct tile_animation_config const * cfg)
 }
 
 bool
+district_animation_instance_is_complete (Tile * tile, struct district_instance * inst)
+{
+	if ((tile == NULL) || (tile == p_null_tile) || (inst == NULL))
+		return false;
+	if (inst->state == DS_COMPLETED)
+		return true;
+	return tile->vtable->m18_Check_Mines (tile, __, 0) != 0;
+}
+
+bool
+get_district_animation_culture_and_era (Tile * tile, struct district_instance * inst, int * out_culture, int * out_era)
+{
+	if ((tile == NULL) || (tile == p_null_tile) || (inst == NULL))
+		return false;
+
+	int culture = 0;
+	int era = 0;
+	int civ_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	if ((civ_id < 0) && (inst->built_by_civ_id >= 0))
+		civ_id = inst->built_by_civ_id;
+
+	if ((civ_id >= 0) && (civ_id < 32)) {
+		Leader * leader = &leaders[civ_id];
+		if ((leader->RaceID >= 0) && (leader->RaceID < p_bic_data->RacesCount))
+			culture = p_bic_data->Races[leader->RaceID].CultureGroupID;
+		era = leader->Era;
+	}
+
+	if (out_culture != NULL)
+		*out_culture = culture;
+	if (out_era != NULL)
+		*out_era = era;
+	return true;
+}
+
+bool
 tile_animation_rule_matches_tile_base (struct tile_animation_config const * cfg, Tile * tile, int tile_x, int tile_y)
 {
 	if ((cfg == NULL) || (! cfg->in_use) || (tile == NULL) || (tile == p_null_tile))
@@ -38392,6 +38632,34 @@ tile_animation_rule_matches_tile_base (struct tile_animation_config const * cfg,
 			return false;
 		if ((cfg->natural_wonder_id >= 0) &&
 		    (inst->natural_wonder_info.natural_wonder_id != cfg->natural_wonder_id))
+			return false;
+	} else if (cfg->type == TAT_DISTRICT) {
+		struct district_instance * inst = get_district_instance (tile);
+		if ((inst == NULL) || (inst->district_id == NATURAL_WONDER_DISTRICT_ID))
+			return false;
+		if ((cfg->district_id >= 0) && (inst->district_id != cfg->district_id))
+			return false;
+		if (! district_animation_instance_is_complete (tile, inst))
+			return false;
+		if ((cfg->culture_group_mask != 0) || (cfg->era_mask != 0)) {
+			int culture = 0, era = 0;
+			if (! get_district_animation_culture_and_era (tile, inst, &culture, &era))
+				return false;
+			if ((cfg->culture_group_mask != 0) &&
+			    ((culture < 0) || (culture >= 32) || ((cfg->culture_group_mask & (1u << culture)) == 0)))
+				return false;
+			if ((cfg->era_mask != 0) &&
+			    ((era < 0) || (era >= 32) || ((cfg->era_mask & (1u << era)) == 0)))
+				return false;
+		}
+	} else if (cfg->type == TAT_DESTRUCT_INITIAL) {
+		int tile_index = tile_coords_to_index (&p_bic_data->Map, tile_x, tile_y);
+		if (! tile_has_destruct_animation_age (tile_index, 1))
+			return false;
+	} else if (cfg->type == TAT_DESTRUCT_AFTER) {
+		int tile_index = tile_coords_to_index (&p_bic_data->Map, tile_x, tile_y);
+		if (! tile_has_any_destruct_animation_age (tile_index) ||
+		    tile_has_destruct_animation_age (tile_index, 1))
 			return false;
 	} else if (cfg->type == TAT_TERRAIN) {
 		if (! tile_matches_terrain_types (tile, cfg->terrain_types_mask, cfg->terrain_types_include_land))
@@ -38440,6 +38708,212 @@ free_tile_animation_selected_matrix ()
 	is->tile_animation_selected_tile_count = 0;
 	is->tile_animation_selected_animation_count = 0;
 	is->tile_animation_selected_valid = false;
+}
+
+bool
+is_tile_destruct_animation_type (enum tile_animation_type type)
+{
+	return (type == TAT_DESTRUCT_INITIAL) || (type == TAT_DESTRUCT_AFTER);
+}
+
+bool
+tile_has_destruct_animation_age (int tile_index, int age)
+{
+	return (is->tile_destruct_animation_ages != NULL) &&
+		(tile_index >= 0) &&
+		(tile_index < p_bic_data->Map.TileCount) &&
+		(is->tile_destruct_animation_ages[tile_index] == age);
+}
+
+bool
+tile_has_any_destruct_animation_age (int tile_index)
+{
+	return (is->tile_destruct_animation_ages != NULL) &&
+		(tile_index >= 0) &&
+		(tile_index < p_bic_data->Map.TileCount) &&
+		(is->tile_destruct_animation_ages[tile_index] > 0);
+}
+
+void
+ensure_tile_destruct_animation_ages ()
+{
+	int tile_count = p_bic_data->Map.TileCount;
+	if (tile_count <= 0)
+		return;
+	if (is->tile_destruct_animation_ages != NULL)
+		return;
+	is->tile_destruct_animation_ages = calloc (tile_count, sizeof *is->tile_destruct_animation_ages);
+}
+
+void
+hide_active_custom_tile_animation (Tile * tile, int winner_index)
+{
+	if ((tile == NULL) || (tile == p_null_tile) || (tile->Body.active_tile_effect == NULL))
+		return;
+
+	int effect_id = tile->Body.active_tile_effect->V[2];
+	struct tile_animation_config * cfg = get_tile_animation_for_effect (effect_id);
+	if (cfg == NULL)
+		return;
+	if ((winner_index >= 0) &&
+	    (winner_index < is->tile_animation_count) &&
+	    (cfg->effect_id == is->tile_animation_configs[winner_index].effect_id))
+		return;
+
+	tile->Body.active_tile_effect->flc_animation.summary.current_anim_type = AT_DEFAULT;
+	tile->Body.active_tile_effect->flc_animation.summary.queued_anim_type = AT_BLANK;
+}
+
+void
+refresh_tile_animation_selection_for_tile (int tile_x, int tile_y)
+{
+	if (! is->current_config.enable_custom_animations)
+		return;
+	if (tile_animation_cache_needs_rebuild ()) {
+		rebuild_tile_animation_rule_match_cache ();
+		return;
+	}
+	if (! is->tile_animation_selected_valid ||
+	    (is->tile_animation_selected_mask_matrix == NULL) ||
+	    (is->tile_animation_selected_next_index == NULL) ||
+	    (is->tile_animation_selected_tile_indices == NULL))
+		return;
+	if ((tile_x < 0) || (tile_y < 0) || (tile_x >= p_bic_data->Map.Width) || (tile_y >= p_bic_data->Map.Height))
+		return;
+
+	int tile_index = tile_coords_to_index (&p_bic_data->Map, tile_x, tile_y);
+	if ((tile_index < 0) || (tile_index >= is->tile_animation_selected_tile_count))
+		return;
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
+
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
+	for (int w = 0; w < words_per_tile; w++)
+		tile_mask[w] = 0;
+
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+		if (! cfg->in_use)
+			continue;
+		if (tile_animation_matches_time_filters (cfg) &&
+		    tile_animation_rule_matches_tile_base (cfg, tile, tile_x, tile_y))
+			tile_mask[i / 32] |= 1u << (i % 32);
+	}
+
+	byte prev_winner = is->tile_animation_selected_next_index[tile_index];
+	int winner = pick_tile_animation_winner_for_tile (tile_mask);
+	hide_active_custom_tile_animation (tile, winner);
+	if ((winner >= 0) && (winner < is->tile_animation_count)) {
+		is->tile_animation_selected_next_index[tile_index] = winner;
+		if ((prev_winner == 0xFF) &&
+		    (is->tile_animation_selected_match_count < is->tile_animation_selected_tile_count))
+			is->tile_animation_selected_tile_indices[is->tile_animation_selected_match_count++] = tile_index;
+	} else {
+		is->tile_animation_selected_next_index[tile_index] = 0xFF;
+	}
+}
+
+void
+spawn_selected_tile_animation_for_tile (int tile_x, int tile_y, bool destruct_only)
+{
+	if (! is->current_config.enable_custom_animations)
+		return;
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile) || Tile_has_city (tile))
+		return;
+
+	int tile_index = tile_coords_to_index (&p_bic_data->Map, tile_x, tile_y);
+	if ((tile_index < 0) || (tile_index >= p_bic_data->Map.TileCount))
+		return;
+
+	refresh_tile_animation_selection_for_tile (tile_x, tile_y);
+	if ((! is->tile_animation_selected_valid) ||
+	    (is->tile_animation_selected_next_index == NULL) ||
+	    (tile_index >= is->tile_animation_selected_tile_count))
+		return;
+
+	int winner = is->tile_animation_selected_next_index[tile_index];
+	if ((winner >= 0) && (winner < is->tile_animation_count)) {
+		struct tile_animation_config * cfg = &is->tile_animation_configs[winner];
+		if ((cfg == NULL) || (! cfg->in_use))
+			return;
+		if (destruct_only && ! is_tile_destruct_animation_type (cfg->type))
+			return;
+		bool can_spawn = tile->Body.active_tile_effect == NULL;
+		if (! can_spawn) {
+			struct tile_animation_config * active_cfg = get_tile_animation_for_effect (tile->Body.active_tile_effect->V[2]);
+			can_spawn = (active_cfg != NULL) &&
+				(is_tile_destruct_animation_type (active_cfg->type) ||
+				 (get_tile_animation_type_priority (active_cfg->type) < get_tile_animation_type_priority (cfg->type)));
+		}
+		if (can_spawn)
+			patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true, DIR_SW);
+	}
+}
+
+void
+trigger_tile_destruct_animation (int tile_x, int tile_y, int trigger)
+{
+	if (! is->current_config.enable_custom_animations)
+		return;
+	if ((is->current_config.show_tile_destruct_animation_after & trigger) == 0)
+		return;
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile) || Tile_has_city (tile))
+		return;
+
+	ensure_tile_destruct_animation_ages ();
+	if (is->tile_destruct_animation_ages == NULL)
+		return;
+	int tile_index = tile_coords_to_index (&p_bic_data->Map, tile_x, tile_y);
+	if ((tile_index < 0) || (tile_index >= p_bic_data->Map.TileCount))
+		return;
+
+	is->tile_destruct_animation_ages[tile_index] = 1;
+	spawn_selected_tile_animation_for_tile (tile_x, tile_y, true);
+}
+
+void
+clear_tile_destruct_animation (int tile_x, int tile_y)
+{
+	if (is->tile_destruct_animation_ages == NULL)
+		return;
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	int tile_index = tile_coords_to_index (&p_bic_data->Map, tile_x, tile_y);
+	if ((tile_index < 0) || (tile_index >= p_bic_data->Map.TileCount))
+		return;
+	if (is->tile_destruct_animation_ages[tile_index] == 0)
+		return;
+	is->tile_destruct_animation_ages[tile_index] = 0;
+	refresh_tile_animation_selection_for_tile (tile_x, tile_y);
+}
+
+void
+age_tile_destruct_animations ()
+{
+	if ((! is->current_config.enable_custom_animations) || (is->tile_destruct_animation_ages == NULL))
+		return;
+	Map * map = &p_bic_data->Map;
+	int tile_count = map->TileCount;
+	int max_turns = not_below (0, is->current_config.show_tile_destruction_animation_for_turns);
+	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
+		byte age = is->tile_destruct_animation_ages[tile_index];
+		if (age == 0)
+			continue;
+		age++;
+		is->tile_destruct_animation_ages[tile_index] = age;
+		int tile_x, tile_y;
+		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
+		if (age > max_turns)
+			clear_tile_destruct_animation (tile_x, tile_y);
+		else
+			spawn_selected_tile_animation_for_tile (tile_x, tile_y, true);
+	}
 }
 
 void
@@ -38616,6 +39090,10 @@ void
 reset_tile_animation_runtime_state ()
 {
 	free_tile_animation_selected_matrix ();
+	if (is->tile_destruct_animation_ages != NULL) {
+		free (is->tile_destruct_animation_ages);
+		is->tile_destruct_animation_ages = NULL;
+	}
 	clear_tile_animation_pcx_sprite_lookup ();
 	refresh_tile_animation_pcx_rule_mask ();
 	is->tile_animation_spawn_effect_override = 0;
@@ -38644,6 +39122,7 @@ init_parsed_tile_animation_definition (struct parsed_tile_animation_definition *
 	def->type = TAT_TERRAIN;
 	def->terrain_types_mask = square_type_mask_bit (SQ_Grassland);
 	def->natural_wonder_id = -1;
+	def->district_id = -1;
 	def->pcx_file_id = TILE_ANIM_PCX_FILE_UNKNOWN;
 	def->pcx_index = -1;
 }
@@ -38784,6 +39263,98 @@ parse_tile_animation_season_list (struct string_slice const * value, unsigned in
 }
 
 bool
+parse_tile_animation_culture_group_list (struct string_slice const * value, unsigned int * out_mask)
+{
+	char * text = extract_slice (value);
+	if (text == NULL)
+		return false;
+
+	unsigned int mask = 0;
+	char * cursor = text;
+	while (*cursor != '\0') {
+		while ((*cursor == ' ') || (*cursor == '\t') || (*cursor == ','))
+			cursor++;
+		if (*cursor == '\0')
+			break;
+
+		char * start = cursor;
+		while ((*cursor != '\0') && (*cursor != ','))
+			cursor++;
+		struct string_slice token = { .str = start, .len = cursor - start };
+		token = trim_string_slice (&token, 1);
+
+		int culture_id = -1;
+		if (! find_civ_culture_id_by_name (&token, &culture_id)) {
+			free (text);
+			return false;
+		}
+		if ((culture_id < 0) || (culture_id >= 32)) {
+			free (text);
+			return false;
+		}
+		mask |= 1u << culture_id;
+
+		if (*cursor == ',')
+			cursor++;
+	}
+
+	free (text);
+	*out_mask = mask;
+	return true;
+}
+
+bool
+parse_tile_animation_era_list (struct string_slice const * value, unsigned int * out_mask)
+{
+	char * text = extract_slice (value);
+	if (text == NULL)
+		return false;
+
+	unsigned int mask = 0;
+	char * cursor = text;
+	while (*cursor != '\0') {
+		while ((*cursor == ' ') || (*cursor == '\t') || (*cursor == ','))
+			cursor++;
+		if (*cursor == '\0')
+			break;
+
+		char * start = cursor;
+		while ((*cursor != '\0') && (*cursor != ','))
+			cursor++;
+		struct string_slice token = { .str = start, .len = cursor - start };
+		token = trim_string_slice (&token, 1);
+
+		int era_id = -1;
+		struct string_slice era_int = token;
+		if (read_int (&era_int, &era_id)) {
+			if ((era_id < 0) || (era_id > 3)) {
+				free (text);
+				return false;
+			}
+		} else if (slice_matches_str (&token, "ancient") || slice_matches_str (&token, "ancient times")) {
+			era_id = 0;
+		} else if (slice_matches_str (&token, "middle") || slice_matches_str (&token, "middle ages") || slice_matches_str (&token, "medieval")) {
+			era_id = 1;
+		} else if (slice_matches_str (&token, "industrial") || slice_matches_str (&token, "industrial ages")) {
+			era_id = 2;
+		} else if (slice_matches_str (&token, "modern") || slice_matches_str (&token, "modern times")) {
+			era_id = 3;
+		} else {
+			free (text);
+			return false;
+		}
+		mask |= 1u << era_id;
+
+		if (*cursor == ',')
+			cursor++;
+	}
+
+	free (text);
+	*out_mask = mask;
+	return true;
+}
+
+bool
 parse_tile_animation_adjacent_to (struct string_slice const * value,
 				  struct tile_animation_adjacent_requirement * out_reqs,
 				  int * out_count)
@@ -38891,6 +39462,7 @@ add_tile_animation_from_definition (struct parsed_tile_animation_definition * de
 	cfg.terrain_types_mask = def->terrain_types_mask;
 	cfg.terrain_types_include_land = def->terrain_types_include_land;
 	cfg.natural_wonder_id = def->natural_wonder_id;
+	cfg.district_id = def->district_id;
 	cfg.pcx_file_id = def->pcx_file_id;
 	cfg.pcx_index = def->pcx_index;
 	cfg.direction = def->direction;
@@ -38903,6 +39475,8 @@ add_tile_animation_from_definition (struct parsed_tile_animation_definition * de
 	cfg.has_frame_time_seconds = def->has_frame_time_seconds;
 	cfg.day_night_hour_mask = def->day_night_hour_mask;
 	cfg.season_mask = def->season_mask;
+	cfg.culture_group_mask = def->culture_group_mask;
+	cfg.era_mask = def->era_mask;
 	cfg.adjacent_to_count = def->adjacent_to_count;
 	for (int i = 0; i < def->adjacent_to_count; i++)
 		cfg.adjacent_to[i] = def->adjacent_to[i];
@@ -38920,6 +39494,8 @@ add_tile_animation_from_definition (struct parsed_tile_animation_definition * de
 			free ((void *)cfg.ini_path);
 			return false;
 		}
+	} else if ((cfg.type == TAT_DESTRUCT_INITIAL) || (cfg.type == TAT_DESTRUCT_AFTER)) {
+		// No extra required fields.
 	} else if (cfg.type == TAT_COASTAL_WAVE) {
 		// No extra required fields.
 	}
@@ -39029,12 +39605,18 @@ handle_tile_animation_definition_key (struct parsed_tile_animation_definition * 
 		} else if (slice_matches_str (&v, "pcx")) {
 			def->type = TAT_PCX;
 			def->has_type = true;
+		} else if (slice_matches_str (&v, "destruct-initial")) {
+			def->type = TAT_DESTRUCT_INITIAL;
+			def->has_type = true;
+		} else if (slice_matches_str (&v, "destruct-after")) {
+			def->type = TAT_DESTRUCT_AFTER;
+			def->has_type = true;
 		} else if (slice_matches_str (&v, "coastal-wave")) {
 			def->type = TAT_COASTAL_WAVE;
 			def->has_type = true;
 		} else {
 			def->has_type = false;
-			add_key_parse_error (parse_errors, line_number, key, value, "(expected \"terrain\", \"resource\", \"pcx\", or \"coastal-wave\")");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected \"terrain\", \"resource\", \"pcx\", \"destruct-initial\", \"destruct-after\", or \"coastal-wave\")");
 		}
 	} else if (slice_matches_str (key, "resource_type")) {
 		if (def->resource_type != NULL) free (def->resource_type);
@@ -39246,6 +39828,36 @@ load_tile_animation_config_file (char const * file_path, int path_is_relative_to
 }
 
 void
+copy_animation_entry_to_tile_animation_config (struct tile_animation_config * cfg,
+					       struct natural_wonder_animation_config const * anim)
+{
+	if ((cfg == NULL) || (anim == NULL))
+		return;
+
+	cfg->ini_path = strdup (anim->ini_path);
+	if (cfg->ini_path == NULL)
+		return;
+	cfg->day_night_hour_mask = anim->day_night_hour_mask;
+	cfg->season_mask = anim->season_mask;
+	cfg->culture_group_mask = anim->culture_group_mask;
+	cfg->era_mask = anim->era_mask;
+	if (anim->has_direction) {
+		cfg->direction = anim->direction;
+		cfg->has_direction = true;
+	}
+	if (anim->has_frame_time_seconds) {
+		cfg->frame_time_seconds = anim->frame_time_seconds;
+		cfg->has_frame_time_seconds = true;
+	}
+	if (anim->has_offsets) {
+		cfg->x_offset = anim->x_offset;
+		cfg->y_offset = anim->y_offset;
+		cfg->has_x_offset = true;
+		cfg->has_y_offset = true;
+	}
+}
+
+void
 add_natural_wonder_tile_animation_configs ()
 {
 	if (! is->current_config.enable_natural_wonders)
@@ -39265,30 +39877,48 @@ add_natural_wonder_tile_animation_configs ()
 			memset (cfg, 0, sizeof *cfg);
 			cfg->type = TAT_NATURAL_WONDER;
 			cfg->natural_wonder_id = wonder_id;
-			cfg->ini_path = strdup (anim->ini_path);
+			copy_animation_entry_to_tile_animation_config (cfg, anim);
 			if (cfg->ini_path == NULL) {
 				is->tile_animation_count--;
 				continue;
 			}
-				cfg->day_night_hour_mask = anim->day_night_hour_mask;
-				cfg->season_mask = anim->season_mask;
-				if (anim->has_direction) {
-					cfg->direction = anim->direction;
-					cfg->has_direction = true;
-				}
-				if (anim->has_frame_time_seconds) {
-					cfg->frame_time_seconds = anim->frame_time_seconds;
-					cfg->has_frame_time_seconds = true;
-				}
-				if (anim->has_offsets) {
-					cfg->x_offset = anim->x_offset;
-					cfg->y_offset = anim->y_offset;
-					cfg->has_x_offset = true;
-					cfg->has_y_offset = true;
-				}
-				cfg->effect_id = is->tile_animation_effect_base + dest;
-				cfg->in_use = true;
+			cfg->effect_id = is->tile_animation_effect_base + dest;
+			cfg->in_use = true;
+		}
+	}
+	refresh_tile_animation_pcx_rule_mask ();
+}
+
+void
+add_district_tile_animation_configs ()
+{
+	if (! is->current_config.enable_districts)
+		return;
+
+	for (int district_id = 0; district_id < is->district_count; district_id++) {
+		if (district_id == NATURAL_WONDER_DISTRICT_ID)
+			continue;
+		struct district_config const * district = &is->district_configs[district_id];
+		for (int i = 0; i < district->animation_count; i++) {
+			struct natural_wonder_animation_config const * anim = &district->animations[i];
+			if ((anim->ini_path == NULL) || (anim->ini_path[0] == '\0'))
+				continue;
+			if (is->tile_animation_count >= MAX_TILE_ANIMATION_CONFIGS)
+				return;
+
+			int dest = is->tile_animation_count++;
+			struct tile_animation_config * cfg = &is->tile_animation_configs[dest];
+			memset (cfg, 0, sizeof *cfg);
+			cfg->type = TAT_DISTRICT;
+			cfg->district_id = district_id;
+			copy_animation_entry_to_tile_animation_config (cfg, anim);
+			if (cfg->ini_path == NULL) {
+				is->tile_animation_count--;
+				continue;
 			}
+			cfg->effect_id = is->tile_animation_effect_base + dest;
+			cfg->in_use = true;
+		}
 	}
 	refresh_tile_animation_pcx_rule_mask ();
 }
@@ -39311,6 +39941,7 @@ load_tile_animation_configs ()
 	if ((scenario_path != NULL) && (0 != strcmp (scenario_filename, scenario_path)))
 		load_tile_animation_config_file (scenario_path, 0, 0, 1);
 	add_natural_wonder_tile_animation_configs ();
+	add_district_tile_animation_configs ();
 
 	rebuild_tile_animation_pcx_sprite_lookup ();
 	rebuild_tile_animation_rule_match_cache ();
@@ -39323,12 +39954,15 @@ get_tile_animation_type_priority (enum tile_animation_type type)
 	// Keep this centralized so new animation types (district/natural wonder/etc.)
 	// can be assigned clearly without touching scheduler logic.
 	switch (type) {
-		case TAT_RESOURCE:       return 50;
-		case TAT_NATURAL_WONDER: return 40;
-		case TAT_PCX:            return 30;
-		case TAT_TERRAIN:        return 20;
-		case TAT_COASTAL_WAVE:   return 10;
-		default:                 return 0;
+		case TAT_RESOURCE:         return 80;
+		case TAT_NATURAL_WONDER:   return 70;
+		case TAT_DESTRUCT_INITIAL: return 60;
+		case TAT_DESTRUCT_AFTER:   return 50;
+		case TAT_DISTRICT:         return 40;
+		case TAT_PCX:              return 30;
+		case TAT_TERRAIN:          return 20;
+		case TAT_COASTAL_WAVE:     return 10;
+		default:                   return 0;
 	}
 }
 
@@ -39352,6 +39986,10 @@ pick_tile_animation_winner_for_tile (unsigned int * tile_mask)
 		if (cfg->season_mask != 0)
 			score += 1;
 		if (cfg->day_night_hour_mask != 0)
+			score += 1;
+		if (cfg->culture_group_mask != 0)
+			score += 1;
+		if (cfg->era_mask != 0)
 			score += 1;
 
 		// Deterministic tie-break: higher config index wins for same score.
@@ -39409,10 +40047,17 @@ tile_animation_scheduler_tick ()
 		if ((cfg == NULL) || (! cfg->in_use))
 			continue;
 
-		// Keep one ambient effect per tile. Runtime effect IDs are reused from vanilla,
-		// so don't key this check off effect_id.
-		if (tile->Body.active_tile_effect != NULL)
-			continue;
+		// Keep one ambient effect per tile, except a stale temporal destruction effect
+		// may be replaced by the newly selected winner.
+		if (tile->Body.active_tile_effect != NULL) {
+			int active_effect_id = tile->Body.active_tile_effect->V[2];
+			struct tile_animation_config * active_cfg = get_tile_animation_for_effect (active_effect_id);
+			if ((active_cfg != NULL) && is_tile_destruct_animation_type (active_cfg->type) &&
+			    (active_effect_id == cfg->effect_id))
+				continue;
+			if ((active_cfg == NULL) || (! is_tile_destruct_animation_type (active_cfg->type)))
+				continue;
+		}
 		patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true, DIR_SW);
 	}
 }
@@ -39492,8 +40137,12 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effe
 			bool allow_natural_wonder_tile = (cfg != NULL) && (cfg->type == TAT_NATURAL_WONDER) &&
 				(inst->district_id == NATURAL_WONDER_DISTRICT_ID) &&
 				((cfg->natural_wonder_id < 0) || (inst->natural_wonder_info.natural_wonder_id == cfg->natural_wonder_id));
+			bool allow_district_tile = (cfg != NULL) && (cfg->type == TAT_DISTRICT) &&
+				(inst->district_id != NATURAL_WONDER_DISTRICT_ID) &&
+				((cfg->district_id < 0) || (inst->district_id == cfg->district_id));
 			bool allow_resource_on_district_tile = (cfg != NULL) && (cfg->type == TAT_RESOURCE);
-			if (! allow_natural_wonder_tile && ! allow_resource_on_district_tile)
+			bool allow_destruct_tile = (cfg != NULL) && is_tile_destruct_animation_type (cfg->type);
+			if (! allow_natural_wonder_tile && ! allow_district_tile && ! allow_resource_on_district_tile && ! allow_destruct_tile)
 				return;
 		}
 		enum direction effective_direction = DIR_ZERO;
@@ -39518,6 +40167,7 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effe
 		// Positive X moves right, positive Y moves down.
 		Tile_Animated_Effect * fx = this->Body.active_tile_effect;
 		if ((fx != NULL) && (cfg != NULL)) {
+			fx->V[2] = effect;
 			if (has_effective_direction) {
 				fx->flc_animation.summary.direction = effective_direction;
 				fx->flc_animation.summary.direction_2 = effective_direction;

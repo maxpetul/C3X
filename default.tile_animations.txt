@@ -160,6 +160,17 @@ frame_time_seconds      = 0.13
 y_offset                = -20
 x_offset                = -15
 
+#Animation
+name                    = DestructInitial
+ini_path                = Destruction\DestructInitial.INI
+type                    = destruct-initial
+
+#Animation
+name                    = DestructAfter
+ini_path                = Destruction\DestructAfter.INI
+type                    = destruct-after
+y_offset                = 45
+
 ;===Example PCX animation of river segment===
 ;#Animation
 ;name                    = DeltaRivers_12
