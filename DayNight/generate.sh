@@ -5,16 +5,12 @@ set -euo pipefail
 ### === CONFIG ===
 # Assumed to be run from DayNight/ directory
 
-DAYNIGHT_ANNOTATION_DIR="../Art/DayNight/Annotations"
 DAYNIGHT_DATA_DIR="../Art/DayNight"
-DISTRICT_ANNOTATION_DIR="../Art/Districts/Annotations"
 DISTRICT_DATA_DIR="../Art/Districts"
-
-ANNOTATION_DIR="../Art/DayNight/Annotations"
-DATA_DIR="../Art/DayNight"
 
 NOON_SUBFOLDER="1200"
 ONLY_HOUR=""       # set empty "" to process all hours
+BASE_SEASON="Summer"
 
 # ---- Day/Night settings ----
 WARMTH=1.7            # Scale for sunrise/sunset warmth (1.0 = base)
@@ -204,5 +200,93 @@ process_art_set() {
   fi
 }
 
-process_art_set "$DAYNIGHT_DATA_DIR" "$DAYNIGHT_ANNOTATION_DIR"
-process_art_set "$DISTRICT_DATA_DIR" "$DISTRICT_ANNOTATION_DIR"
+ensure_hour_folders() {
+  local season_dir="$1"
+  local hour
+  local hour_folder
+  for hour in {1..24}; do
+    printf -v hour_folder "%02d00" "$hour"
+    mkdir -p "$season_dir/$hour_folder"
+  done
+}
+
+ensure_season_noon_folder() {
+  local season_dir="$1"
+  local summer_noon_dir="$2"
+  local season_noon_dir="$season_dir/$NOON_SUBFOLDER"
+
+  if [[ -d "$season_noon_dir" ]]; then
+    return
+  fi
+
+  if [[ ! -d "$summer_noon_dir" ]]; then
+    echo "Missing $NOON_SUBFOLDER and no summer source found for $season_dir" >&2
+    return
+  fi
+
+  cp -R "$summer_noon_dir" "$season_noon_dir"
+  echo "Copied missing $NOON_SUBFOLDER for $season_dir from $summer_noon_dir"
+}
+
+ensure_season_annotations() {
+  local season_dir="$1"
+  local summer_annotation_dir="$2"
+  local season_annotation_dir="$season_dir/Annotations"
+  local copied_count=0
+  local src
+  local target
+
+  if [[ ! -d "$season_annotation_dir" ]]; then
+    mkdir -p "$season_annotation_dir"
+  fi
+
+  if [[ ! -d "$summer_annotation_dir" ]]; then
+    echo "Missing annotations and no summer source found for $season_dir" >&2
+    return
+  fi
+
+  shopt -s nullglob
+  shopt -s nocaseglob
+  for src in "$summer_annotation_dir"/*_lights.pcx; do
+    target="$season_annotation_dir/$(basename "$src")"
+    if [[ ! -e "$target" ]]; then
+      cp "$src" "$target"
+      copied_count=$((copied_count + 1))
+    fi
+  done
+  shopt -u nocaseglob
+  shopt -u nullglob
+
+  if (( copied_count > 0 )); then
+    echo "Filled $copied_count missing annotations in $season_annotation_dir from $summer_annotation_dir"
+  fi
+}
+
+process_art_root() {
+  local art_root="$1"
+  local summer_annotation_dir="$art_root/$BASE_SEASON/Annotations"
+  local summer_noon_dir="$art_root/$BASE_SEASON/$NOON_SUBFOLDER"
+  local season_dir
+  local season_name
+
+  if [[ ! -d "$art_root" ]]; then
+    echo "Skipping missing art root: $art_root" >&2
+    return
+  fi
+
+  while IFS= read -r season_dir; do
+    season_name="$(basename "$season_dir")"
+
+    if [[ "$season_name" == "Annotations" ]] || [[ "$season_name" =~ ^[0-9]{4}$ ]]; then
+      continue
+    fi
+
+    ensure_season_noon_folder "$season_dir" "$summer_noon_dir"
+    ensure_hour_folders "$season_dir"
+    ensure_season_annotations "$season_dir" "$summer_annotation_dir"
+    process_art_set "$season_dir" "$season_dir/Annotations"
+  done < <(find "$art_root" -mindepth 1 -maxdepth 1 -type d | sort)
+}
+
+process_art_root "$DAYNIGHT_DATA_DIR"
+process_art_root "$DISTRICT_DATA_DIR"
