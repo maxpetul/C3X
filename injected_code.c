@@ -18441,7 +18441,6 @@ patch_init_floating_point ()
 		{"convert_to_landmark_after_planting_forest"             , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
 		{"allow_sale_of_aqueducts_and_hospitals"                 , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
 		{"no_cross_shore_detection"                              , false, offsetof (struct c3x_config, no_cross_shore_detection)},
-		{"auto_zoom_city_screen_for_large_work_areas"            , true,  offsetof (struct c3x_config, auto_zoom_city_screen_for_large_work_areas)},
 		{"limit_unit_loading_to_one_transport_per_turn"          , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block"   , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
 		{"allow_extraterritorial_colonies"                       , false, offsetof (struct c3x_config, allow_extraterritorial_colonies)},
@@ -28894,10 +28893,7 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 		if (dead_before ^ dead_after) {
 			is->dbe.defender_was_destroyed = true;
 			if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (this, __, bombarder, defender, true)) {
-				is->unit_display_override_2 = (struct unit_display_override) {
-					defender->Body.ID, defender->Body.X, defender->Body.Y
-				};
-				Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, defender, AT_DEATH, false);
+				patch_Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, defender, AT_DEATH, false);
 			}
 			is->dbe.saved_animation_setting = this->play_animations;
 			this->play_animations = 0;
@@ -29201,6 +29197,9 @@ patch_Fighter_prefer_first_defender_1 (Fighter * this, int edx, Unit * first, in
 	    second->vtable->is_enemy_of_civ (second, __, attacker->Body.CivID, 0)) {
 		Unit * first_attacker = counter_attacker_for_defender_selection (attacker, first);
 		Unit * second_attacker = counter_attacker_for_defender_selection (attacker, second);
+#if 0
+		// Temporarily disabled: let the original defender-selection logic handle ranking
+		// after counter modifiers are folded into the effective strengths below.
 		int first_attacker_atk_pct = 100,
 		    first_defender_def_pct = 100,
 		    second_attacker_atk_pct = 100,
@@ -29237,6 +29236,7 @@ patch_Fighter_prefer_first_defender_1 (Fighter * this, int edx, Unit * first, in
 		    second_cost = p_bic_data->UnitTypes[second->Body.UnitTypeID].Cost;
 		if (first_cost != second_cost)
 			return first_cost > second_cost;
+#endif
 
 		first_strength = counter_adjusted_defender_strength (
 			first_attacker, first, first_strength);
