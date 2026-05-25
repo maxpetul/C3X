@@ -761,6 +761,18 @@ reset_to_base_config ()
 		free ((void *)tei.value);
 	stable_deinit (&cc->unit_limits);
 
+	// ToC-26: (A way to group units for unit limits) - Free unit limit groups. Each group owns its unit_type_ids array.
+	// unit_type_to_group values are non-owning pointers into unit_limit_groups, so only
+	// the table structure itself needs to be freed (table_deinit does not free values).
+	FOR_TABLE_ENTRIES (tei_grp, &cc->unit_limit_groups) {
+		struct unit_limit_group * grp = (struct unit_limit_group *)tei_grp.value;
+		free (grp->unit_type_ids);
+		free (grp);
+	}
+	stable_deinit (&cc->unit_limit_groups);
+	table_deinit (&cc->unit_type_to_group);
+	// END ToC-26
+
 	// Free the linked list of loaded config names and the string name contained in each one
 	if (is->loaded_config_names != NULL) {
 		struct loaded_config_name * next = is->loaded_config_names;
@@ -1349,6 +1361,10 @@ struct parsed_unit_type_limit {
 	struct unit_type_limit limit;
 };
 
+// ToC-26: Code replace: Removed per-item unit-type validation from this parser. Validation is now deferred to
+// the post-parse copy phase (see "Copy and validate unit type limits" block in load_config) so
+// that unit_limit_groups is fully loaded regardless of key order in the config file. Group names
+// used as keys in unit_limits are therefore accepted here without triggering unrecognized warnings.
 enum recognizable_parse_result
 parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_unit_type_limit)
 {
@@ -1380,22 +1396,112 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 
 		} while (skip_punctuation (&cur, '+'));
 
-		int unused;
-		if (find_unit_type_id_by_name (&name, 0, &unused)) {
-			memset (out->name, 0, sizeof out->name);
-			strncpy (out->name, name.str, name.len);
-			out->limit = limit;
-			*p_cursor = cur;
-			return RPR_OK;
-		} else {
-			add_unrecognized_line (p_unrecognized_lines, &name);
-			*p_cursor = cur;
-			return RPR_UNRECOGNIZED;
-		}
+		// Store name and limit unconditionally; validation against unit types and groups
+		// happens in the post-parse copy phase after all config keys have been processed.
+		memset (out->name, 0, sizeof out->name);
+		strncpy (out->name, name.str, name.len);
+		out->limit = limit;
+		*p_cursor = cur;
+		return RPR_OK;
 
 	} else
 		return RPR_PARSE_ERROR;
 }
+
+// ToC-26: Parses the unit_limit_groups config setting.
+// Format: ["Group Name": "UnitTypeA" "UnitTypeB" ..., "Group2": "UnitTypeC" ...]
+//
+// - Group names are arbitrary labels (not validated against game data).
+// - Unit type names within each group are looked up against the scenario's unit roster;
+//   unrecognized names are soft-reported via p_unrecognized_lines.
+// - All unit type IDs matching each member name are stored, including AI strategy duplicates.
+// - Populates unit_limit_groups (group_name -> struct unit_limit_group*) and
+//   unit_type_to_group (unit_type_id -> struct unit_limit_group*) for O(1) runtime lookup.
+// - If the same unit type appears in multiple groups, the first group definition wins.
+// Returns -1 on success, or the byte offset of the first parse error within s.
+int
+read_unit_limit_groups (struct string_slice const * s,
+                        struct error_line ** p_unrecognized_lines,
+                        struct table * unit_limit_groups,
+                        struct table * unit_type_to_group)
+{
+	if (s->len <= 0)
+		return -1;
+
+	char * extracted = extract_slice (s);
+	char * cursor = extracted;
+	bool success = false;
+
+	while (1) {
+		skip_white_space (&cursor);
+		if (*cursor == '\0') { success = true; break; }
+
+		// Parse the group label (arbitrary string, not a game object name)
+		struct string_slice group_name;
+		if (! parse_string (&cursor, &group_name))
+			break;
+		if (! skip_punctuation (&cursor, ':'))
+			break;
+
+		// Collect unit type IDs for every space-separated member name in this group.
+		// find_unit_type_id_by_name is called in a loop to collect all IDs sharing the same
+		// name (i.e. AI strategy duplicates), matching the behavior of list_unit_type_duplicates.
+		int * ids = NULL;
+		int ids_count = 0, ids_capacity = 0;
+		struct string_slice member_name;
+		while (parse_string (&cursor, &member_name)) {
+			int search_start = 0, found_id;
+			bool any_found = false;
+			while (find_unit_type_id_by_name (&member_name, search_start, &found_id)) {
+				reserve (sizeof ids[0], (void **)&ids, &ids_capacity, ids_count);
+				ids[ids_count++] = found_id;
+				search_start = found_id + 1;
+				any_found = true;
+			}
+			if (! any_found)
+				add_unrecognized_line (p_unrecognized_lines, &member_name);
+		}
+
+		// Only register the group when at least one valid unit type was resolved
+		if (ids_count > 0) {
+			struct unit_limit_group * grp = malloc (sizeof *grp);
+			grp->unit_type_ids = ids;
+			grp->count         = ids_count;
+			memset (&grp->limit, 0, sizeof grp->limit);
+			grp->has_limit     = false; // limit is assigned in post-parse copy phase
+
+			// stable_insert strdup's the key; use extract_slice for a temp null-terminated copy
+			char * gname = extract_slice (&group_name);
+			stable_insert (unit_limit_groups, gname, (int)grp);
+			free (gname);
+
+			// Build reverse map: unit_type_id -> group (first group wins for any type in multiple groups)
+			for (int n = 0; n < ids_count; n++) {
+				int dummy;
+				if (! itable_look_up (unit_type_to_group, ids[n], &dummy))
+					itable_insert (unit_type_to_group, ids[n], (int)grp);
+			}
+		} else {
+			free (ids); // free(NULL) is safe; handles the zero-members case
+		}
+
+		// Advance past the comma between groups, or finish at end-of-string
+		skip_horiz_space (&cursor);
+		if (*cursor == ',') {
+			cursor++;
+		} else if (*cursor == '\0') {
+			success = true;
+			break;
+		} else {
+			break; // unexpected character: signal a parse error at this position
+		}
+	}
+
+	int result = success ? -1 : (int)(cursor - extracted);
+	free (extracted);
+	return result;
+}
+// END ToC-26
 
 enum recognizable_parse_result
 parse_work_area_improvement (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_work_area_improvement)
@@ -2557,6 +2663,15 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 (void **)&parsed_unit_type_limits,
 											 &parsed_unit_type_limit_count)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+				// ToC-26: Parse group definitions for shared combined unit limits.
+				// Format: ["Group Label": "UnitA" "UnitB" ..., "Group2": ...]
+				// Group names used here must be referenced in unit_limits to have any effect.
+				} else if (slice_matches_str (&p.key, "unit_limit_groups")) {
+					if (0 <= (recog_err_offset = read_unit_limit_groups (&value,
+											  &unrecognized_lines,
+											  &cfg->unit_limit_groups,
+											  &cfg->unit_type_to_group)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "aircraft_victory_animation")) {
 					struct string_slice trimmed = trim_string_slice (&value, 1);
 					bool value_ok = false;
@@ -2576,8 +2691,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						}
 					}
 					if (! value_ok)
-						handle_config_error (&p, CPE_BAD_VALUE);
-
+						handle_config_error (&p, CPE_BAD_VALUE); 
+					// END ToC-26
 				// if key is for an obsolete option
 				} else if (slice_matches_str (&p.key, "patch_disembark_immobile_bug")) {
 					if (read_int (&value, &ival))
@@ -2682,16 +2797,47 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 			free (list->items);
 		}
 	}
-
-	// Copy unit type limits from list to table
+	// ToC-26: Copy and validate unit type limits from parsed list to config tables.
+	// Validation is done here (post-parse) so that unit_limit_groups is fully populated
+	// regardless of which key appears first in the config file. Each name is checked:
+	//   (1) individual unit type  -> insert into unit_limits as before
+	//   (2) group label defined in unit_limit_groups -> assign limit to the group struct
+	//   (3) neither               -> add to unrecognized_lines for the warning popup
 	if (parsed_unit_type_limits != NULL) {
 		for (int n = 0; n < parsed_unit_type_limit_count; n++) {
 			struct parsed_unit_type_limit * parsed_lim = &parsed_unit_type_limits[n];
-			struct unit_type_limit * lim_values = malloc (sizeof *lim_values);
-			*lim_values = parsed_lim->limit;
-			stable_insert (&cfg->unit_limits, parsed_lim->name, (int)lim_values);
+			struct string_slice name_slice = { parsed_lim->name, (int)strlen (parsed_lim->name) };
+			int unused_id;
+			struct unit_limit_group * grp;
+			if (find_unit_type_id_by_name (&name_slice, 0, &unused_id)) {
+				// Valid unit type name: individual limit, stored by name for direct lookup
+				struct unit_type_limit * lim_values = malloc (sizeof *lim_values);
+				*lim_values = parsed_lim->limit;
+				stable_insert (&cfg->unit_limits, parsed_lim->name, (int)lim_values);
+			} else if (stable_look_up (&cfg->unit_limit_groups, parsed_lim->name, (int *)&grp)) {
+				// Group label: store limit inside the group struct for runtime use
+				grp->limit     = parsed_lim->limit;
+				grp->has_limit = true;
+			} else {
+				// Unrecognized: neither a unit type nor a defined group
+				add_unrecognized_line (&unrecognized_lines, &name_slice);
+			}
 		}
 		free (parsed_unit_type_limits);
+	}
+
+	// Unrecognized names popup shown here (moved below unit limit copy so deferred
+	// validation errors from unit_limits are included in the report)
+	if (cfg->warn_about_unrecognized_names && (unrecognized_lines != NULL)) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "Unrecognized names in %s:", full_path);
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, false);
+		for (struct error_line * line = unrecognized_lines; line != NULL; line = line->next)
+			PopupForm_add_text (popup, __, line->text, false);
+		patch_show_popup (popup, __, 0, 0);
 	}
 
 	free (text);
@@ -2707,6 +2853,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 
 	top_lcn->next = new_lcn;
 }
+// END ToC-26
 
 bool
 tile_coords_from_ptr (Map * map, Tile * tile, int * out_x, int * out_y)
@@ -15438,43 +15585,90 @@ change_unit_type_count (Leader * leader, int unit_type_id, int amount)
 	itable_insert (counts, unit_type_id, prev_amount + amount);
 }
 
-// If this unit type is limited, returns true and writes how many units of the type the given player is allowed to "out_limit". If the type is not
-// limited, returns false.
+// If this unit type is limited, returns true and writes how many units of the type the given
+// player is allowed to *out_limit. Returns false if the type is not limited.
+// ToC-26: Checks individual unit_limits first; falls back to a unit_limit_groups entry if the
+// type belongs to a group with an assigned limit. Individual limits always take priority.
 bool
 get_unit_limit (Leader * leader, int unit_type_id, int * out_limit)
 {
+	if ((unit_type_id < 0) || (unit_type_id >= p_bic_data->UnitTypeCount))
+		return false;
+
 	UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
 	struct unit_type_limit * lim;
-	if ((unit_type_id >= 0) && (unit_type_id < p_bic_data->UnitTypeCount) &&
-	    stable_look_up (&is->current_config.unit_limits, type->Name, (int *)&lim)) {
+
+	// (1) Individual unit type limit
+	if (stable_look_up (&is->current_config.unit_limits, type->Name, (int *)&lim)) {
 		int city_count = leader->Cities_Count;
 		int tr = lim->per_civ + lim->per_city * city_count;
 		if (lim->cities_per != 0)
 			tr += city_count / lim->cities_per;
 		*out_limit = tr;
 		return true;
-	} else
-		return false;
+	}
+
+	// ToC-26: (2) Group limit — only when groups are configured and this type is a member
+	struct unit_limit_group * grp;
+	if (itable_look_up (&is->current_config.unit_type_to_group, unit_type_id, (int *)&grp) &&
+	    grp->has_limit) {
+		struct unit_type_limit * glim = &grp->limit;
+		int city_count = leader->Cities_Count;
+		int tr = glim->per_civ + glim->per_city * city_count;
+		if (glim->cities_per != 0)
+			tr += city_count / glim->cities_per;
+		*out_limit = tr;
+		return true;
+	}
+
+	return false;
 }
 
-// This this unit type is limited, returns true and writes to "out_available" how many units the given player can add before reaching the limit. If
-// the type is not limited, returns false.
+// If this unit type is limited, returns true and writes to *out_available how many units the
+// given player can still add before reaching the limit. Returns false if the type is not limited.
+// ToC-26: When the type belongs to a group with a limit (and no individual limit overrides it),
+// the count is the combined total of all unit types in that group rather than just this one type.
+// Individual limits always take priority over group limits for both the limit value and the count.
 bool
 get_available_unit_count (Leader * leader, int unit_type_id, int * out_available)
 {
 	int limit;
-	if (get_unit_limit (leader, unit_type_id, &limit)) {
-		int count = get_unit_type_count (leader, unit_type_id);
-		int dups[30];
-		int dups_count = list_unit_type_duplicates (unit_type_id, dups, ARRAY_LEN (dups));
-		for (int n = 0; n < dups_count; n++)
-			count += get_unit_type_count (leader, dups[n]);
-
-		*out_available = limit - count;
-		return true;
-	} else
+	if (! get_unit_limit (leader, unit_type_id, &limit))
 		return false;
+
+	int count;
+
+	// ToC-26: Check for group-based counting. Skip this branch entirely when no groups are
+	// configured (unit_type_to_group.len == 0) to keep the hot path cost-free for non-group games.
+	if (is->current_config.unit_type_to_group.len > 0) {
+		struct unit_limit_group * grp;
+		if (itable_look_up (&is->current_config.unit_type_to_group, unit_type_id, (int *)&grp) &&
+		    grp->has_limit) {
+			// Verify no individual limit overrides the group for this specific type
+			int unused;
+			if (! stable_look_up (&is->current_config.unit_limits,
+			                      p_bic_data->UnitTypes[unit_type_id].Name, &unused)) {
+				// Group count: sum all member IDs (AI strat dups already included in the array)
+				count = 0;
+				for (int n = 0; n < grp->count; n++)
+					count += get_unit_type_count (leader, grp->unit_type_ids[n]);
+				*out_available = limit - count;
+				return true;
+			}
+		}
+	}
+
+	// Standard individual count: this type plus any AI strategy duplicates
+	count = get_unit_type_count (leader, unit_type_id);
+	int dups[30];
+	int dups_count = list_unit_type_duplicates (unit_type_id, dups, ARRAY_LEN (dups));
+	for (int n = 0; n < dups_count; n++)
+		count += get_unit_type_count (leader, dups[n]);
+
+	*out_available = limit - count;
+	return true;
 }
+// END ToC-26
 
 int
 add_i31b_to_int (int base, i31b addition)
@@ -17707,6 +17901,9 @@ patch_init_floating_point ()
 		{"patch_division_by_zero_in_ai_alliance_eval"            , true , offsetof (struct c3x_config, patch_division_by_zero_in_ai_alliance_eval)},
 		{"patch_empty_army_movement"                             , true , offsetof (struct c3x_config, patch_empty_army_movement)},
 		{"patch_empty_army_combat_crash"                         , true , offsetof (struct c3x_config, patch_empty_army_combat_crash)},
+		// ToC-12 add - Allow missiles to have non-lethal bombard
+        {"patch_cruise_missile_ignores_lethal_bombard_abilities", false, offsetof (struct c3x_config, patch_cruise_missile_ignores_lethal_bombard_abilities)}, 
+		// END ToC-12
 		{"patch_premature_truncation_of_found_paths"             , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
 		{"patch_zero_production_crash"                           , true , offsetof (struct c3x_config, patch_zero_production_crash)},
 		{"patch_ai_can_form_army_without_special_ability"        , true , offsetof (struct c3x_config, patch_ai_can_form_army_without_special_ability)},
@@ -19602,14 +19799,32 @@ bool __fastcall
 	bool base = Unit_can_upgrade (this);
 	int available;
 	City * city = city_at (this->Body.X, this->Body.Y);
+	// ToC-27: Store upgrade_id so we can check for same-group upgrades below.
+	int upgrade_id;
 	if (base &&
 	    (city != NULL) &&
-	    get_available_unit_count (&leaders[this->Body.CivID], City_get_upgraded_type_id (city, __, this->Body.UnitTypeID), &available) &&
-	    (available <= 0))
+	    (0 <= (upgrade_id = City_get_upgraded_type_id (city, __, this->Body.UnitTypeID))) &&
+	    get_available_unit_count (&leaders[this->Body.CivID], upgrade_id, &available) &&
+	    (available <= 0)) {
+		// ToC-27: Allow same-group upgrades even at the group limit. An upgrade removes the
+		// source unit and adds the target unit — the group count is net zero. We only bypass
+		// the block when the target has no individual limit (i.e., the restriction came from
+		// the group limit, not a per-type override on the target type).
+		if (is->current_config.unit_type_to_group.len > 0) {
+			struct unit_limit_group * from_grp, * to_grp;
+			int unused;
+			if (itable_look_up (&is->current_config.unit_type_to_group, this->Body.UnitTypeID, (int *)&from_grp) &&
+			    itable_look_up (&is->current_config.unit_type_to_group, upgrade_id, (int *)&to_grp) &&
+			    (from_grp == to_grp) &&
+			    from_grp->has_limit &&
+			    ! stable_look_up (&is->current_config.unit_limits, p_bic_data->UnitTypes[upgrade_id].Name, &unused))
+				return base; // same-group upgrade: net-zero group count change — permit it
+		}
 		return false;
-	else
+	} else
 		return base;
 }
+// END ToC-27
 
 bool
 is_district_command (int unit_command_value)
@@ -20050,12 +20265,31 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 		int available = INT_MAX; {
 			City * city;
 			int upgrade_id;
-			if ((is->current_config.unit_limits.len > 0) &&
+			// ToC-26: also check unit_type_to_group so group-limited upgrade types are caught
+			if ((is->current_config.unit_limits.len > 0 ||
+			     is->current_config.unit_type_to_group.len > 0) &&
 			    patch_Unit_can_perform_command (unit, __, UCV_Upgrade_Unit) &&
 			    (NULL != (city = city_at (unit->Body.X, unit->Body.Y))) &&
-			    (0 < (upgrade_id = City_get_upgraded_type_id (city, __, unit_type_id))))
+			    (0 < (upgrade_id = City_get_upgraded_type_id (city, __, unit_type_id)))) {
 				get_available_unit_count (&leaders[unit->Body.CivID], upgrade_id, &available);
-		}
+				// ToC-27: If source and target are in the same unit_limit_group with no individual
+				// limit on the target, upgrading is net-zero on the group count (source removed,
+				// target added). Reset available to INT_MAX so the loop below allows all units to
+				// queue for upgrade regardless of current group occupancy.
+				if ((available != INT_MAX) && (is->current_config.unit_type_to_group.len > 0)) {
+					struct unit_limit_group * from_grp, * to_grp;
+					int unused;
+					if (itable_look_up (&is->current_config.unit_type_to_group, unit_type_id, (int *)&from_grp) &&
+					    itable_look_up (&is->current_config.unit_type_to_group, upgrade_id, (int *)&to_grp) &&
+					    (from_grp == to_grp) &&
+					    from_grp->has_limit &&
+					    ! stable_look_up (&is->current_config.unit_limits,
+					                      p_bic_data->UnitTypes[upgrade_id].Name, &unused))
+						available = INT_MAX; // same-group upgrade: net-zero group count change
+				}
+			}
+		}  
+		// END ToC-26 and ToC-27
 
 		int cost = 0;
 		FOR_UNITS_ON (uti, tile)
@@ -22250,11 +22484,16 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 			}
 		}
 
-		// Apply unit type limit
+		// Apply unit type limit.
+		// ToC-27: Skip this check when called from patch_City_can_build_upgrade_type (flag is set).
+		// The limit is re-applied with source-type context in patch_Unit_can_upgrade so that
+		// same-group upgrades (net-zero group count change) are correctly allowed.
 		int available;
-		if (get_available_unit_count (&leaders[this->Body.CivID], unit_type_id, &available) && (available <= 0))
+		if (! is->checking_upgrade_type_eligibility &&
+		    get_available_unit_count (&leaders[this->Body.CivID], unit_type_id, &available) &&
+		    (available <= 0))
 			return false;
-	}
+	}  // END ToC-27
 
 	if (is->current_config.enable_districts) {
 		bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
@@ -26295,14 +26534,43 @@ patch_Leader_begin_unit_turns (Leader * this)
 	Leader_begin_unit_turns (this);
 }
 
+// ToC-12 - Code Replace : The game hardcodes land_lethal=true and sea_lethal=true for cruise missiles,
+// making lethal bombard unconditional regardless of the unit's actual abilities. When this patch
+// is enabled, cruise missiles must have the Lethal Land/Sea Bombardment ability explicitly set,
+// just like every other unit type in the game.
+
 Unit * __fastcall
 patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bombarder, int tile_x, int tile_y, int bombarder_civ_id, bool land_lethal, bool sea_lethal)
 {
+
+	if (is->current_config.patch_cruise_missile_ignores_lethal_bombard_abilities &&
+	    UnitType_has_ability (&p_bic_data->UnitTypes[bombarder->Body.UnitTypeID], __, UTA_Cruise_Missile)) {
+		land_lethal = UnitType_has_ability (&p_bic_data->UnitTypes[bombarder->Body.UnitTypeID], __, UTA_Lethal_Land_Bombardment);
+		sea_lethal  = UnitType_has_ability (&p_bic_data->UnitTypes[bombarder->Body.UnitTypeID], __, UTA_Lethal_Sea_Bombardment);
+	}
+
 	if (is->bombard_stealth_target == NULL)
 		return Fighter_find_defender_against_bombardment (this, __, bombarder, tile_x, tile_y, bombarder_civ_id, land_lethal, sea_lethal);
 	else
 		return is->bombard_stealth_target;
 }
+// END ToC-12 fix
+
+// ToC-12 (superseded by ToC-13A): This function formerly cleared the UTA_Cruise_Missile ability
+// bit before calling Unit_begin_bombarding_tile to force non-lethal damage resolution. However,
+// clearing the bit at this level also cleared it for the war-declaration check inside
+// Unit_bombard_tile, causing cruise missiles to attack peaceful civs without showing the
+// 'declare war?' prompt. The bit-clearing has been moved to patch_Fighter_do_bombard_tile
+// (ToC-13A), which runs after the war-declaration check in the Unit layer.
+
+bool __fastcall
+patch_Unit_begin_bombarding_tile (Unit * this, int edx, int x, int y)
+{
+	// Dead code -- never called; Unit_begin_bombarding_tile is 'ignore' in civ_prog_objects.csv.
+	// Logic moved to patch_Fighter_do_bombard_tile (ToC-13A).
+	return false;
+}
+// End ToC-12 / ToC-13A
 
 Unit *
 select_stealth_attack_bombard_target (Unit * unit, int tile_x, int tile_y)
@@ -26721,6 +26989,29 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 	// is running. So if we're configured to stop enslaving from bombard, turn off enslaving while it's running.
 	is->do_not_enslave_units = is->current_config.prevent_enslaving_by_bombardment;
 
+	// ToC-13A: Prevent non-lethal cruise missiles from killing.
+	// The game hardcodes land_lethal=true and sea_lethal=true for any UTA_Cruise_Missile unit inside
+	// the Fighter combat layer (here and its callees), ignoring UTA_Lethal_Land/Sea_Bombardment flags.
+	// Temporarily clearing UTA_Cruise_Missile forces the game to use the normal lethal-ability-check path.
+	// Crucially, this is done HERE (inside the Fighter layer) rather than at Unit_begin_bombarding_tile,
+	// so the war-declaration prompt in Unit_bombard_tile has already run with the bit still set, keeping
+	// the 'declare war?' dialog intact when firing at a civ we're at peace with.
+	int non_lethal_cm_saved_abilities = 0;
+	UnitType * non_lethal_cm_type = NULL;
+	if (is->current_config.patch_cruise_missile_ignores_lethal_bombard_abilities) {
+		UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
+		if (UnitType_has_ability (type, __, UTA_Cruise_Missile)) {
+			bool has_lethal_land = UnitType_has_ability (type, __, UTA_Lethal_Land_Bombardment);
+			bool has_lethal_sea  = UnitType_has_ability (type, __, UTA_Lethal_Sea_Bombardment);
+			if (! has_lethal_land || ! has_lethal_sea) {
+				non_lethal_cm_saved_abilities = type->UnitAbilities;
+				type->UnitAbilities          &= ~(1 << (int)UTA_Cruise_Missile);
+				non_lethal_cm_type            = type;
+			}
+		}
+	}
+	// End ToC-13A setup
+
 	// Check if we're going to do PTW-like targeting, if not fall back on the base game's do_bombard_tile method. We'll also fall back on that
 	// method in the case where we're in an online game and the bombard can't happen b/c the tile is occupied by another battle. In that case, no
 	// bombard is possible but we'll call the base method anyway since it will show a little message saying as much.
@@ -26744,6 +27035,11 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 
 	} else
 		Fighter_do_bombard_tile (this, __, unit, neighbor_index, mp_tile_x, mp_tile_y);
+
+	// ToC-13A: Restore cruise missile bit if we cleared it above
+	if (non_lethal_cm_type != NULL)
+		non_lethal_cm_type->UnitAbilities = non_lethal_cm_saved_abilities;
+	// End ToC-13A
 
 	is->do_not_enslave_units = false;
 }
@@ -29042,11 +29338,31 @@ patch_Unit_can_perform_upgrade_all (Unit * this, int edx, int unit_command_value
 	// so many upgrades that we exceed the limit.
 	City * city;
 	int upgrade_id, available;
+	// ToC-26: also check unit_type_to_group so group-limited upgrade types are caught
 	if (base &&
-	    (is->current_config.unit_limits.len > 0) &&
+	    (is->current_config.unit_limits.len > 0 ||
+	     is->current_config.unit_type_to_group.len > 0) &&
 	    (NULL != (city = city_at (this->Body.X, this->Body.Y))) &&
 	    (0 <= (upgrade_id = City_get_upgraded_type_id (city, __, this->Body.UnitTypeID))) &&
 	    get_available_unit_count (&leaders[this->Body.CivID], upgrade_id, &available)) {
+
+		// ToC-27: If source and target are in the same unit_limit_group (and the target has no
+		// individual limit), the upgrade is net-zero on the group count — the source unit is
+		// consumed and the target unit is produced. There is no risk of exceeding the group limit
+		// regardless of how many such upgrades are queued, so skip the penciled-in accounting
+		// entirely and allow every qualifying unit to upgrade freely.
+		if (is->current_config.unit_type_to_group.len > 0) {
+			struct unit_limit_group * from_grp, * to_grp;
+			int unused;
+			if (itable_look_up (&is->current_config.unit_type_to_group, this->Body.UnitTypeID, (int *)&from_grp) &&
+			    itable_look_up (&is->current_config.unit_type_to_group, upgrade_id, (int *)&to_grp) &&
+			    (from_grp == to_grp) &&
+			    from_grp->has_limit &&
+			    ! stable_look_up (&is->current_config.unit_limits,
+			                      p_bic_data->UnitTypes[upgrade_id].Name, &unused))
+				return true; // same-group upgrade: net-zero group count change — always permit
+		}
+
 
 		// Find penciled in upgrade. Add a new one if we don't already have one.
 		struct penciled_in_upgrade * piu = NULL; {
@@ -29075,6 +29391,8 @@ patch_Unit_can_perform_upgrade_all (Unit * this, int edx, int unit_command_value
 	} else
 		return base;
 }
+
+		// END ToC-26 and ToC-27
 
 void __fastcall
 patch_Fighter_animate_start_of_combat (Fighter * this, int edx, Unit * attacker, Unit * defender)
@@ -32642,8 +32960,16 @@ patch_City_can_build_upgrade_type (City * this, int edx, int unit_type_id, bool 
 	    (type->Available_To & (1 << leaders[this->Body.CivID].RaceID)))
 		exclude_upgradable = false;
 
-	return patch_City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
-}
+	// ToC-27: Set the upgrade-eligibility flag so patch_City_can_build_unit skips its unit-type
+	// limit check. Without this, group-limited types at their limit would cause Unit_can_upgrade
+	// to return false (base = false in patch_Unit_can_upgrade), making the ToC-27 same-group
+	// bypass unreachable. With the flag, the limit is deferred to patch_Unit_can_upgrade, which
+	// has the source unit's type and can correctly allow same-group upgrades.
+	is->checking_upgrade_type_eligibility = true;
+	bool result = patch_City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
+	is->checking_upgrade_type_eligibility = false;
+	return result;
+}  // END ToC-27
 
 void __fastcall
 patch_Main_GUI_position_elements (Main_GUI * this)
@@ -36410,11 +36736,60 @@ patch_Tile_m17_Check_Irrigation (Tile * this, int edx, int visible_to_civ_id)
 	return base;
 }
 
+// ToC-12 - Code Replace - Add logic that tells AI not to waste cruise missile type units if entire enemy tile only has 1HP units and Cruise missile is not lethal
 int __fastcall
 patch_Unit_ai_eval_bombard_target (Unit * this, int edx, int tile_x, int tile_y, int param_3)
 {
 	int score = Unit_ai_eval_bombard_target (this, __, tile_x, tile_y, param_3);
+	Leader * me = &leaders[this->Body.CivID];
 
+	// If the cruise missile lethal bombard patch is active and this unit is a
+	// cruise missile, check whether firing at this tile would be completely wasted. A shot is
+	// wasted when every visible enemy unit on the tile is already at 1 HP and the cruise missile
+	// lacks the lethal ability needed to kill that class of unit. In that case, return 0 so the AI
+	// treats this tile as a non-target (score must be > 0 to be selected as best_target).
+	if (is->current_config.patch_cruise_missile_ignores_lethal_bombard_abilities &&
+	    score > 0 &&
+	    UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Cruise_Missile)) {
+
+		UnitType * attacker_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+		bool has_lethal_land = UnitType_has_ability (attacker_type, __, UTA_Lethal_Land_Bombardment);
+		bool has_lethal_sea  = UnitType_has_ability (attacker_type, __, UTA_Lethal_Sea_Bombardment);
+
+		// Only bother scanning if the missile is missing at least one lethal ability —
+		// if it has both, it can always kill, so no wasted-shot scenario is possible.
+		if (! (has_lethal_land && has_lethal_sea)) {
+			Tile * tile = tile_at (tile_x, tile_y);
+			if ((tile != NULL) && (tile != p_null_tile)) {
+				bool found_damageable_enemy = false;
+
+				FOR_UNITS_ON (uti, tile) {
+					Unit * candidate = uti.unit;
+					if (! me->At_War[candidate->Body.CivID])
+						continue;
+					if (! patch_Unit_is_visible_to_civ (candidate, __, this->Body.CivID, 0))
+						continue;
+					// ToC-13 - Tell AI to not waste Missile Units on 0 defense units in the open that it can't kill
+					// Skip 0-defense units: even though can_damage_bombarding may return true,
+					// the game's find_defender will never select a 0-defense unit as a target,
+					// so firing would be wasted. This mirrors the native game's own filter.
+					if (Unit_get_defense_strength (candidate) == 0)
+						continue;  
+					// END ToC-13
+					if (can_damage_bombarding (attacker_type, candidate, tile)) {
+						found_damageable_enemy = true;
+						break;
+					}
+				}
+
+				if (! found_damageable_enemy)
+					score = 0;
+			}
+		}
+	} 
+	// END ToC-12
+
+	// Existing Great Wall district score boosting (unchanged)
 	if (! (is->current_config.enable_districts &&
 	       is->current_config.enable_great_wall_districts))
 		return score;
@@ -36439,7 +36814,9 @@ patch_Unit_ai_eval_bombard_target (Unit * this, int edx, int tile_x, int tile_y,
 
 	bool has_unit_on_tile = false;
 	bool has_enemy_on_tile = false;
-	Leader * me = &leaders[this->Body.CivID];
+	// Commenting out the one line below since it's a redeclaration -- already declared this
+	// earlier in patch_Unit_ai_eval_bombard_target (ToC-12)
+	// Leader * me = &leaders[this->Body.CivID];
 	FOR_UNITS_ON (uti, tile) {
 		UnitType const * unit_type = &p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID];
 		if (patch_Unit_is_visible_to_civ (uti.unit, __, me->ID, 0)) {

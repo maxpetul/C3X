@@ -78,6 +78,17 @@ struct unit_type_limit {
 	int cities_per;
 };
 
+/* ToC-26: Represents a named group of unit types that share a combined build limit.
+   Stored by pointer in unit_limit_groups (keyed by group name) and in unit_type_to_group
+   (keyed by unit_type_id).  The group struct is owned by unit_limit_groups; unit_type_to_group
+   holds non-owning pointers into it. */
+struct unit_limit_group {
+    int * unit_type_ids;        // Array of unit type IDs belonging to this group
+    int   count;                // Number of IDs in the array
+    struct unit_type_limit limit; // The shared limit value for this group
+    bool  has_limit;            // True once a limit has been assigned via unit_limits
+}; // END ToC-26
+
 struct work_area_improvement {
 	short improv_id;
 	int work_area_radius_limit;
@@ -320,6 +331,10 @@ struct c3x_config {
 	struct leader_era_alias_list * leader_era_alias_lists;
 	int count_leader_era_alias_lists;
 	struct table unit_limits; // Maps unit type names (strings) to pointers to limit objects (struct unit_type_limit *)
+	// ToC-26: Group-based unit limits. unit_limit_groups maps group name strings to struct unit_limit_group*.
+	// unit_type_to_group maps unit_type_id (int) to struct unit_limit_group* for O(1) runtime lookup.
+	struct table unit_limit_groups;
+	struct table unit_type_to_group; // END ToC-26
 	bool allow_upgrades_in_any_city;
 	bool do_not_generate_volcanos;
 	bool do_not_pollute_impassable_tiles;
@@ -392,6 +407,7 @@ struct c3x_config {
 	bool patch_division_by_zero_in_ai_alliance_eval;
 	bool patch_empty_army_movement;
 	bool patch_empty_army_combat_crash;
+	bool patch_cruise_missile_ignores_lethal_bombard_abilities;  // ToC-12 - Allow Missiles to obey normal lethal bombard flag rules
 	bool delete_off_map_ai_units;
 	bool fix_overlapping_specialist_yield_icons;
 	bool patch_premature_truncation_of_found_paths;
@@ -1920,6 +1936,13 @@ struct injected_state {
 	} * penciled_in_upgrades;
 	int penciled_in_upgrade_count;
 	int penciled_in_upgrade_capacity;
+
+	// ToC-27: Set to true while patch_City_can_build_upgrade_type is running. When true,
+	// patch_City_can_build_unit skips its unit-type limit check so that upgrades to group-limited
+	// types are not blocked at the City_can_build level. patch_Unit_can_upgrade re-applies the
+	// limit with full source-type context, allowing same-group upgrades (net-zero count change)
+	// while still blocking over-limit production and cross-group upgrade attempts.
+	bool checking_upgrade_type_eligibility; // END ToC-27
 
 	// While in Leader::do_capture_city, the city in question is stored in this var. Otherwise it's NULL.
 	City * currently_capturing_city;
