@@ -17901,6 +17901,9 @@ patch_init_floating_point ()
 		{"patch_division_by_zero_in_ai_alliance_eval"            , true , offsetof (struct c3x_config, patch_division_by_zero_in_ai_alliance_eval)},
 		{"patch_empty_army_movement"                             , true , offsetof (struct c3x_config, patch_empty_army_movement)},
 		{"patch_empty_army_combat_crash"                         , true , offsetof (struct c3x_config, patch_empty_army_combat_crash)},
+		// ToC-12 add - Allow missiles to have non-lethal bombard
+        {"patch_cruise_missile_ignores_lethal_bombard_abilities", false, offsetof (struct c3x_config, patch_cruise_missile_ignores_lethal_bombard_abilities)}, 
+		// END ToC-12
 		{"patch_premature_truncation_of_found_paths"             , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
 		{"patch_zero_production_crash"                           , true , offsetof (struct c3x_config, patch_zero_production_crash)},
 		{"patch_ai_can_form_army_without_special_ability"        , true , offsetof (struct c3x_config, patch_ai_can_form_army_without_special_ability)},
@@ -26531,14 +26534,44 @@ patch_Leader_begin_unit_turns (Leader * this)
 	Leader_begin_unit_turns (this);
 }
 
+// ToC-12 - Code Replace : The game hardcodes land_lethal=true and sea_lethal=true for cruise missiles,
+// making lethal bombard unconditional regardless of the unit's actual abilities. When this patch
+// is enabled, cruise missiles must have the Lethal Land/Sea Bombardment ability explicitly set,
+// just like every other unit type in the game.
+
 Unit * __fastcall
 patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bombarder, int tile_x, int tile_y, int bombarder_civ_id, bool land_lethal, bool sea_lethal)
 {
+
+	if (is->current_config.patch_cruise_missile_ignores_lethal_bombard_abilities &&
+	    UnitType_has_ability (&p_bic_data->UnitTypes[bombarder->Body.UnitTypeID], __, UTA_Cruise_Missile)) {
+		land_lethal = UnitType_has_ability (&p_bic_data->UnitTypes[bombarder->Body.UnitTypeID], __, UTA_Lethal_Land_Bombardment);
+		sea_lethal  = UnitType_has_ability (&p_bic_data->UnitTypes[bombarder->Body.UnitTypeID], __, UTA_Lethal_Sea_Bombardment);
+	}
+
 	if (is->bombard_stealth_target == NULL)
 		return Fighter_find_defender_against_bombardment (this, __, bombarder, tile_x, tile_y, bombarder_civ_id, land_lethal, sea_lethal);
 	else
 		return is->bombard_stealth_target;
 }
+// END ToC-12 fix
+
+// ToC-12 (superseded by ToC-13A): This function formerly cleared the UTA_Cruise_Missile ability
+// bit before calling Unit_begin_bombarding_tile to force non-lethal damage resolution. However,
+// clearing the bit at this level also cleared it for the war-declaration check inside
+// Unit_bombard_tile, causing cruise missiles to attack peaceful civs without showing the
+// 'declare war?' prompt. The bit-clearing has been moved to patch_Fighter_do_bombard_tile
+// (ToC-13A), which runs after the war-declaration check in the Unit layer.
+// Unit_begin_bombarding_tile is now listed as 'ignore' in civ_prog_objects.csv; this function
+// is dead code kept for documentation purposes.
+bool __fastcall
+patch_Unit_begin_bombarding_tile (Unit * this, int edx, int x, int y)
+{
+	// Dead code -- never called; Unit_begin_bombarding_tile is 'ignore' in civ_prog_objects.csv.
+	// Logic moved to patch_Fighter_do_bombard_tile (ToC-13A).
+	return false;
+}
+// End ToC-12 / ToC-13A
 
 Unit *
 select_stealth_attack_bombard_target (Unit * unit, int tile_x, int tile_y)
@@ -26957,6 +26990,29 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 	// is running. So if we're configured to stop enslaving from bombard, turn off enslaving while it's running.
 	is->do_not_enslave_units = is->current_config.prevent_enslaving_by_bombardment;
 
+	// ToC-13A: Prevent non-lethal cruise missiles from killing.
+	// The game hardcodes land_lethal=true and sea_lethal=true for any UTA_Cruise_Missile unit inside
+	// the Fighter combat layer (here and its callees), ignoring UTA_Lethal_Land/Sea_Bombardment flags.
+	// Temporarily clearing UTA_Cruise_Missile forces the game to use the normal lethal-ability-check path.
+	// Crucially, this is done HERE (inside the Fighter layer) rather than at Unit_begin_bombarding_tile,
+	// so the war-declaration prompt in Unit_bombard_tile has already run with the bit still set, keeping
+	// the 'declare war?' dialog intact when firing at a civ we're at peace with.
+	int non_lethal_cm_saved_abilities = 0;
+	UnitType * non_lethal_cm_type = NULL;
+	if (is->current_config.patch_cruise_missile_ignores_lethal_bombard_abilities) {
+		UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
+		if (UnitType_has_ability (type, __, UTA_Cruise_Missile)) {
+			bool has_lethal_land = UnitType_has_ability (type, __, UTA_Lethal_Land_Bombardment);
+			bool has_lethal_sea  = UnitType_has_ability (type, __, UTA_Lethal_Sea_Bombardment);
+			if (! has_lethal_land || ! has_lethal_sea) {
+				non_lethal_cm_saved_abilities = type->UnitAbilities;
+				type->UnitAbilities          &= ~(1 << (int)UTA_Cruise_Missile);
+				non_lethal_cm_type            = type;
+			}
+		}
+	}
+	// End ToC-13A setup
+
 	// Check if we're going to do PTW-like targeting, if not fall back on the base game's do_bombard_tile method. We'll also fall back on that
 	// method in the case where we're in an online game and the bombard can't happen b/c the tile is occupied by another battle. In that case, no
 	// bombard is possible but we'll call the base method anyway since it will show a little message saying as much.
@@ -26980,6 +27036,11 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 
 	} else
 		Fighter_do_bombard_tile (this, __, unit, neighbor_index, mp_tile_x, mp_tile_y);
+
+	// ToC-13A: Restore cruise missile bit if we cleared it above
+	if (non_lethal_cm_type != NULL)
+		non_lethal_cm_type->UnitAbilities = non_lethal_cm_saved_abilities;
+	// End ToC-13A
 
 	is->do_not_enslave_units = false;
 }
@@ -36676,11 +36737,60 @@ patch_Tile_m17_Check_Irrigation (Tile * this, int edx, int visible_to_civ_id)
 	return base;
 }
 
+// ToC-12 - Code Replace - Add logic that tells AI not to waste cruise missile type units if entire enemy tile only has 1HP units and Cruise missile is not lethal
 int __fastcall
 patch_Unit_ai_eval_bombard_target (Unit * this, int edx, int tile_x, int tile_y, int param_3)
 {
 	int score = Unit_ai_eval_bombard_target (this, __, tile_x, tile_y, param_3);
+	Leader * me = &leaders[this->Body.CivID];
 
+	// If the cruise missile lethal bombard patch is active and this unit is a
+	// cruise missile, check whether firing at this tile would be completely wasted. A shot is
+	// wasted when every visible enemy unit on the tile is already at 1 HP and the cruise missile
+	// lacks the lethal ability needed to kill that class of unit. In that case, return 0 so the AI
+	// treats this tile as a non-target (score must be > 0 to be selected as best_target).
+	if (is->current_config.patch_cruise_missile_ignores_lethal_bombard_abilities &&
+	    score > 0 &&
+	    UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Cruise_Missile)) {
+
+		UnitType * attacker_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+		bool has_lethal_land = UnitType_has_ability (attacker_type, __, UTA_Lethal_Land_Bombardment);
+		bool has_lethal_sea  = UnitType_has_ability (attacker_type, __, UTA_Lethal_Sea_Bombardment);
+
+		// Only bother scanning if the missile is missing at least one lethal ability —
+		// if it has both, it can always kill, so no wasted-shot scenario is possible.
+		if (! (has_lethal_land && has_lethal_sea)) {
+			Tile * tile = tile_at (tile_x, tile_y);
+			if ((tile != NULL) && (tile != p_null_tile)) {
+				bool found_damageable_enemy = false;
+
+				FOR_UNITS_ON (uti, tile) {
+					Unit * candidate = uti.unit;
+					if (! me->At_War[candidate->Body.CivID])
+						continue;
+					if (! patch_Unit_is_visible_to_civ (candidate, __, this->Body.CivID, 0))
+						continue;
+					// ToC-13 - Tell AI to not waste Missile Units on 0 defense units in the open that it can't kill
+					// Skip 0-defense units: even though can_damage_bombarding may return true,
+					// the game's find_defender will never select a 0-defense unit as a target,
+					// so firing would be wasted. This mirrors the native game's own filter.
+					if (Unit_get_defense_strength (candidate) == 0)
+						continue;  
+					// END ToC-13
+					if (can_damage_bombarding (attacker_type, candidate, tile)) {
+						found_damageable_enemy = true;
+						break;
+					}
+				}
+
+				if (! found_damageable_enemy)
+					score = 0;
+			}
+		}
+	} 
+	// END ToC-12
+
+	// Existing Great Wall district score boosting (unchanged)
 	if (! (is->current_config.enable_districts &&
 	       is->current_config.enable_great_wall_districts))
 		return score;
@@ -36705,7 +36815,9 @@ patch_Unit_ai_eval_bombard_target (Unit * this, int edx, int tile_x, int tile_y,
 
 	bool has_unit_on_tile = false;
 	bool has_enemy_on_tile = false;
-	Leader * me = &leaders[this->Body.CivID];
+	// Commenting out the one line below since it's a redeclaration -- already declared this
+	// earlier in patch_Unit_ai_eval_bombard_target (ToC-12)
+	// Leader * me = &leaders[this->Body.CivID];
 	FOR_UNITS_ON (uti, tile) {
 		UnitType const * unit_type = &p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID];
 		if (patch_Unit_is_visible_to_civ (uti.unit, __, me->ID, 0)) {

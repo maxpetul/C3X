@@ -407,6 +407,7 @@ struct c3x_config {
 	bool patch_division_by_zero_in_ai_alliance_eval;
 	bool patch_empty_army_movement;
 	bool patch_empty_army_combat_crash;
+	bool patch_cruise_missile_ignores_lethal_bombard_abilities;  // ToC-12 - Allow Missiles to obey normal lethal bombard flag rules
 	bool delete_off_map_ai_units;
 	bool fix_overlapping_specialist_yield_icons;
 	bool patch_premature_truncation_of_found_paths;
