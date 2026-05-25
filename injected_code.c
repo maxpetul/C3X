@@ -26562,8 +26562,7 @@ patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bomb
 // Unit_bombard_tile, causing cruise missiles to attack peaceful civs without showing the
 // 'declare war?' prompt. The bit-clearing has been moved to patch_Fighter_do_bombard_tile
 // (ToC-13A), which runs after the war-declaration check in the Unit layer.
-// Unit_begin_bombarding_tile is now listed as 'ignore' in civ_prog_objects.csv; this function
-// is dead code kept for documentation purposes.
+
 bool __fastcall
 patch_Unit_begin_bombarding_tile (Unit * this, int edx, int x, int y)
 {
