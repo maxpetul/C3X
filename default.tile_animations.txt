@@ -31,6 +31,18 @@
   ;                               How to find index from visual order (top-left=0, then row-major):
   ;                                 - default: pcx_index = visual_index
   ;                                 - deltaRivers.pcx & mtnRivers.pcx: these are combined within the game and may take trial-and-error to find index.
+  ;
+  ;                               Example PCX animation of a river segment:
+  ;                                 #Animation
+  ;                                 name                    = DeltaRivers_12
+  ;                                 ini_path                = Terrain\DeltaRivers\DeltaRivers_12.INI
+  ;                                 type                    = pcx
+  ;                                 pcx_file                = deltaRivers.pcx
+  ;                                 pcx_index               = 12
+  ;                                 y_offset                = 12
+  ;                                 x_offset                = -65
+  ;                                 show_in_day_night_hours = 7-17
+  ;                                 frame_time_seconds      = 0.15
   ;  - terrain_types            : Comma-delimited terrain types. Required if type = terrain.
   ;                               Valid values: desert, plains, grassland, jungle, tundra, floodplain, swamp, hills, mountains,
   ;                                             forest, volcano, snow-forest, snow-mountains, snow-volcano, coast, sea, ocean, land
@@ -108,7 +120,6 @@ show_in_day_night_hours = 18-6
 
 #Animation
 name                    = Cattle
-;ini_path                = Resources\MilkCow\MilkCow.INI
 ini_path                = Resources\Cow\black_and_white_cow.INI
 type                    = resource
 resource_type           = Cattle
@@ -118,7 +129,7 @@ show_in_day_night_hours = 7-17
 
 #Animation
 name                    = Cattle_night
-ini_path                = Resources\MilkCow\MilkCow_night.INI
+ini_path                = Resources\Cow\black_and_white_cow_night.INI
 type                    = resource
 resource_type           = Cattle
 direction               = southeast
@@ -159,15 +170,3 @@ show_in_day_night_hours = 7-17
 frame_time_seconds      = 0.13
 y_offset                = -20
 x_offset                = -15
-
-;===Example PCX animation of river segment===
-;#Animation
-;name                    = DeltaRivers_12
-;ini_path                = Terrain\DeltaRivers\DeltaRivers_12.INI
-;type                    = pcx
-;pcx_file                = deltaRivers.pcx
-;pcx_index               = 12
-;y_offset                = 12
-;x_offset                = -65
-;show_in_day_night_hours = 7-17
-;frame_time_seconds      = 0.15
