@@ -46,8 +46,8 @@ food_bonus      = 0
 gold_bonus      = 0
 shield_bonus    = 0
 happiness_bonus = 1
-animation       = ini=NaturalWonders\AngelFalls.INI;       hours=7-17; seasons=spring,summer,fall,winter; offsets=0,-10; direction=southwest; frame_time_seconds=0.13
-animation       = ini=NaturalWonders\AngelFalls_night.INI; hours=18-6; seasons=spring,summer,fall,winter; offsets=0,-10; direction=southwest; frame_time_seconds=0.13
+animation       = ini=NaturalWonders\AngelFalls\AngelFalls.INI;       hours=7-17; seasons=spring,summer,fall,winter; offsets=0,-10; direction=southwest; frame_time_seconds=0.13
+animation       = ini=NaturalWonders\AngelFalls\AngelFalls_night.INI; hours=18-6; seasons=spring,summer,fall,winter; offsets=0,-10; direction=southwest; frame_time_seconds=0.13
 
 #Wonder
 name            = Yosemite
@@ -89,6 +89,8 @@ food_bonus      = 0
 gold_bonus      = 0
 shield_bonus    = 0
 happiness_bonus = 1
+animation       = ini=NaturalWonders\Yellowstone\Yellowstone.INI;       hours=7-17; seasons=spring,summer,fall,winter; offsets=28,0; direction=southwest; frame_time_seconds=0.2
+animation       = ini=NaturalWonders\Yellowstone\Yellowstone_night.INI; hours=18-6; seasons=spring,summer,fall,winter; offsets=28,0; direction=southwest; frame_time_seconds=0.2
 
 #Wonder
 name            = Mount Everest
