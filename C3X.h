@@ -934,7 +934,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 5, .img_column_count = 4, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
 		.culture_bonus = 1, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 25,
-		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0, .auto_add_road = true
 
 	},
 	{
