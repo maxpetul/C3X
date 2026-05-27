@@ -2374,6 +2374,8 @@ struct district_button_image_set {
 	unsigned int * tile_animation_selected_mask_matrix;
 	int tile_animation_selected_tile_count;
 	int tile_animation_selected_animation_count;
+	int tile_animation_selected_hour;
+	int tile_animation_selected_season;
 	bool tile_animation_selected_valid;
 
 	// Optional scheduler optimization cache.

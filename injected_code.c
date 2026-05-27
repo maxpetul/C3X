@@ -256,6 +256,7 @@ void __fastcall patch_Tile_spawn_animated_effect (Tile * this, int edx, enum Ani
 void reset_tile_animation_runtime_state ();
 bool tile_animation_matches_time_filters (struct tile_animation_config const * cfg);
 bool tile_animation_cache_needs_rebuild ();
+bool is_custom_tile_animation_effect (int effect_id);
 void clear_tile_animation_pcx_matches_in_cache ();
 void register_tile_animation_pcx_draw_for_current_tile (Sprite * sprite);
 void rebuild_tile_animation_pcx_sprite_lookup ();
@@ -18615,6 +18616,8 @@ patch_init_floating_point ()
 	is->day_night_cycle_img_proxies_indexed = false;
 	is->day_night_sprite_proxy_by_season_and_hour = NULL;
 	is->cycle_imgs = NULL;
+	is->tile_animation_selected_hour = -1;
+	is->tile_animation_selected_season = -1;
 	is->tile_animation_pcx_sprite_lookup = (struct table) {0};
 	is->tile_animation_pcx_rule_key_to_index = (struct table) {0};
 	is->tile_animation_pcx_rule_key_count = 0;
@@ -38106,7 +38109,39 @@ free_tile_animation_selected_matrix ()
 	is->tile_animation_selected_match_count = 0;
 	is->tile_animation_selected_tile_count = 0;
 	is->tile_animation_selected_animation_count = 0;
+	is->tile_animation_selected_hour = -1;
+	is->tile_animation_selected_season = -1;
 	is->tile_animation_selected_valid = false;
+}
+
+void
+clear_stale_custom_tile_animation_effects ()
+{
+	if (p_main_screen_form == NULL)
+		return;
+	if (! is->tile_animation_selected_valid || (is->tile_animation_selected_next_index == NULL))
+		return;
+
+	Map * map = &p_bic_data->Map;
+	int tile_count = map->TileCount;
+	if (tile_count != is->tile_animation_selected_tile_count)
+		return;
+
+	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
+		int tile_x, tile_y;
+		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile == NULL) || (tile == p_null_tile) || (tile->Body.active_tile_effect == NULL))
+			continue;
+
+		int effect_id = tile->Body.active_tile_effect->V[2];
+		if (! is_custom_tile_animation_effect (effect_id))
+			continue;
+
+		int animation_index = effect_id - is->tile_animation_effect_base;
+		if (is->tile_animation_selected_next_index[tile_index] != animation_index)
+			Tile_clear_animated_effect (tile);
+	}
 }
 
 void
@@ -38163,7 +38198,10 @@ rebuild_tile_animation_rule_match_cache ()
 
 	is->tile_animation_selected_tile_count = tile_count;
 	is->tile_animation_selected_animation_count = is->tile_animation_count;
+	is->tile_animation_selected_hour = get_tile_animation_hour_for_match ();
+	is->tile_animation_selected_season = get_tile_animation_season_for_match ();
 	is->tile_animation_selected_valid = true;
+	clear_stale_custom_tile_animation_effects ();
 }
 
 bool
@@ -38182,6 +38220,10 @@ tile_animation_cache_needs_rebuild ()
 	if (is->tile_animation_selected_tile_count != p_bic_data->Map.TileCount)
 		return true;
 	if (is->tile_animation_selected_animation_count != is->tile_animation_count)
+		return true;
+	if (is->tile_animation_selected_hour != get_tile_animation_hour_for_match ())
+		return true;
+	if (is->tile_animation_selected_season != get_tile_animation_season_for_match ())
 		return true;
 	return false;
 }
@@ -39185,6 +39227,7 @@ patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effe
 		// Positive X moves right, positive Y moves down.
 		Tile_Animated_Effect * fx = this->Body.active_tile_effect;
 		if ((fx != NULL) && (cfg != NULL)) {
+			fx->V[2] = effect;
 			if (has_effective_direction) {
 				fx->flc_animation.summary.direction = effective_direction;
 				fx->flc_animation.summary.direction_2 = effective_direction;
