@@ -1871,6 +1871,8 @@ struct injected_state {
 	} unit_display_override, unit_display_override_2;
 	bool combat_unit_display_override_active;
 	struct unit_display_override saved_combat_unit_display_override;
+	struct unit_display_override post_combat_defender_display_override;
+	int post_combat_defender_display_attacker_id;
 	bool bombard_target_display_override_active;
 	struct unit_display_override saved_bombard_target_display_override;
 	struct unit_display_override saved_bombard_target_display_override_2;
@@ -1886,6 +1888,16 @@ struct injected_state {
 		int    defender_def_pct;  // Defender defense multiplier (combines forward enemy-def and reverse self-def)
 		bool   ignore_terrain; // Counter rule makes the defender receive no terrain bonus
 	} counter_combat_ctx;
+	// Set while Fighter::begin is choosing a defender so Unit::get_defense_strength can expose counter-adjusted strengths to the base game.
+	struct counter_defender_selection_context {
+		bool   active;
+		Unit * attacker;
+		int    tile_x;
+		int    tile_y;
+	} counter_defender_selection_ctx;
+	char counter_defender_selection_debug_text[4096];
+	int counter_defender_selection_debug_text_len;
+	char counter_display_debug_text[512];
 
 	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
 	Unit * zoc_interceptor;
