@@ -219,6 +219,7 @@ Unit * find_counter_base_visible_defender_against (Main_Screen_Form * form, Unit
 bool unit_has_valid_type_id (Unit * unit);
 int unit_current_hp (Unit * unit);
 void append_counter_defender_selection_debug_line (char const * line);
+int __cdecl patch_get_building_defense_bonus_at (int x, int y, int param_3);
 
 // Declare various functions needed for districts and hard to untangle and reorder here
 void __fastcall patch_City_recompute_yields_and_happiness (City * this);
@@ -8052,10 +8053,18 @@ is_counter_rule_enemy_experience_token (struct string_slice const * token)
 }
 
 bool
+is_counter_rule_ignore_defensive_bonuses_token (struct string_slice const * token)
+{
+	return slice_matches_str (token, "ignore-defensive-bonuses") ||
+	       slice_matches_str (token, "ignore_defensive_bonuses") ||
+	       slice_matches_str (token, "ignore-terrain");
+}
+
+bool
 is_counter_rule_option_token (struct string_slice const * token)
 {
 	return slice_matches_str (token, "in-city") ||
-	       slice_matches_str (token, "ignore-terrain") ||
+	       is_counter_rule_ignore_defensive_bonuses_token (token) ||
 	       slice_matches_str (token, "self-atk") ||
 	       slice_matches_str (token, "self-def") ||
 	       slice_matches_str (token, "enemy-atk") ||
@@ -8237,8 +8246,8 @@ parse_counter_rule (char ** p_cursor,
 	while (parse_string (&cur, &token)) {
 		if (slice_matches_str (&token, "in-city")) {
 			r->only_in_city = true;
-		} else if (slice_matches_str (&token, "ignore-terrain")) {
-			r->ignore_terrain = true;
+		} else if (is_counter_rule_ignore_defensive_bonuses_token (&token)) {
+			r->ignore_defensive_bonuses = true;
 		} else if (slice_matches_str (&token, "self-atk")) {
 			if (! parse_int (&cur, &r->self_atk_pct))
 				return RPR_PARSE_ERROR;
@@ -8321,13 +8330,13 @@ void
 apply_counter_rules (struct c3x_config * cfg,
                      Unit * attacker, Unit * defender, Tile * def_tile,
                      int * out_attacker_atk, int * out_defender_def,
-                     bool * out_ignore_terrain)
+                     bool * out_ignore_defensive_bonuses)
 {
 	int a_type   = attacker->Body.UnitTypeID;
 	int d_type   = defender->Body.UnitTypeID;
 
 	int aa = 100, dd = 100;
-	bool ignore = false;
+	bool ignore_defensive_bonuses = false;
 
 	for (int i = 0; i < cfg->count_counter_rules; i++) {
 		struct counter_rule * r = &cfg->counter_rules[i];
@@ -8376,12 +8385,14 @@ apply_counter_rules (struct c3x_config * cfg,
 			dd = dd * r->self_def_pct  / 100;  // self-def: rule attacker side now acts as defender
 		}
 		if (forward || reverse)
-			ignore = ignore || r->ignore_terrain;
+			ignore_defensive_bonuses =
+				ignore_defensive_bonuses ||
+				r->ignore_defensive_bonuses;
 	}
 
 	*out_attacker_atk  = aa;
 	*out_defender_def  = dd;
-	*out_ignore_terrain = ignore;
+	*out_ignore_defensive_bonuses = ignore_defensive_bonuses;
 }
 
 int
@@ -29371,29 +29382,33 @@ patch_Fighter_get_odds_for_main_combat_loop (Fighter * this, int edx, Unit * att
 		return 1025;
 
 	struct c3x_config * cfg = &is->current_config;
-	// Only OR in counter-rule terrain skipping when we actually ran apply_counter_rules for this
-	// call. Otherwise counter_combat_ctx.ignore_terrain can be stale from an earlier combat
+	// Only OR in counter-rule defensive-bonus skipping when we actually ran
+	// apply_counter_rules for this call. Otherwise counter_combat_ctx can be
+	// stale from an earlier combat
 	// round or a future odds probe.
-	bool ignore_terrain_for_odds = ignore_defensive_bonuses;
+	bool ignore_defensive_bonuses_for_odds = ignore_defensive_bonuses;
 	if (cfg->enable_unit_counters && attacker != NULL && defender != NULL) {
 		Tile * def_tile = tile_at (this->defender_location_x,
 		                           this->defender_location_y);
 		int  aa, dd;
-		bool ignore_terrain;
+		bool rule_ignore_defensive_bonuses;
 		apply_counter_rules (cfg, attacker, defender, def_tile,
-		                     &aa, &dd, &ignore_terrain);
+		                     &aa, &dd,
+		                     &rule_ignore_defensive_bonuses);
 
 		is->counter_combat_ctx.active          = true;
 		is->counter_combat_ctx.attacker        = attacker;
 		is->counter_combat_ctx.defender        = defender;
 		is->counter_combat_ctx.attacker_atk_pct = aa;
 		is->counter_combat_ctx.defender_def_pct = dd;
-		is->counter_combat_ctx.ignore_terrain  = ignore_terrain;
-		ignore_terrain_for_odds = ignore_defensive_bonuses || ignore_terrain;
+		is->counter_combat_ctx.ignore_defensive_bonuses =
+			rule_ignore_defensive_bonuses;
+		ignore_defensive_bonuses_for_odds =
+			ignore_defensive_bonuses || rule_ignore_defensive_bonuses;
 	}
 
 	int result = Fighter_get_combat_odds (this, __, attacker, defender, bombarding,
-	                                      ignore_terrain_for_odds);
+	                                      ignore_defensive_bonuses_for_odds);
 	is->counter_combat_ctx.active = false;
 	return result;
 }
@@ -29414,8 +29429,101 @@ divide_counter_strength (long long numerator, int denominator)
 	return numerator / denominator;
 }
 
+bool
+counter_tile_has_river_edge (Tile * tile, enum direction dir)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	int bit = direction_to_neighbor_bit (dir);
+	return (bit >= 0) &&
+	       ((tile->vtable->m37_Get_River_Code (tile) & (1 << bit)) != 0);
+}
+
+bool
+counter_attack_crosses_river (Unit * attacker, Unit * defender, Tile * def_tile)
+{
+	if (! (unit_has_valid_type_id (attacker) &&
+	       unit_has_valid_type_id (defender)))
+		return false;
+
+	Tile * atk_tile = tile_at (attacker->Body.X, attacker->Body.Y);
+	if ((atk_tile == NULL) || (atk_tile == p_null_tile))
+		return false;
+
+	int def_to_atk = Map_compute_neighbor_index (
+		&p_bic_data->Map, __,
+		defender->Body.X, defender->Body.Y,
+		attacker->Body.X, attacker->Body.Y,
+		8);
+	int atk_to_def = Map_compute_neighbor_index (
+		&p_bic_data->Map, __,
+		attacker->Body.X, attacker->Body.Y,
+		defender->Body.X, defender->Body.Y,
+		8);
+
+	return ((def_to_atk > 0) && (def_to_atk <= 8) &&
+	        counter_tile_has_river_edge (def_tile,
+	                                     (enum direction)def_to_atk)) ||
+	       ((atk_to_def > 0) && (atk_to_def <= 8) &&
+	        counter_tile_has_river_edge (atk_tile,
+	                                     (enum direction)atk_to_def));
+}
+
 int
-counter_adjusted_defender_strength (Unit * attacker, Unit * defender, int defender_strength)
+counter_defender_selection_defensive_bonus_percent (Unit * attacker,
+                                                    Unit * defender,
+                                                    Tile * def_tile)
+{
+	if (! unit_has_valid_type_id (defender))
+		return 0;
+
+	UnitType * defender_type = &p_bic_data->UnitTypes[defender->Body.UnitTypeID];
+	if (defender_type->Unit_Class != UTC_Land)
+		return 0;
+
+	int bonus = 0;
+
+	enum SquareTypes terrain = def_tile->vtable->m50_Get_Square_BaseType (def_tile);
+	if ((terrain >= 0) && (terrain < p_bic_data->TileTypesCount)) {
+		Tile_Type * terrain_type = &p_bic_data->TileTypes[terrain];
+		bonus += def_tile->vtable->m30_Check_is_LM (def_tile) ?
+			terrain_type->LM_DefenceBonus :
+			terrain_type->DefenceBonus;
+	}
+
+	City * city = city_at (defender->Body.X, defender->Body.Y);
+	if (city != NULL) {
+		int city_bonus_index = 0;
+		if (city->Body.Population.Size > p_bic_data->General.MaximumSize_City)
+			city_bonus_index = 2;
+		else if (city->Body.Population.Size > p_bic_data->General.MaximumSize_Town)
+			city_bonus_index = 1;
+		bonus += p_bic_data->General.DefenceBonus_Cities[city_bonus_index];
+	}
+
+	bonus += patch_get_building_defense_bonus_at (
+		defender->Body.X, defender->Body.Y, 0);
+
+	if (def_tile->vtable->m14_Check_Barricade (def_tile, __, 0))
+		bonus += 2 * p_bic_data->General.DefenceBonus_Fortress;
+	else if (def_tile->vtable->m13_Check_Fortress (def_tile, __, 0))
+		bonus += p_bic_data->General.DefenceBonus_Fortress;
+
+	if (defender->Body.UnitState == UnitState_Fortifying)
+		bonus += p_bic_data->General.DefenceBonus_Fortification;
+
+	if (counter_attack_crosses_river (attacker, defender, def_tile))
+		bonus += p_bic_data->General.DefenceBonus_River;
+
+	return bonus;
+}
+
+int
+counter_adjusted_defender_strength (Unit * attacker,
+                                    Unit * defender,
+                                    int defender_strength,
+                                    bool include_defensive_bonuses)
 {
 	if (! (is->current_config.enable_unit_counters &&
 	       unit_has_valid_type_id (attacker) &&
@@ -29427,18 +29535,29 @@ counter_adjusted_defender_strength (Unit * attacker, Unit * defender, int defend
 		return defender_strength;
 
 	int  attacker_atk_pct, defender_def_pct;
-	bool ignore_terrain;
+	bool ignore_defensive_bonuses;
 	apply_counter_rules (&is->current_config, attacker, defender, def_tile,
-	                     &attacker_atk_pct, &defender_def_pct, &ignore_terrain);
+	                     &attacker_atk_pct, &defender_def_pct,
+	                     &ignore_defensive_bonuses);
 
-	if ((attacker_atk_pct == 100) && (defender_def_pct == 100))
+	if ((attacker_atk_pct == 100) &&
+	    (defender_def_pct == 100) &&
+	    (! include_defensive_bonuses || ignore_defensive_bonuses))
 		return defender_strength;
 
 	if (attacker_atk_pct <= 0)
 		return 0x3FFFFFFF;
 
-	long long adjusted = divide_counter_strength (
-		(long long)defender_strength * defender_def_pct,
+	long long adjusted = (long long)defender_strength * defender_def_pct / 100;
+	if (include_defensive_bonuses && ! ignore_defensive_bonuses) {
+		int bonus =
+			counter_defender_selection_defensive_bonus_percent (
+				attacker, defender, def_tile);
+		adjusted = adjusted * (100 + bonus) / 100;
+	}
+
+	adjusted = divide_counter_strength (
+		adjusted * 100,
 		attacker_atk_pct);
 	if (adjusted < 0)
 		return 0;
@@ -29460,9 +29579,10 @@ counter_adjusted_attacker_strength (Unit * attacker, Unit * defender, int attack
 		return attacker_strength;
 
 	int  attacker_atk_pct, defender_def_pct;
-	bool ignore_terrain;
+	bool ignore_defensive_bonuses;
 	apply_counter_rules (&is->current_config, attacker, defender, def_tile,
-	                     &attacker_atk_pct, &defender_def_pct, &ignore_terrain);
+	                     &attacker_atk_pct, &defender_def_pct,
+	                     &ignore_defensive_bonuses);
 
 	if ((attacker_atk_pct == 100) && (defender_def_pct == 100))
 		return attacker_strength;
@@ -29665,25 +29785,9 @@ bool __fastcall
 patch_Fighter_prefer_first_defender_1 (Fighter * this, int edx, Unit * first, int first_strength, Unit * second, int second_strength, bool param_5)
 {
 	Unit * attacker = (this != NULL) ? this->attacker : NULL;
-	if (is->counter_defender_selection_ctx.active) {
-		bool result = Fighter_prefer_first_defender_1 (
-			this, __, first, first_strength, second, second_strength,
-			param_5);
-		if (is->current_config.enable_unit_counters &&
-		    unit_has_valid_type_id (attacker) &&
-		    unit_has_valid_type_id (first) &&
-		    unit_has_valid_type_id (second) &&
-		    (first->Body.CivID != attacker->Body.CivID) &&
-		    (second->Body.CivID != attacker->Body.CivID) &&
-		    first->vtable->is_enemy_of_civ (first, __, attacker->Body.CivID, 0) &&
-		    second->vtable->is_enemy_of_civ (second, __, attacker->Body.CivID, 0))
-			append_counter_defender_selection_debug (
-				attacker, first,
-				first_strength, first_strength,
-				second, second_strength,
-				second_strength, result, "base game");
-		return result;
-	}
+	if (! unit_has_valid_type_id (attacker) &&
+	    is->counter_defender_selection_ctx.active)
+		attacker = is->counter_defender_selection_ctx.attacker;
 
 	if (is->current_config.enable_unit_counters &&
 	    unit_has_valid_type_id (attacker) &&
@@ -29697,34 +29801,30 @@ patch_Fighter_prefer_first_defender_1 (Fighter * this, int edx, Unit * first, in
 		Unit * second_attacker = counter_attacker_for_defender_selection (attacker, second);
 		int first_base_strength = first_strength,
 		    second_base_strength = second_strength;
+		Tile * first_tile = tile_at (first->Body.X, first->Body.Y);
+		Tile * second_tile = tile_at (second->Body.X, second->Body.Y);
+		int unused_atk_pct, unused_def_pct;
+		bool first_ignore_defensive_bonuses = false,
+		     second_ignore_defensive_bonuses = false;
+		if ((first_tile != NULL) && (first_tile != p_null_tile))
+			apply_counter_rules (
+				&is->current_config, first_attacker, first,
+				first_tile, &unused_atk_pct, &unused_def_pct,
+				&first_ignore_defensive_bonuses);
+		if ((second_tile != NULL) && (second_tile != p_null_tile))
+			apply_counter_rules (
+				&is->current_config, second_attacker, second,
+				second_tile, &unused_atk_pct, &unused_def_pct,
+				&second_ignore_defensive_bonuses);
+		bool include_defensive_bonuses =
+			first_ignore_defensive_bonuses ||
+			second_ignore_defensive_bonuses;
 		first_strength = counter_adjusted_defender_strength (
-			first_attacker, first, first_strength);
+			first_attacker, first, first_strength,
+			include_defensive_bonuses);
 		second_strength = counter_adjusted_defender_strength (
-			second_attacker, second, second_strength);
-
-		bool first_has_king_priority =
-			patch_Unit_check_king_for_defense_priority (first, __, UTA_King);
-		bool second_has_king_priority =
-			patch_Unit_check_king_for_defense_priority (second, __, UTA_King);
-		if (first_has_king_priority != second_has_king_priority) {
-			bool result = ! first_has_king_priority;
-			append_counter_defender_selection_debug (
-				attacker, first,
-				first_base_strength, first_strength,
-				second, second_base_strength,
-				second_strength, result, "C3X king priority");
-			return result;
-		}
-
-		if (first_strength != second_strength) {
-			bool result = first_strength > second_strength;
-			append_counter_defender_selection_debug (
-				attacker, first,
-				first_base_strength, first_strength,
-				second, second_base_strength,
-				second_strength, result, "C3X strength");
-			return result;
-		}
+			second_attacker, second, second_strength,
+			include_defensive_bonuses);
 
 		bool result = Fighter_prefer_first_defender_1 (
 			this, __, first, first_strength, second, second_strength,
@@ -29809,14 +29909,14 @@ find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x,
 					counter_attacker_for_defender_selection (
 						attacker, unit);
 				int attacker_atk_pct, defender_def_pct;
-				bool ignore_terrain;
+				bool ignore_defensive_bonuses;
 				apply_counter_rules (
 					&is->current_config, counter_attacker, unit, tile,
 					&attacker_atk_pct, &defender_def_pct,
-					&ignore_terrain);
+					&ignore_defensive_bonuses);
 				if ((attacker_atk_pct != 100) ||
 				    (defender_def_pct != 100) ||
-				    ignore_terrain)
+				    ignore_defensive_bonuses)
 					pass_had_counter_effect = true;
 			}
 
@@ -29914,19 +30014,6 @@ patch_Fighter_fight (Fighter * this, int edx, Unit * attacker,
 	return tr;
 }
 
-bool
-counter_defender_selection_context_applies_to (Unit * defender)
-{
-	Unit * attacker = is->counter_defender_selection_ctx.attacker;
-	return is->counter_defender_selection_ctx.active &&
-	       unit_has_valid_type_id (attacker) &&
-	       unit_has_valid_type_id (defender) &&
-	       (defender->Body.X == is->counter_defender_selection_ctx.tile_x) &&
-	       (defender->Body.Y == is->counter_defender_selection_ctx.tile_y) &&
-	       (defender->Body.CivID != attacker->Body.CivID) &&
-	       defender->vtable->is_enemy_of_civ (defender, __, attacker->Body.CivID, 0);
-}
-
 int __fastcall
 patch_Unit_get_attack_strength (Unit * this)
 {
@@ -29945,11 +30032,6 @@ patch_Unit_get_defense_strength (Unit * this)
 	if (is->counter_combat_ctx.active &&
 	    (this == is->counter_combat_ctx.defender))
 		return base * is->counter_combat_ctx.defender_def_pct / 100;
-	if (counter_defender_selection_context_applies_to (this)) {
-		Unit * attacker = counter_attacker_for_defender_selection (
-			is->counter_defender_selection_ctx.attacker, this);
-		return counter_adjusted_defender_strength (attacker, this, base);
-	}
 	return base;
 }
 
