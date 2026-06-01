@@ -1895,9 +1895,6 @@ struct injected_state {
 		int    tile_x;
 		int    tile_y;
 	} counter_defender_selection_ctx;
-	char counter_defender_selection_debug_text[4096];
-	int counter_defender_selection_debug_text_len;
-	char counter_display_debug_text[512];
 
 	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
 	Unit * zoc_interceptor;

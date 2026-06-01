@@ -217,8 +217,6 @@ enum recognizable_parse_result parse_counter_rule (char ** p_cursor, struct erro
 Unit * find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded, bool require_visible, bool * out_any_counter_effect);
 Unit * find_counter_base_visible_defender_against (Main_Screen_Form * form, Unit * attacker, int tile_x, int tile_y, Unit * excluded);
 bool unit_has_valid_type_id (Unit * unit);
-int unit_current_hp (Unit * unit);
-void append_counter_defender_selection_debug_line (char const * line);
 int __cdecl patch_get_building_defense_bonus_at (int x, int y, int param_3);
 
 // Declare various functions needed for districts and hard to untangle and reorder here
@@ -18802,7 +18800,6 @@ patch_init_floating_point ()
 	is->saved_bombard_target_display_override_2 = (struct unit_display_override) {-1, -1, -1};
 	is->current_bombard_target_display_override = (struct unit_display_override) {-1, -1, -1};
 	is->counter_defender_selection_ctx = (struct counter_defender_selection_context) {0};
-	is->counter_display_debug_text[0] = '\0';
 
 	is->dbe = (struct defensive_bombard_event) {0};
 
@@ -25621,29 +25618,6 @@ get_post_combat_defender_display_override (int tile_x, int tile_y,
 	return unit;
 }
 
-void
-apply_post_combat_defender_display_override ()
-{
-	if (is->post_combat_defender_display_override.unit_id >= 0) {
-		Unit * unit = get_unit_ptr (
-			is->post_combat_defender_display_override.unit_id);
-		if ((unit != NULL) &&
-		    ((*p_debug_mode_bits & 0xC) != 0) &&
-		    (unit_has_valid_type_id (unit))) {
-			char line[256];
-			snprintf (
-				line, sizeof line,
-				"post-combat display: %s#%d hp%d/%d",
-				p_bic_data->UnitTypes[unit->Body.UnitTypeID].Name,
-				unit->Body.ID,
-				unit_current_hp (unit),
-				Unit_get_max_hp (unit));
-			line[(sizeof line) - 1] = '\0';
-			append_counter_defender_selection_debug_line (line);
-		}
-	}
-}
-
 bool
 get_counter_defender_selection_tile (Unit * attacker, int attack_direction,
                                      Unit * defender, int * out_tile_x,
@@ -25736,18 +25710,6 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 		is->unit_display_override = (struct unit_display_override) {
 			this->defender->Body.ID, this->defender->Body.X, this->defender->Body.Y
 		};
-		if ((*p_debug_mode_bits & 0xC) != 0) {
-			char line[256];
-			snprintf (
-				line, sizeof line,
-				"actual defender: %s#%d hp%d/%d",
-				p_bic_data->UnitTypes[this->defender->Body.UnitTypeID].Name,
-				this->defender->Body.ID,
-				unit_current_hp (this->defender),
-				Unit_get_max_hp (this->defender));
-			line[(sizeof line) - 1] = '\0';
-			append_counter_defender_selection_debug_line (line);
-		}
 	}
 
 	// Apply override of retreat eligibility
@@ -27380,17 +27342,13 @@ find_counter_or_base_bombard_defender_against (Unit * bombarder, int tile_x,
                                                int tile_y,
                                                int bombarder_civ_id,
                                                bool require_visible,
-                                               Unit * excluded,
-                                               char const ** out_source)
+                                               Unit * excluded)
 {
 	Unit * defender = find_counter_best_bombard_defender_against (
 		bombarder, tile_x, tile_y, bombarder_civ_id, require_visible,
 		excluded);
-	if (defender != NULL) {
-		if (out_source != NULL)
-			*out_source = "bombard-preview-counter";
+	if (defender != NULL)
 		return defender;
-	}
 
 	if (! unit_has_valid_type_id (bombarder))
 		return NULL;
@@ -27409,8 +27367,6 @@ find_counter_or_base_bombard_defender_against (Unit * bombarder, int tile_x,
 	     ! patch_Unit_is_visible_to_civ (defender, __, bombarder_civ_id, 0)))
 		return NULL;
 
-	if (out_source != NULL)
-		*out_source = "bombard-preview-base";
 	return defender;
 }
 
@@ -28768,55 +28724,6 @@ main_screen_form_is_bombard_display_mode (Main_Screen_Form * form)
 	return false;
 }
 
-void
-record_counter_display_debug (Main_Screen_Form * form, int tile_x, int tile_y,
-                              Unit * excluded, char const * source,
-                              Unit * result)
-{
-	if (((*p_debug_mode_bits & 0xC) == 0) ||
-	    (form == NULL) ||
-	    (form->Current_Unit == NULL) ||
-	    (form->Current_Unit->Body.CivID != form->Player_CivID))
-		return;
-
-	Tile * tile = tile_at (tile_x, tile_y);
-	if ((tile == NULL) || (tile == p_null_tile) ||
-	    ! tile_has_enemy_unit (tile, form->Current_Unit->Body.CivID))
-		return;
-
-	Unit * attacker = form->Current_Unit;
-	char result_name[80] = "NULL";
-	int result_id = -1;
-	if (unit_has_valid_type_id (result)) {
-		snprintf (result_name, sizeof result_name, "%s",
-		          p_bic_data->UnitTypes[result->Body.UnitTypeID].Name);
-		result_name[(sizeof result_name) - 1] = '\0';
-		result_id = result->Body.ID;
-	}
-
-	snprintf (
-		is->counter_display_debug_text,
-		sizeof is->counter_display_debug_text,
-		"display source=%s mode=%d attacker=%s#%d tile=%d,%d result=%s#%d excluded=%d ov1=%d ov2=%d post=%d postAtt=%d bombActive=%d bomb=%d combatActive=%d",
-		source,
-		form->Mode_Action,
-		p_bic_data->UnitTypes[attacker->Body.UnitTypeID].Name,
-		attacker->Body.ID,
-		tile_x,
-		tile_y,
-		result_name,
-		result_id,
-		(excluded != NULL) ? excluded->Body.ID : -1,
-		is->unit_display_override.unit_id,
-		is->unit_display_override_2.unit_id,
-		is->post_combat_defender_display_override.unit_id,
-		is->post_combat_defender_display_attacker_id,
-		is->bombard_target_display_override_active,
-		is->current_bombard_target_display_override.unit_id,
-		is->combat_unit_display_override_active);
-	is->counter_display_debug_text[(sizeof is->counter_display_debug_text) - 1] = '\0';
-}
-
 Unit * __fastcall
 patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int tile_x, int tile_y, Unit * excluded)
 {
@@ -28840,10 +28747,6 @@ patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int 
 				if ((unit != excluded) &&
 				    (unit->Body.X == tile_x) &&
 				    (unit->Body.Y == tile_y)) {
-					record_counter_display_debug (
-						this, tile_x, tile_y, excluded,
-						i == 0 ? "override2" : "override1",
-						unit);
 					return unit;
 				}
 			}
@@ -28854,34 +28757,21 @@ patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int 
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile) &&
 		    tile_has_enemy_unit (tile, this->Current_Unit->Body.CivID)) {
-			char const * bombard_source = NULL;
 			Unit * bombard_best = find_counter_or_base_bombard_defender_against (
 				this->Current_Unit, tile_x, tile_y,
-				this->Current_Unit->Body.CivID, true, excluded,
-				&bombard_source);
-			if (bombard_best != NULL) {
-				record_counter_display_debug (
-					this, tile_x, tile_y, excluded,
-					bombard_source, bombard_best);
+				this->Current_Unit->Body.CivID, true, excluded);
+			if (bombard_best != NULL)
 				return bombard_best;
-			}
 		}
-		Unit * base = Main_Screen_Form_find_visible_unit (
+		return Main_Screen_Form_find_visible_unit (
 			this, __, tile_x, tile_y, excluded);
-		record_counter_display_debug (
-			this, tile_x, tile_y, excluded, "bombard-base", base);
-		return base;
 	}
 
 	Unit * post_combat_defender =
 		get_post_combat_defender_display_override (tile_x, tile_y,
 		                                           excluded);
-	if (post_combat_defender != NULL) {
-		record_counter_display_debug (
-			this, tile_x, tile_y, excluded,
-			"post-combat", post_combat_defender);
+	if (post_combat_defender != NULL)
 		return post_combat_defender;
-	}
 
 	// Default selection display should match the normal combat defender.
 	// Bombardment has its own display branch above.
@@ -28891,19 +28781,12 @@ patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int 
 	    (this->Mode_Action != UMA_Auto_Precision_Strike)) {
 		Unit * combat_best = find_counter_base_visible_defender_against (
 			this, this->Current_Unit, tile_x, tile_y, excluded);
-		if (combat_best != NULL) {
-			record_counter_display_debug (
-				this, tile_x, tile_y, excluded,
-				"combat-preview-base-visible", combat_best);
+		if (combat_best != NULL)
 			return combat_best;
-		}
 	}
 
-	Unit * base = Main_Screen_Form_find_visible_unit (
+	return Main_Screen_Form_find_visible_unit (
 		this, __, tile_x, tile_y, excluded);
-	record_counter_display_debug (
-		this, tile_x, tile_y, excluded, "base", base);
-	return base;
 }
 
 void __fastcall
@@ -29600,134 +29483,6 @@ counter_adjusted_attacker_strength (Unit * attacker, Unit * defender, int attack
 	return (int)adjusted;
 }
 
-int
-unit_current_hp (Unit * unit)
-{
-	int hp = Unit_get_max_hp (unit) - unit->Body.Damage;
-	return hp > 0 ? hp : 0;
-}
-
-void
-reset_counter_defender_selection_debug_text ()
-{
-	is->counter_defender_selection_debug_text[0] = '\0';
-	is->counter_defender_selection_debug_text_len = 0;
-}
-
-void
-append_counter_defender_selection_debug_line (char const * line)
-{
-	int cap = sizeof is->counter_defender_selection_debug_text;
-	int len = is->counter_defender_selection_debug_text_len;
-	if (len >= cap - 1)
-		return;
-
-	int written = snprintf (
-		&is->counter_defender_selection_debug_text[len],
-		cap - len,
-		"%s\n",
-		line);
-	if (written < 0)
-		return;
-
-	if (written >= cap - len)
-		is->counter_defender_selection_debug_text_len = cap - 1;
-	else
-		is->counter_defender_selection_debug_text_len += written;
-}
-
-void
-append_counter_defender_selection_debug (Unit * attacker,
-                                         Unit * first,
-                                         int first_base_strength,
-                                         int first_adjusted_strength,
-                                         Unit * second,
-                                         int second_base_strength,
-                                         int second_adjusted_strength,
-                                         bool result,
-                                         char const * result_source)
-{
-	if (((*p_debug_mode_bits & 0xC) == 0) ||
-	    ! is->combat_unit_display_override_active ||
-	    (p_main_screen_form == NULL) ||
-	    (attacker == NULL) ||
-	    (first == NULL) ||
-	    (second == NULL) ||
-	    (attacker->Body.CivID != p_main_screen_form->Player_CivID))
-		return;
-
-	Tile * first_tile = tile_at (first->Body.X, first->Body.Y);
-	Tile * second_tile = tile_at (second->Body.X, second->Body.Y);
-	int first_atk_pct = 100,
-	    first_def_pct = 100,
-	    second_atk_pct = 100,
-	    second_def_pct = 100;
-	bool first_ignore_defensive_bonuses = false,
-	     second_ignore_defensive_bonuses = false;
-	if ((first_tile != NULL) && (first_tile != p_null_tile))
-		apply_counter_rules (&is->current_config, attacker, first, first_tile,
-		                     &first_atk_pct, &first_def_pct,
-		                     &first_ignore_defensive_bonuses);
-	if ((second_tile != NULL) && (second_tile != p_null_tile))
-		apply_counter_rules (&is->current_config, attacker, second, second_tile,
-		                     &second_atk_pct, &second_def_pct,
-		                     &second_ignore_defensive_bonuses);
-
-	char line[512];
-	if (is->counter_defender_selection_debug_text_len == 0) {
-		snprintf (line, sizeof line, "Attacker: %s#%d atk=%d hp=%d/%d",
-		          p_bic_data->UnitTypes[attacker->Body.UnitTypeID].Name,
-		          attacker->Body.ID,
-		          Unit_get_attack_strength (attacker),
-		          unit_current_hp (attacker),
-		          Unit_get_max_hp (attacker));
-		line[(sizeof line) - 1] = '\0';
-		append_counter_defender_selection_debug_line (line);
-	}
-
-	snprintf (line, sizeof line,
-	          "%s:%s | F %s#%d %d->%d hp%d/%d p%d/%d i%d k%d c%d | S %s#%d %d->%d hp%d/%d p%d/%d i%d k%d c%d",
-	          result_source,
-	          result ? "first" : "second",
-	          p_bic_data->UnitTypes[first->Body.UnitTypeID].Name,
-	          first->Body.ID,
-	          first_base_strength,
-	          first_adjusted_strength,
-	          unit_current_hp (first),
-	          Unit_get_max_hp (first),
-	          first_atk_pct,
-	          first_def_pct,
-	          first_ignore_defensive_bonuses,
-	          patch_Unit_check_king_for_defense_priority (first, __, UTA_King),
-	          p_bic_data->UnitTypes[first->Body.UnitTypeID].Cost,
-	          p_bic_data->UnitTypes[second->Body.UnitTypeID].Name,
-	          second->Body.ID,
-	          second_base_strength,
-	          second_adjusted_strength,
-	          unit_current_hp (second),
-	          Unit_get_max_hp (second),
-	          second_atk_pct,
-	          second_def_pct,
-	          second_ignore_defensive_bonuses,
-	          patch_Unit_check_king_for_defense_priority (second, __, UTA_King),
-	          p_bic_data->UnitTypes[second->Body.UnitTypeID].Cost);
-	line[(sizeof line) - 1] = '\0';
-	append_counter_defender_selection_debug_line (line);
-}
-
-void
-show_counter_defender_selection_debug_popup ()
-{
-	if (is->counter_defender_selection_debug_text_len <= 0)
-		return;
-
-	PopupForm * popup = get_popup_form ();
-	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
-	PopupForm_add_text (popup, __, is->counter_defender_selection_debug_text, 0);
-	patch_show_popup (popup, __, 0, 0);
-	reset_counter_defender_selection_debug_text ();
-}
-
 Unit *
 select_counter_best_attacking_army_member (Unit * army, Unit * defender)
 {
@@ -29799,8 +29554,6 @@ patch_Fighter_prefer_first_defender_1 (Fighter * this, int edx, Unit * first, in
 	    second->vtable->is_enemy_of_civ (second, __, attacker->Body.CivID, 0)) {
 		Unit * first_attacker = counter_attacker_for_defender_selection (attacker, first);
 		Unit * second_attacker = counter_attacker_for_defender_selection (attacker, second);
-		int first_base_strength = first_strength,
-		    second_base_strength = second_strength;
 		Tile * first_tile = tile_at (first->Body.X, first->Body.Y);
 		Tile * second_tile = tile_at (second->Body.X, second->Body.Y);
 		int unused_atk_pct, unused_def_pct;
@@ -29829,11 +29582,6 @@ patch_Fighter_prefer_first_defender_1 (Fighter * this, int edx, Unit * first, in
 		bool result = Fighter_prefer_first_defender_1 (
 			this, __, first, first_strength, second, second_strength,
 			param_5);
-		append_counter_defender_selection_debug (
-			attacker, first,
-			first_base_strength, first_strength,
-			second, second_base_strength,
-			second_strength, result, "base game");
 		return result;
 	}
 
@@ -29971,12 +29719,6 @@ patch_Fighter_fight (Fighter * this, int edx, Unit * attacker,
 	bool saved_combat_udo_active = is->combat_unit_display_override_active;
 	struct unit_display_override saved_combat_udo = is->saved_combat_unit_display_override;
 	int attacker_id = (attacker != NULL) ? attacker->Body.ID : -1;
-	reset_counter_defender_selection_debug_text ();
-	if (is->counter_display_debug_text[0] != '\0') {
-		append_counter_defender_selection_debug_line (
-			is->counter_display_debug_text);
-		is->counter_display_debug_text[0] = '\0';
-	}
 	clear_post_combat_defender_display_override ();
 	is->saved_combat_unit_display_override = is->unit_display_override;
 	is->combat_unit_display_override_active = true;
@@ -30004,13 +29746,11 @@ patch_Fighter_fight (Fighter * this, int edx, Unit * attacker,
 	is->unit_display_override = saved_combat_udo_active ?
 		is->saved_combat_unit_display_override :
 		(struct unit_display_override) {-1, -1, -1};
-	apply_post_combat_defender_display_override ();
 	is->unit_display_override_2 = (struct unit_display_override) {-1, -1, -1};
 	is->saved_combat_unit_display_override = saved_combat_udo;
 	is->combat_unit_display_override_active = saved_combat_udo_active;
 	is->dbe = (struct defensive_bombard_event) {0};
 	is->counter_combat_ctx.active = false;
-	show_counter_defender_selection_debug_popup ();
 	return tr;
 }
 
