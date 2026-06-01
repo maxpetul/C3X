@@ -301,6 +301,21 @@ pop_up_in_game_error (char const * msg)
 	patch_show_popup (popup, __, 0, 0);
 }
 
+void error_message2(char* cstr, int num1, int num2, int num3)
+{
+	PopupForm * popup = get_popup_form ();
+	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "DEBUG_ERROR", -1, 0, 0, 0);
+	char s[200];
+	snprintf (s, sizeof s, cstr, num1, num2, num3);
+	s[(sizeof s) - 1] = '\0';
+	PopupForm_add_text (popup, __, s, false);
+	patch_show_popup (popup, __, 0, 0);
+}
+void error_message(char* cstr)
+{
+	error_message2(cstr, 0, 0, 0);
+}
+
 void
 memoize (int val)
 {
@@ -1496,6 +1511,49 @@ read_recognizables (struct string_slice const * s,
 	return success ? -1 : cursor - extracted_slice;
 }
 
+int
+read_fixed_int_array (struct string_slice const * s, int * array, int count)
+{
+	char * cur = s->str;
+	int ival = 0;
+	if(!skip_white_space (&cur))
+		return 0;
+	for(int i=0; i<count; i++) {
+		if (parse_int (&cur, &ival) && (i == count-1 || (skip_punctuation (&cur, ',') && skip_white_space (&cur))))
+			array[i] = ival;
+		else
+			return 0;
+	}
+	struct string_slice sink;
+	if(!skip_white_space (&cur) || cur != s->str + s->len)
+		return 0;
+	return 1;
+}
+
+int
+read_fixed_bool_array (struct string_slice const * s, bool * array, int count)
+{
+	char * cur = s->str;
+	int ival = 0;
+	if(!skip_white_space (&cur))
+		return 0;
+	for(int i=0; i<count; i++) {
+		if (parse_int (&cur, &ival) && (i == count-1 || (skip_punctuation (&cur, ',') && skip_white_space (&cur))))
+			if (ival == 0)
+				array[i] = false;
+			else if (ival == 1)
+				array[i] = true;
+			else
+				return 0;
+		else
+			return 0;
+	}
+	struct string_slice sink;
+	if(!skip_white_space (&cur) || cur != s->str + s->len)
+		return 0;
+	return 1;
+}
+
 // Reads a "sidtable" from text. A sidtable maps strings to IDs of scenario objects. The string keys are also expected to be a type of scenario
 // object. This method reads text such as:
 //   Factory: Battleship, Stable: Horseman Knight Cavalry, "Siege Workshop": Catapult Trebuchet
@@ -2642,76 +2700,26 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 
+ 				} else if (slice_matches_str (&p.key, "terrain_visibility_see_height")) {
+					if (read_fixed_int_array(&value, cfg->terrain_visibility_see_height, 14) == 0) {
+						handle_config_error (&p, CPE_GENERIC);
+					}
+				} else if (slice_matches_str (&p.key, "terrain_visibility_seen_height")) {
+					if (read_fixed_int_array(&value, cfg->terrain_visibility_seen_height, 14) == 0) {
+						handle_config_error (&p, CPE_GENERIC);
+					}
+				} else if (slice_matches_str (&p.key, "terrain_visibility_bonus")) {
+					if (read_fixed_int_array(&value, cfg->terrain_visibility_bonus, 14) == 0) {
+						handle_config_error (&p, CPE_GENERIC);
+					}
+				} else if (slice_matches_str (&p.key, "terrain_visibility_flat_bonus")) {
+					if (read_fixed_bool_array(&value, cfg->terrain_visibility_flat_bonus, 14) == 0) {
+						handle_config_error (&p, CPE_GENERIC);
+					}
+
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
 				}
-
-				//Just default test values don't mind me
-				cfg->enable_alternate_view_distance_logic = false;
-				
-				cfg->base_visibility_range = 1;
-				cfg->terrain_visibility_see_height[0] = 1;
-				cfg->terrain_visibility_see_height[1] = 1;
-				cfg->terrain_visibility_see_height[2] = 1;
-				cfg->terrain_visibility_see_height[3] = 1;
-				cfg->terrain_visibility_see_height[4] = 1;
-				cfg->terrain_visibility_see_height[5] = 1;
-				cfg->terrain_visibility_see_height[6] = 2;
-				cfg->terrain_visibility_see_height[7] = 1;
-				cfg->terrain_visibility_see_height[8] = 1;
-				cfg->terrain_visibility_see_height[9] = 1;
-				cfg->terrain_visibility_see_height[10] = 2;
-				cfg->terrain_visibility_see_height[11] = 1;
-				cfg->terrain_visibility_see_height[12] = 1;
-				cfg->terrain_visibility_see_height[13] = 1;
-
-				cfg->terrain_visibility_seen_height[0] = 0;
-				cfg->terrain_visibility_seen_height[1] = 0;
-				cfg->terrain_visibility_seen_height[2] = 0;
-				cfg->terrain_visibility_seen_height[3] = 0;
-				cfg->terrain_visibility_seen_height[4] = 0;
-				cfg->terrain_visibility_seen_height[5] = 1;
-				cfg->terrain_visibility_seen_height[6] = 2;
-				cfg->terrain_visibility_seen_height[7] = 1;
-				cfg->terrain_visibility_seen_height[8] = 1;
-				cfg->terrain_visibility_seen_height[9] = 0;
-				cfg->terrain_visibility_seen_height[10] = 2;
-				cfg->terrain_visibility_seen_height[11] = 0;
-				cfg->terrain_visibility_seen_height[12] = 0;
-				cfg->terrain_visibility_seen_height[13] = 0;
-				
-				cfg->terrain_visibility_bonus[0] = 0;
-				cfg->terrain_visibility_bonus[1] = 0;
-				cfg->terrain_visibility_bonus[2] = 0;
-				cfg->terrain_visibility_bonus[3] = 0;
-				cfg->terrain_visibility_bonus[4] = 0;
-				cfg->terrain_visibility_bonus[5] = 1;
-				cfg->terrain_visibility_bonus[6] = 1;
-				cfg->terrain_visibility_bonus[7] = 0;
-				cfg->terrain_visibility_bonus[8] = 0;
-				cfg->terrain_visibility_bonus[9] = 0;
-				cfg->terrain_visibility_bonus[10] = 1;
-				cfg->terrain_visibility_bonus[11] = 0;
-				cfg->terrain_visibility_bonus[12] = 0;
-				cfg->terrain_visibility_bonus[13] = 0;
-				cfg->terrain_visibility_bonus_can_stack = false;
-
-				cfg->terrain_visibility_flat_bonus[0] = false;
-				cfg->terrain_visibility_flat_bonus[1] = false;
-				cfg->terrain_visibility_flat_bonus[2] = false;
-				cfg->terrain_visibility_flat_bonus[3] = false;
-				cfg->terrain_visibility_flat_bonus[4] = false;
-				cfg->terrain_visibility_flat_bonus[5] = false;
-				cfg->terrain_visibility_flat_bonus[6] = false;
-				cfg->terrain_visibility_flat_bonus[7] = false;
-				cfg->terrain_visibility_flat_bonus[8] = false;
-				cfg->terrain_visibility_flat_bonus[9] = false;
-				cfg->terrain_visibility_flat_bonus[10] = false;
-				cfg->terrain_visibility_flat_bonus[11] = true;
-				cfg->terrain_visibility_flat_bonus[12] = true;
-				cfg->terrain_visibility_flat_bonus[13] = true;
-				cfg->terrain_visibility_flat_bonus_limit = 1;
-				cfg->terrain_visibility_flat_bonus_can_stack = false;
 
 				cfg->c_unit_visibility_rules = 0;
 
@@ -17905,6 +17913,9 @@ patch_init_floating_point ()
 		{"allow_corruption_in_capital"                           , false, offsetof (struct c3x_config, allow_corruption_in_capital)},
 		{"allow_sale_of_small_wonders"                           , false, offsetof (struct c3x_config, allow_sale_of_small_wonders)},
 		{"initialize_preplaced_scenario_leaders_as_mgls"         , false, offsetof (struct c3x_config, initialize_preplaced_scenario_leaders_as_mgls)},
+		{"enable_alternate_view_distance_logic"                  , false, offsetof (struct c3x_config, enable_alternate_view_distance_logic)},
+		{"terrain_visibility_bonus_can_stack"                    , false, offsetof (struct c3x_config, terrain_visibility_bonus_can_stack)},
+		{"terrain_visibility_flat_bonus_can_stack"               , false, offsetof (struct c3x_config, terrain_visibility_flat_bonus_can_stack)},
 	};
 
 	struct integer_config_option {
@@ -17954,6 +17965,8 @@ patch_init_floating_point ()
 		{"ai_bridge_eval_lake_tile_threshold"                ,     6,  offsetof (struct c3x_config, ai_bridge_eval_lake_tile_threshold)},
 		{"ai_city_district_max_build_wait_turns"             ,    20,  offsetof (struct c3x_config, ai_city_district_max_build_wait_turns)},
 		{"per_extraterritorial_colony_relation_penalty"      ,     0,  offsetof (struct c3x_config, per_extraterritorial_colony_relation_penalty)},
+		{"base_visibility_range"                             ,     1,  offsetof (struct c3x_config, base_visibility_range)},
+		{"terrain_visibility_flat_bonus_limit"               ,     1,  offsetof (struct c3x_config, terrain_visibility_flat_bonus_limit)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -21862,20 +21875,6 @@ patch_Unit_can_load (Unit * this, int edx, Unit * passenger)
 
 	is->can_load_transport = is->can_load_passenger = NULL;
 	return tr;
-}
-void error_message2(char* cstr, int num1, int num2, int num3)
-{
-	PopupForm * popup = get_popup_form ();
-	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "DEBUG_ERROR", -1, 0, 0, 0);
-	char s[200];
-	snprintf (s, sizeof s, cstr, num1, num2, num3);
-	s[(sizeof s) - 1] = '\0';
-	PopupForm_add_text (popup, __, s, false);
-	patch_show_popup (popup, __, 0, 0);
-}
-void error_message(char* cstr)
-{
-	error_message2(cstr, 0, 0, 0);
 }
 
 bool check_tile_heights_less_than(int tx1, int ty1, int tx2, int ty2, int height)

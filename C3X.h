@@ -497,7 +497,7 @@ struct c3x_config {
 	bool enable_alternate_view_distance_logic; //enable the whole system or not
 	int base_visibility_range; //should default to 1
 	int terrain_visibility_see_height[14]; //most tiles are 1, mountains+volcanoes are 2
-	int terrain_visibility_seen_height[14]; //most tiles are 0, forest+jungle are 1, hills are 2, mountains+volcanoes are 3
+	int terrain_visibility_seen_height[14]; //most tiles are 0, forest+jungle+hills are 1, mountains+volcanoes are 2
 	int terrain_visibility_bonus[14]; //most tiles are 0, hills+mountains+volcanoes are 1
 	bool terrain_visibility_bonus_can_stack; //whether seeing hills and being on a hill provides double the bonus
 	bool terrain_visibility_flat_bonus[14]; //water tiles provide height bonus to tiles being seen across them [ie +2] / adjacent tiles always seen
