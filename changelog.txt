@@ -1,3 +1,5 @@
+- Allow multiple unit types to be limited together as a group, see unit_limit_groups config option
+
 * RELEASE 27
 - Add ability to apply perfume to resources under option named resource_perfume
 - Option do_not_place_barb_huts_or_camps_on_impassable_tiles
