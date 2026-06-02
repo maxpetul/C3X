@@ -24947,6 +24947,7 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 	// Restore the tile count if it was saved by recompute_resources. This is necessary because the Draw_Tiles method loops over all tiles.
 	if (is->saved_tile_count >= 0) {
 		p_bic_data->Map.TileCount = is->saved_tile_count;
+		is->saved_tile_count = -1;
 	}
 
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
