@@ -16038,10 +16038,9 @@ compare_resource_tiles (void const * vp_a, void const * vp_b)
 void __fastcall
 patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups)
 {
-	if (is->saved_tile_count >= 0) {
-		(*p_OutputDebugStringA) ("[C3X] Skipping nested Trade_Net::recompute_resources call\n");
+	// Skip recomputing if we're already in the process and have saved the tile count. We can't save it twice.
+	if (is->saved_tile_count >= 0)
 		return;
-	}
 
 	int extra_resource_count = not_below (0, p_bic_data->ResourceTypeCount - 32);
 	int ints_per_city = 1 + extra_resource_count/32;
@@ -16145,21 +16144,15 @@ get_resource_tile (int index)
 	return rt->tile;
 }
 
-Tile *
-get_tile_when_recomputing_resources (Map * map, int index)
+Tile * __fastcall
+patch_Map_get_tile_when_recomputing_resources (Map * map, int edx, int index)
 {
 	if ((is->saved_tile_count < 0) || (index < is->saved_tile_count)) {
 		is->got_resource_tile = NULL;
 		return Map_get_tile (map, __, index);
-	}
-	return get_resource_tile (index - is->saved_tile_count);
+	} else
+		return get_resource_tile (index - is->saved_tile_count);
 }
-
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_1 (Map * map, int edx, int index) { return get_tile_when_recomputing_resources (map, index); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_2 (Map * map, int edx, int index) { return get_tile_when_recomputing_resources (map, index); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_3 (Map * map, int edx, int index) { return get_tile_when_recomputing_resources (map, index); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_4 (Map * map, int edx, int index) { return get_tile_when_recomputing_resources (map, index); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_5 (Map * map, int edx, int index) { return get_tile_when_recomputing_resources (map, index); }
 
 int __fastcall
 patch_Tile_get_visible_resource_when_recomputing (Tile * tile, int edx, int civ_id)

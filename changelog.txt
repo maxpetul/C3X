@@ -1,4 +1,5 @@
 - Allow multiple unit types to be limited together as a group, see unit_limit_groups config option
+- Fix crash related to resource generation
 
 * RELEASE 27
 - Add ability to apply perfume to resources under option named resource_perfume
