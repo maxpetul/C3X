@@ -20280,7 +20280,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 			     is->current_config.unit_type_to_group.len > 0) &&
 			    patch_Unit_can_perform_command (unit, __, UCV_Upgrade_Unit) &&
 			    (NULL != (city = city_at (unit->Body.X, unit->Body.Y))) &&
-			    (0 <= (upgrade_id = City_get_upgraded_type_id (city, __, unit_type_id))))
+			    (0 <= (upgrade_id = City_get_upgraded_type_id (city, __, unit_type_id)))) {
 				get_available_unit_count (&leaders[unit->Body.CivID], upgrade_id, &available);
 				// ToC-27: If source and target are in the same unit_limit_group with no individual
 				// limit on the target, upgrading is net-zero on the group count (source removed,
@@ -20298,7 +20298,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 						available = INT_MAX; // same-group upgrade: net-zero group count change
 				}
 			}
-		}  
+		}
 		// END ToC-26 and ToC-27
 
 		int cost = 0;
