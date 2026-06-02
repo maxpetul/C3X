@@ -6422,10 +6422,7 @@ district_is_complete(Tile * tile, int district_id)
 				}
 			}
 			if (worker_to_consume != NULL) {
-				if ((p_main_screen_form != NULL) && 
-					patch_Leader_is_tile_visible (&leaders[p_main_screen_form->Player_CivID], __, worker_to_consume->Body.X, worker_to_consume->Body.Y)) {
-					patch_Unit_despawn (worker_to_consume, __, 0, true, false, 0, 0, 0, 0);
-				}
+				patch_Unit_despawn (worker_to_consume, __, 0, true, false, 0, 0, 0, 0);
 			}
 		}
 
