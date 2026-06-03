@@ -46,7 +46,7 @@
   ;  - terrain_types            : Comma-delimited terrain types. Required if type = terrain.
   ;                               Valid values: desert, plains, grassland, jungle, tundra, floodplain, swamp, hills, mountains,
   ;                                             forest, volcano, snow-forest, snow-mountains, snow-volcano, coast, sea, ocean, land
-  ;                               Singular/plural forms are both accepted (for example, volcano/volcanoes).
+  ;                               Singular/plural forms are both accepted (for example, volcano/volcanos).
   ;                               "land" means any non-water tile.
   ;  - adjacent_to              : Text. Optional adjacency requirements.
   ;                               Comma-delimited values using:
@@ -88,7 +88,7 @@ show_in_day_night_hours = 18-6
 name                    = Snow
 ini_path                = Terrain\Snow\Snow.INI
 type                    = terrain
-terrain_types           = mountains, snow-mountains, volcanoes, snow-volcanoes
+terrain_types           = mountains, snow-mountains, volcanos, snow-volcanos
 show_in_seasons         = winter
 show_in_day_night_hours = 7-17
 
@@ -164,8 +164,14 @@ name                    = Fish
 ini_path                = Resources\Fish\Fish.INI
 type                    = resource
 resource_type           = Fish
-direction               = southeast
 show_in_day_night_hours = 7-17
-frame_time_seconds      = 0.13
+frame_time_seconds      = 0.11
 y_offset                = -20
 x_offset                = -15
+
+#Animation
+name                    = Furs
+ini_path                = Resources\Fox\Fox.ini
+type                    = resource
+resource_type           = Furs
+direction               = southwest
