@@ -17914,6 +17914,7 @@ patch_init_floating_point ()
 		{"allow_sale_of_small_wonders"                           , false, offsetof (struct c3x_config, allow_sale_of_small_wonders)},
 		{"initialize_preplaced_scenario_leaders_as_mgls"         , false, offsetof (struct c3x_config, initialize_preplaced_scenario_leaders_as_mgls)},
 		{"enable_alternate_view_distance_logic"                  , false, offsetof (struct c3x_config, enable_alternate_view_distance_logic)},
+		{"terrain_visibility_euclidean"                          , false, offsetof (struct c3x_config, terrain_visibility_euclidean)},
 		{"terrain_visibility_bonus_can_stack"                    , false, offsetof (struct c3x_config, terrain_visibility_bonus_can_stack)},
 		{"terrain_visibility_flat_bonus_can_stack"               , false, offsetof (struct c3x_config, terrain_visibility_flat_bonus_can_stack)},
 	};
@@ -22020,6 +22021,12 @@ deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 	if (dist >= 8) return false;
 	if (dist == 0) return true;
 
+	if (is->current_config.terrain_visibility_euclidean) {
+		int udx = Map_get_x_dist (&p_bic_data->Map, __, x, this->Body.X);
+		int udy = Map_get_y_dist (&p_bic_data->Map, __, y, this->Body.Y);
+		dist = udx * udx + udy * udy;
+	}
+
 	struct unit_visibility_rule current_rules;
 	current_rules.base_visibility = is->current_config.base_visibility_range;
 	current_rules.terrain_bonus_multiplier = 1;
@@ -22087,19 +22094,23 @@ deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 		bonus_range = bonus_seen * current_rules.terrain_bonus_multiplier;
 	}
 	int sightDistance = current_rules.base_visibility + bonus_range + fortification_bonus;
-
-	if (dist > sightDistance + is->current_config.terrain_visibility_flat_bonus_limit) {
-		return false;
+	int sightMaxPossible = sightDistance + is->current_config.terrain_visibility_flat_bonus_limit;
+	if (is->current_config.terrain_visibility_euclidean) {
+		if (dist > sightMaxPossible * sightMaxPossible * 2 + 3)
+			return false;
+	} else {
+		if (dist > sightMaxPossible)
+			return false;
 	}
 
 	//Include radar!!
 	if (current_rules.fortification_bonus_continent_lock && fortification_bonus > 0) {
 		if (local_tile->vtable->m46_Get_ContinentID(local_tile) == seen_tile->vtable->m46_Get_ContinentID(seen_tile)) {
-			if (dist <= sightDistance && seen_type > 10)//why am i hacking this so bad
+			if (dist <= sightDistance && seen_type > 10)//why am i hacking this so bad. also broke under euclidean rules
 				return true;
 		}
-		//temp hack
-		sightDistance -= 2;
+		//fort bonus doesn't apply if continental lock is active
+		sightDistance -= current_rules.fortification_bonus;
 	}
 
 	int flat_bonus = 0;
@@ -22164,7 +22175,14 @@ deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 		if (flatsight > sightDistance)
 			sightDistance = flatsight;
 	}
-	return dist <= sightDistance;
+	if (is->current_config.terrain_visibility_euclidean) {
+		if (dist > sightDistance * sightDistance * 2 + 3)
+			return false;
+	} else {
+		if (dist > sightDistance)
+			return false;
+	}
+	return true;
 }
 
 bool __fastcall
