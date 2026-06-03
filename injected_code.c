@@ -13415,12 +13415,12 @@ patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int
 
 	return Map_calc_shield_yield_at (this, __, tile_x, tile_y, civ_id, city, param_5, param_6);
 }
-/*
+
 int __fastcall
-patch_Map_calc_commerce_yield_at (Map * this, int edx, int tile_x, int tile_y)
+patch_Map_calc_commerce_yield_at (Map * this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city)
 {
 	if (! is->current_config.enable_districts)
-		return Map_calc_commerce_yield_at (this, __, tile_x, tile_y);
+		return Map_calc_commerce_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
 
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile != NULL) && (tile != p_null_tile)) {
@@ -13445,9 +13445,8 @@ patch_Map_calc_commerce_yield_at (Map * this, int edx, int tile_x, int tile_y)
 		}
 	}
 
-	return Map_calc_commerce_yield_at (this, __, tile_x, tile_y);
+	return Map_calc_commerce_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
 }
-*/
 
 int
 compute_city_tile_yield_sum (City * city, int tile_x, int tile_y)
@@ -28906,41 +28905,6 @@ patch_City_calc_tile_yield_while_gathering (City * this, int edx, YieldKind kind
 			else if (kind == YK_COMMERCE) tr += bonus_gold;
 		}
 	}
-	/*
-	if (is->current_config.enable_districts) {
-		Tile * tile = tile_at (tile_x, tile_y);
-		if ((tile != NULL) && (tile != p_null_tile)) {
-			struct district_instance * inst = get_district_instance (tile);
-			if ((inst != NULL) && district_is_complete (tile, inst->district_id)) {
-				bool tile_improvement_rules = district_uses_tile_improvement_rules (inst->district_id);
-				bool city_gets_tile = tile_improvement_rules && (tile->Body.CityAreaID == this->Body.ID);
-				if (tile_improvement_rules && city_gets_tile) {
-					struct district_config * cfg = &is->district_configs[inst->district_id];
-					int food_bonus = 0;
-					int shield_bonus = 0;
-					int gold_bonus = 0;
-					get_effective_district_yields (inst, cfg, &food_bonus, &shield_bonus, &gold_bonus, NULL, NULL, NULL);
-					if ((cfg->generated_resource_id >= 0) &&
-					    (cfg->generated_resource_flags & MF_YIELDS) &&
-					    district_can_generate_resource (this->Body.CivID, cfg)) {
-						Resource_Type * res = &p_bic_data->ResourceTypes[cfg->generated_resource_id];
-						food_bonus += res->Food;
-						shield_bonus += res->Shield;
-						gold_bonus += res->Commerce;
-					}
-					if (kind == YK_FOOD)
-						tr = food_bonus;
-					else if (kind == YK_SHIELDS)
-						tr = shield_bonus;
-					else if (kind == YK_COMMERCE)
-						tr = gold_bonus;
-				} else {
-					tr = 0;
-				}
-			}
-		}
-	}
-	*/
 
 	return tr;
 }
