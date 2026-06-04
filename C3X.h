@@ -184,6 +184,25 @@ enum day_night_cycle_mode {
 	DNCM_SPECIFIED
 };
 
+enum seasonal_cycle_mode {
+	SCM_OFF = 0,
+	SCM_TIMER,
+	SCM_USER_SEASON,
+	SCM_EVERY_TURN,
+	SCM_ON_DAY_NIGHT_HOUR,
+	SCM_SPECIFIED
+};
+
+enum cycle_season {
+	CS_SUMMER = 0,
+	CS_FALL,
+	CS_WINTER,
+	CS_SPRING,
+	COUNT_CYCLE_SEASONS
+};
+
+char const * const cycle_season_names[COUNT_CYCLE_SEASONS] = {"Summer", "Fall", "Winter", "Spring"};
+
 enum distribution_hub_yield_division_mode {
 	DHYDM_FLAT = 0,
 	DHYDM_SCALE_BY_CITY_COUNT
@@ -307,6 +326,7 @@ struct c3x_config {
 	bool show_territory_colors_on_water_tiles_in_minimap;
 	bool convert_some_popups_into_online_mp_messages;
 	bool enable_debug_mode_switch;
+	bool patch_view_all_tile_animations_in_debug_mode;
 	bool accentuate_cities_on_minimap;
 	enum minimap_doubling_mode double_minimap_size;
 	bool allow_multipage_civilopedia_descriptions;
@@ -427,12 +447,21 @@ struct c3x_config {
 
 	bool enable_named_tiles;
 
+	bool enable_custom_animations;
 	char * aircraft_victory_animation; // NULL if set to "none" in config
+	int show_tile_destruct_animation_after;
+	int show_tile_destruction_animation_for_turns;
 
 	int day_night_cycle_mode;
 	int elapsed_minutes_per_day_night_hour_transition;
 	int fixed_hours_per_turn_for_day_night_cycle;
 	int pinned_hour_for_day_night_cycle;
+	int seasonal_cycle_mode;
+	int enabled_seasons_mask;
+	int pinned_season_for_seasonal_cycle;
+	int elapsed_minutes_per_season_transition;
+	int fixed_turns_per_season;
+	int transition_season_on_day_night_hour;
 
 	bool enable_natural_wonders;
 	bool add_natural_wonders_to_scenarios_if_none;
@@ -750,6 +779,21 @@ enum district_ai_build_strategy {
 	DABS_TILE_IMPROVEMENT = 1
 };
 
+struct natural_wonder_animation_config {
+	char const * ini_path;
+	unsigned int day_night_hour_mask; // bits 0..23
+	unsigned int season_mask; // bits 0..3
+	unsigned int culture_group_mask; // bits 0..4
+	unsigned int era_mask; // bits 0..3
+	enum direction direction;
+	float frame_time_seconds;
+	int x_offset;
+	int y_offset;
+	bool has_direction;
+	bool has_frame_time_seconds;
+	bool has_offsets;
+};
+
 struct district_config {
 	enum Unit_Command_Values command;
 	char const * name;
@@ -795,6 +839,8 @@ struct district_config {
 	int buildable_on_district_count;
 	int buildable_adjacent_to_district_count;
 	int img_path_count;
+	struct natural_wonder_animation_config animations[8];
+	int animation_count;
 	int img_column_count;
 	bool has_img_column_count_override;
 	int btn_tile_sheet_column;
@@ -923,6 +969,8 @@ struct natural_wonder_district_config {
 	bool impassable;
 	bool impassable_to_wheeled;
 	bool is_dynamic;
+	struct natural_wonder_animation_config animations[8];
+	int animation_count;
 };
 
 struct natural_wonder_candidate {
@@ -934,6 +982,93 @@ struct natural_wonder_candidate_list {
 	struct natural_wonder_candidate * entries;
 	int count;
 	int capacity;
+};
+
+enum tile_animation_type {
+	TAT_TERRAIN = 0,
+	TAT_RESOURCE,
+	TAT_NATURAL_WONDER,
+	TAT_DESTRUCT_INITIAL,
+	TAT_DESTRUCT_AFTER,
+	TAT_DISTRICT,
+	TAT_PCX,
+	TAT_COASTAL_WAVE
+};
+
+enum tile_destruct_animation_trigger {
+	TDAT_BOMBARD = 1,
+	TDAT_PILLAGE = 2,
+	TDAT_BOMB = 4
+};
+
+#define TILE_ANIM_PCX_FILE_UNKNOWN (-1)
+enum tile_animation_pcx_file {
+	TAPF_TERRAINBUILDINGS = 0,
+	TAPF_WATERFALLS,
+	TAPF_FLOODPLAINS,
+	TAPF_DELTARIVERS,
+	TAPF_MTNRIVERS,
+	TAPF_IRRIGATION_DESETT,
+	TAPF_IRRIGATION_PLAINS,
+	TAPF_IRRIGATION,
+	TAPF_IRRIGATION_TUNDRA,
+	TAPF_VOLCANOS,
+	TAPF_VOLCANOS_FORESTS,
+	TAPF_VOLCANOS_JUNGLES,
+	TAPF_VOLCANOS_SNOW,
+	TAPF_GRASSLAND_FORESTS,
+	TAPF_PLAINS_FORESTS,
+	TAPF_TUNDRA_FORESTS,
+	TAPF_LMFORESTS,
+	TAPF_MOUNTAINS,
+	TAPF_MOUNTAIN_FORESTS,
+	TAPF_MOUNTAIN_JUNGLES,
+	TAPF_MOUNTAINS_SNOW,
+	TAPF_XHILLS,
+	TAPF_HILL_FORESTS,
+	TAPF_HILL_JUNGLE,
+	TAPF_LMHILLS,
+	TAPF_ROADS,
+	TAPF_RAILROADS
+};
+
+#define MAX_TILE_ANIMATION_CONFIGS 128
+#define MAX_TILE_ANIMATION_ADJACENCY 8
+
+struct tile_animation_adjacent_requirement {
+	enum SquareTypes square_type;
+	enum direction direction;
+	bool has_direction;
+	bool is_land;
+};
+
+struct tile_animation_config {
+	char const * name;
+	char const * ini_path;
+	enum tile_animation_type type;
+	unsigned int terrain_types_mask;
+	bool terrain_types_include_land;
+	int resource_id;
+	int natural_wonder_id;
+	int district_id;
+	int pcx_file_id;
+	int pcx_index;
+	enum direction direction;
+	int x_offset;
+	int y_offset;
+	float frame_time_seconds;
+	bool has_direction;
+	bool has_x_offset;
+	bool has_y_offset;
+	bool has_frame_time_seconds;
+	struct tile_animation_adjacent_requirement adjacent_to[MAX_TILE_ANIMATION_ADJACENCY];
+	int adjacent_to_count;
+	unsigned int day_night_hour_mask; // bits 0..23
+	unsigned int season_mask; // bits 0..3
+	unsigned int culture_group_mask; // bits 0..4
+	unsigned int era_mask; // bits 0..3
+	int effect_id;
+	bool in_use;
 };
 
 struct wonder_location {
@@ -1068,6 +1203,8 @@ struct parsed_district_definition {
 	int buildable_on_district_count;
 	int buildable_adjacent_to_district_count;
 	int img_path_count;
+	struct natural_wonder_animation_config animations[8];
+	int animation_count;
 	int img_column_count;
 	bool allow_multiple;
 	bool vary_img_by_era;
@@ -1254,6 +1391,8 @@ struct parsed_natural_wonder_definition {
 	int happiness_bonus;
 	bool impassable;
 	bool impassable_to_wheeled;
+	struct natural_wonder_animation_config animations[8];
+	int animation_count;
 	bool has_name;
 	bool has_img_path;
 	bool has_img_row;
@@ -1269,6 +1408,44 @@ struct parsed_natural_wonder_definition {
 	bool has_happiness_bonus;
 	bool has_impassable;
 	bool has_impassable_to_wheeled;
+};
+
+struct parsed_tile_animation_definition {
+	char * name;
+	char * ini_path;
+	char * resource_type;
+	char * pcx_file;
+	enum tile_animation_type type;
+	unsigned int terrain_types_mask;
+	int natural_wonder_id;
+	int district_id;
+	int pcx_file_id;
+	int pcx_index;
+	bool terrain_types_include_land;
+	enum direction direction;
+	int x_offset;
+	int y_offset;
+	float frame_time_seconds;
+	struct tile_animation_adjacent_requirement adjacent_to[MAX_TILE_ANIMATION_ADJACENCY];
+	int adjacent_to_count;
+	unsigned int day_night_hour_mask;
+	unsigned int season_mask;
+	unsigned int culture_group_mask;
+	unsigned int era_mask;
+	bool has_name;
+	bool has_ini_path;
+	bool has_type;
+	bool has_resource_type;
+	bool has_pcx_file;
+	bool has_pcx_index;
+	bool has_terrain_types;
+	bool has_direction;
+	bool has_x_offset;
+	bool has_y_offset;
+	bool has_frame_time_seconds;
+	bool has_adjacent_to;
+	bool has_day_night_hour_mask;
+	bool has_season_mask;
 };
 
 struct scenario_district_entry {
@@ -1539,6 +1716,7 @@ struct injected_state {
 	} * loaded_config_names;
 
 	char current_districts_config_path[MAX_PATH];
+	char current_tile_animations_config_path[MAX_PATH];
 
 	char mod_script_path[MAX_PATH];
 
@@ -2000,10 +2178,14 @@ struct injected_state {
 	// Day-Night cycle data
 	int current_day_night_cycle;
 	bool day_night_cycle_unstarted; // If current_day_night_cycle has not been set, f.e. because it's the first turn of a new game.
+	int current_seasonal_cycle;
+	bool seasonal_cycle_unstarted;
+	int turns_in_current_season;
 	bool day_night_cycle_img_proxies_indexed;
 	LARGE_INTEGER last_day_night_cycle_update_time;
+	LARGE_INTEGER last_seasonal_cycle_update_time;
 
-	struct table day_night_sprite_proxy_by_hour[24];
+	struct table * day_night_sprite_proxy_by_season_and_hour;
 
 	struct wonder_district_image_set {
 		Sprite img;
@@ -2096,7 +2278,7 @@ struct injected_state {
 		Sprite Abandoned_Maritime_District_Image;
 		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
 		struct natural_wonder_district_image_set Natural_Wonder_Images[MAX_NATURAL_WONDER_DISTRICT_TYPES];
-	} day_night_cycle_imgs[24];
+	} * cycle_imgs;
 
 	// Districts
 	enum init_state dc_img_state;
@@ -2225,6 +2407,34 @@ struct district_button_image_set {
 
 	// Natural Wonder labels: table mapping natural wonder name strings to their IDs, count of defined natural wonders,
 	struct table natural_wonder_name_to_id;
+	
+	// Tile animation definitions and effect ID mapping.
+	struct tile_animation_config tile_animation_configs[MAX_TILE_ANIMATION_CONFIGS];
+	int tile_animation_count;
+	int tile_animation_effect_base;
+	int tile_animation_spawn_effect_override;
+	bool tile_animation_spawn_effect_override_active;
+
+	// Core per-tile selection cache (required for rule matching lookups).
+	unsigned int * tile_animation_selected_mask_matrix;
+	int tile_animation_selected_tile_count;
+	int tile_animation_selected_animation_count;
+	bool tile_animation_selected_valid;
+
+	// Optional scheduler optimization cache.
+	byte * tile_animation_selected_next_index; // Cached winner animation index per tile, 0xFF = none.
+	int * tile_animation_selected_tile_indices; // Tile indices currently having a cached winner.
+	int tile_animation_selected_match_count;
+	byte * tile_destruct_animation_ages; // Per tile: 0 = none, 1 = initial, >1 = after.
+
+	// PCX-driven animation rule lookups and active masks.
+	struct table tile_animation_pcx_sprite_lookup;
+	struct table tile_animation_pcx_rule_key_to_index;
+	int tile_animation_pcx_rule_key_count;
+	unsigned int tile_animation_pcx_rule_masks[MAX_TILE_ANIMATION_CONFIGS][(MAX_TILE_ANIMATION_CONFIGS + 31) / 32];
+	unsigned int tile_animation_pcx_word_mask[(MAX_TILE_ANIMATION_CONFIGS + 31) / 32];
+	unsigned int tile_animation_pcx_active_word_mask[(MAX_TILE_ANIMATION_CONFIGS + 31) / 32];
+	bool tile_animation_has_pcx_rules;
 
 	struct ai_candidate_bridge_or_canal_entry * ai_candidate_bridge_or_canals;
 	int ai_candidate_bridge_or_canals_count;
