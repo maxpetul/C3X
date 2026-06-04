@@ -22012,6 +22012,17 @@ int calc_max_visibility_range ()
 	return max;
 }
 
+bool visibility_test_range(int dist, int sight)
+{
+	if (is->current_config.terrain_visibility_euclidean) {
+		if (dist > sight * sight * 2 + 3)
+			return false;
+	} else {
+		if (dist > sight)
+			return false;
+	}
+	return true;
+}
 bool __fastcall
 deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 {
@@ -22054,15 +22065,19 @@ deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 		current_rules.fortification_bonus = 2;
 		current_rules.fortification_bonus_continent_lock = true;
 	}
+	//
 
 	Tile * local_tile = tile_at(this->Body.X, this->Body.Y);
 	Tile * seen_tile = tile_at(x, y);
 
 	int fortification_bonus;
-	if (this->Body.UnitState == 1) {
+	bool fortified;
+	if (this->Body.UnitState == UnitState_Fortifying || this->Body.UnitState == UnitState_Intercept) {
 		fortification_bonus = current_rules.fortification_bonus;
+		fortified = true;
 	} else {
 		fortification_bonus = 0;
+		fortified = false;
 	}
 	enum SquareTypes local_type = local_tile->vtable->m50_Get_Square_BaseType (local_tile);
 	if (local_type < 0 || local_type >= 14) {
@@ -22095,21 +22110,22 @@ deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 	}
 	int sightDistance = current_rules.base_visibility + bonus_range + fortification_bonus;
 	int sightMaxPossible = sightDistance + is->current_config.terrain_visibility_flat_bonus_limit;
-	if (is->current_config.terrain_visibility_euclidean) {
-		if (dist > sightMaxPossible * sightMaxPossible * 2 + 3)
-			return false;
-	} else {
-		if (dist > sightMaxPossible)
-			return false;
+	if (!visibility_test_range(dist, sightMaxPossible))
+		return false;
+
+	if (Unit_has_ability(this, __, UTA_Radar)) {
+		if (visibility_test_range(dist, sightDistance))
+			return true;
 	}
 
-	//Include radar!!
-	if (current_rules.fortification_bonus_continent_lock && fortification_bonus > 0) {
+	if (fortified && current_rules.fortification_bonus_continent_lock) {
 		if (local_tile->vtable->m46_Get_ContinentID(local_tile) == seen_tile->vtable->m46_Get_ContinentID(seen_tile)) {
-			if (dist <= sightDistance && seen_type > 10)//why am i hacking this so bad. also broke under euclidean rules
-				return true;
+			if (seen_type > 10) {//why is this here? doublecheck
+				if (visibility_test_range(dist, sightDistance))
+					return true;
+			}
 		}
-		//fort bonus doesn't apply if continental lock is active
+		//if continental lock is active, fort bonus doesn't apply to diff-continent tiles
 		sightDistance -= current_rules.fortification_bonus;
 	}
 
@@ -22175,13 +22191,8 @@ deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 		if (flatsight > sightDistance)
 			sightDistance = flatsight;
 	}
-	if (is->current_config.terrain_visibility_euclidean) {
-		if (dist > sightDistance * sightDistance * 2 + 3)
-			return false;
-	} else {
-		if (dist > sightDistance)
-			return false;
-	}
+	if (!visibility_test_range(dist, sightDistance))
+		return false;
 	return true;
 }
 
