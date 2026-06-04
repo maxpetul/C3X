@@ -247,6 +247,25 @@ int count_neighborhoods_in_city_radius (City * city);
 int count_utilized_neighborhoods_in_city_radius (City * city);
 char * copy_trimmed_string_or_null (struct string_slice const * slice, int remove_quotes);
 bool city_has_resource_r (City * city, int resource_id, int max_generated_resource_id);
+void load_tile_animation_configs ();
+bool tile_has_matching_resource_animation_for_draw (Tile * tile, int tile_x, int tile_y);
+bool tile_has_matching_resource_animation_for_draw_with_resource (Tile * tile, int tile_x, int tile_y, int resource_id, int * out_effect_id);
+void tile_animation_scheduler_tick ();
+void rebuild_tile_animation_rule_match_cache ();
+void __fastcall patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effect, int tile_x, int tile_y, bool randomize_start_frame, enum direction dummy_dir);
+void reset_tile_animation_runtime_state ();
+bool tile_animation_matches_time_filters (struct tile_animation_config const * cfg);
+bool tile_animation_cache_needs_rebuild ();
+bool is_custom_tile_animation_effect (int effect_id);
+void clear_active_custom_tile_animation_if_different (Tile * tile, int effect_id);
+void clear_tile_animation_pcx_matches_in_cache ();
+void register_tile_animation_pcx_draw_for_current_tile (Sprite * sprite);
+void rebuild_tile_animation_pcx_sprite_lookup ();
+void refresh_tile_animation_pcx_active_mask ();
+int pick_tile_animation_winner_for_tile (unsigned int * tile_mask);
+bool parse_tile_animation_hour_list (struct string_slice const * value, unsigned int * out_mask);
+bool parse_tile_animation_season_list (struct string_slice const * value, unsigned int * out_mask);
+struct tile_animation_config * get_tile_animation_for_effect (int effect_id);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -1812,6 +1831,54 @@ read_ai_multi_start_extra_palaces (struct string_slice const * s,
 	return success;
 }
 
+struct parsable_field_bit {
+	char * name;
+	int bit_value;
+};
+
+bool
+read_bit_field (struct string_slice const * s, struct parsable_field_bit const * bits, int count_bits, int * out_field)
+{
+	struct string_slice trimmed = trim_string_slice (s, 0);
+	s = &trimmed;
+
+	int tr;
+	if (s->len <= 0)
+		tr = 0;
+	else if (slice_matches_str (s, "all"))
+		tr = ~0;
+	else {
+		tr = 0;
+		char * cursor = &s->str[0];
+		char * s_end = &s->str[s->len];
+		while (1) {
+			struct string_slice name;
+
+			if (cursor >= s_end)
+				break;
+			else if (! parse_string (&cursor, &name)) {
+				skip_white_space (&cursor);
+				if (cursor >= s_end)
+					break;
+				else
+					return false; // Invalid character in value
+			}
+
+			bool matched_any = false;
+			for (int n = 0; n < count_bits; n++)
+				if (slice_matches_str (&name, bits[n].name)) {
+					tr |= bits[n].bit_value;
+					matched_any = true;
+					break;
+				}
+			if (! matched_any)
+				return false;
+		}
+	}
+	*out_field = tr;
+	return true;
+}
+
 bool
 read_retreat_rules (struct string_slice const * s, int * out_val)
 {
@@ -1893,6 +1960,49 @@ read_day_night_cycle_mode (struct string_slice const * s, int * out_val)
 	else if (slice_matches_str (&trimmed, "specified" )) { *out_val = DNCM_SPECIFIED;  return true; }
 	else
 		return false;
+}
+
+bool
+read_seasonal_cycle_mode (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "off"              )) { *out_val = SCM_OFF;               return true; }
+	else if (slice_matches_str (&trimmed, "timer"            )) { *out_val = SCM_TIMER;             return true; }
+	else if (slice_matches_str (&trimmed, "user-season"      )) { *out_val = SCM_USER_SEASON;       return true; }
+	else if (slice_matches_str (&trimmed, "every-turn"       )) { *out_val = SCM_EVERY_TURN;        return true; }
+	else if (slice_matches_str (&trimmed, "on-day-night-hour")) { *out_val = SCM_ON_DAY_NIGHT_HOUR; return true; }
+	else if (slice_matches_str (&trimmed, "specified"        )) { *out_val = SCM_SPECIFIED;         return true; }
+	else
+		return false;
+}
+
+bool
+read_enabled_seasons_mask (struct string_slice const * s, int * out_val)
+{
+	struct parsable_field_bit bits[] = {
+		{"summer", 1 << CS_SUMMER},
+		{"fall"  , 1 << CS_FALL},
+		{"winter", 1 << CS_WINTER},
+		{"spring", 1 << CS_SPRING},
+	};
+	return read_bit_field (s, bits, ARRAY_LEN (bits), out_val);
+}
+
+bool
+read_pinned_season_for_seasonal_cycle (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "summer")) { *out_val = CS_SUMMER; return true; }
+	else if (slice_matches_str (&trimmed, "Summer")) { *out_val = CS_SUMMER; return true; }
+	else if (slice_matches_str (&trimmed, "fall"  )) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "Fall"  )) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "autumn")) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "autumn")) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "winter")) { *out_val = CS_WINTER; return true; }
+	else if (slice_matches_str (&trimmed, "Winter")) { *out_val = CS_WINTER; return true; }
+	else if (slice_matches_str (&trimmed, "spring")) { *out_val = CS_SPRING; return true; }
+	else if (slice_matches_str (&trimmed, "Spring")) { *out_val = CS_SPRING; return true; }
+	return false;
 }
 
 bool
@@ -2268,52 +2378,10 @@ read_barbarian_activity_override (struct string_slice const * s, enum barbarian_
 	return found;
 }
 
-struct parsable_field_bit {
-	char * name;
-	int bit_value;
-};
-
 bool
-read_bit_field (struct string_slice const * s, struct parsable_field_bit const * bits, int count_bits, int * out_field)
+read_tile_animation_direction_value (struct string_slice const * s, enum direction * out_dir)
 {
-	struct string_slice trimmed = trim_string_slice (s, 0);
-	s = &trimmed;
-
-	int tr;
-	if (s->len <= 0)
-		tr = 0;
-	else if (slice_matches_str (s, "all"))
-		tr = ~0;
-	else {
-		tr = 0;
-		char * cursor = &s->str[0];
-		char * s_end = &s->str[s->len];
-		while (1) {
-			struct string_slice name;
-
-			if (cursor >= s_end)
-				break;
-			else if (! parse_string (&cursor, &name)) {
-				skip_white_space (&cursor);
-				if (cursor >= s_end)
-					break;
-				else
-					return false; // Invalid character in value
-			}
-
-			bool matched_any = false;
-			for (int n = 0; n < count_bits; n++)
-				if (slice_matches_str (&name, bits[n].name)) {
-					tr |= bits[n].bit_value;
-					matched_any = true;
-					break;
-				}
-			if (! matched_any)
-				return false;
-		}
-	}
-	*out_field = tr;
-	return true;
+	return read_direction_value (s, out_dir);
 }
 
 int
@@ -2610,6 +2678,15 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "day_night_cycle_mode")) {
 					if (! read_day_night_cycle_mode (&value, (int *)&cfg->day_night_cycle_mode))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "seasonal_cycle_mode")) {
+					if (! read_seasonal_cycle_mode (&value, (int *)&cfg->seasonal_cycle_mode))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "enabled_seasons")) {
+					if (! read_enabled_seasons_mask (&value, (int *)&cfg->enabled_seasons_mask))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "pinned_season_for_seasonal_cycle")) {
+					if (! read_pinned_season_for_seasonal_cycle (&value, (int *)&cfg->pinned_season_for_seasonal_cycle))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "distribution_hub_yield_division_mode")) {
 					if (! read_distribution_hub_yield_division_mode (&value, (int *)&cfg->distribution_hub_yield_division_mode))
@@ -7578,6 +7655,13 @@ free_dynamic_natural_wonder_config (struct natural_wonder_district_config * cfg)
 		free ((void *)cfg->img_path);
 		cfg->img_path = NULL;
 	}
+	for (int i = 0; i < cfg->animation_count; i++) {
+		if (cfg->animations[i].ini_path != NULL) {
+			free ((void *)cfg->animations[i].ini_path);
+			cfg->animations[i].ini_path = NULL;
+		}
+	}
+	cfg->animation_count = 0;
 
 	memset (cfg, 0, sizeof *cfg);
 	cfg->adjacent_to = (enum SquareTypes)SQ_INVALID;
@@ -10861,6 +10945,14 @@ init_parsed_natural_wonder_definition (struct parsed_natural_wonder_definition *
 void
 free_parsed_natural_wonder_definition (struct parsed_natural_wonder_definition * def)
 {
+	for (int i = 0; i < def->animation_count; i++) {
+		if (def->animations[i].ini_path != NULL) {
+			free ((void *)def->animations[i].ini_path);
+			def->animations[i].ini_path = NULL;
+		}
+	}
+	def->animation_count = 0;
+
 	if (def->name != NULL) {
 		free (def->name);
 		def->name = NULL;
@@ -10909,6 +11001,34 @@ add_natural_wonder_from_definition (struct parsed_natural_wonder_definition * de
 	new_cfg.terrain_type = def->terrain_type;
 	new_cfg.adjacent_to = def->adjacent_to;
 	new_cfg.adjacency_dir = def->adjacency_dir;
+	new_cfg.animation_count = def->animation_count;
+	if (new_cfg.animation_count > ARRAY_LEN (new_cfg.animations))
+		new_cfg.animation_count = ARRAY_LEN (new_cfg.animations);
+	for (int i = 0; i < new_cfg.animation_count; i++) {
+		struct natural_wonder_animation_config const * src_anim = &def->animations[i];
+		char * ini_copy = NULL;
+		if (src_anim->ini_path != NULL)
+			ini_copy = strdup (src_anim->ini_path);
+		if ((src_anim->ini_path != NULL) && (ini_copy == NULL)) {
+			for (int j = 0; j < i; j++) {
+				if (new_cfg.animations[j].ini_path != NULL)
+					free ((void *)new_cfg.animations[j].ini_path);
+			}
+			free (img_copy);
+			free (name_copy);
+			return false;
+		}
+			new_cfg.animations[i].ini_path = ini_copy;
+			new_cfg.animations[i].day_night_hour_mask = src_anim->day_night_hour_mask;
+			new_cfg.animations[i].season_mask = src_anim->season_mask;
+			new_cfg.animations[i].direction = src_anim->direction;
+			new_cfg.animations[i].has_direction = src_anim->has_direction;
+			new_cfg.animations[i].frame_time_seconds = src_anim->frame_time_seconds;
+			new_cfg.animations[i].has_frame_time_seconds = src_anim->has_frame_time_seconds;
+			new_cfg.animations[i].x_offset = src_anim->x_offset;
+			new_cfg.animations[i].y_offset = src_anim->y_offset;
+			new_cfg.animations[i].has_offsets = src_anim->has_offsets;
+		}
 	new_cfg.culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
 	new_cfg.science_bonus = def->has_science_bonus ? def->science_bonus : 0;
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
@@ -10977,6 +11097,124 @@ finalize_parsed_natural_wonder_definition (struct parsed_natural_wonder_definiti
 		add_natural_wonder_from_definition (def, section_start_line);
 
 	free_parsed_natural_wonder_definition (def);
+}
+
+bool
+parse_natural_wonder_animation_entry (struct string_slice const * value,
+				      struct natural_wonder_animation_config * out_cfg)
+{
+	if ((value == NULL) || (out_cfg == NULL))
+		return false;
+
+	memset (out_cfg, 0, sizeof *out_cfg);
+	struct string_slice trimmed_value = trim_string_slice (value, 1);
+	char * text = extract_slice (&trimmed_value);
+	if (text == NULL)
+		return false;
+
+	bool ok = true;
+	bool has_ini = false;
+	char * cursor = text;
+	while (ok && (*cursor != '\0')) {
+		char * token_start = cursor;
+		while ((*cursor != '\0') && (*cursor != ';'))
+			cursor++;
+		char saved = *cursor;
+		*cursor = '\0';
+
+		struct string_slice token = {.str = token_start, .len = strlen (token_start)};
+		token = trim_string_slice (&token, 0);
+		if (token.len > 0) {
+			char * sep = NULL;
+			for (int i = 0; i < token.len; i++) {
+				char ch = token.str[i];
+				if ((ch == ':') || (ch == '=')) {
+					sep = token.str + i;
+					break;
+				}
+			}
+
+			if (sep == NULL) {
+				ok = false;
+			} else {
+				struct string_slice k = {.str = token.str, .len = sep - token.str};
+				struct string_slice v = {.str = sep + 1, .len = strlen (sep + 1)};
+				k = trim_string_slice (&k, 0);
+				v = trim_string_slice (&v, 0);
+				if (slice_matches_str (&k, "ini")) {
+					if (out_cfg->ini_path != NULL) {
+						free ((void *)out_cfg->ini_path);
+						out_cfg->ini_path = NULL;
+					}
+					out_cfg->ini_path = extract_slice (&v);
+					has_ini = (out_cfg->ini_path != NULL) && (out_cfg->ini_path[0] != '\0');
+					if (! has_ini)
+						ok = false;
+				} else if (slice_matches_str (&k, "hours")) {
+					unsigned int mask = 0;
+					ok = parse_tile_animation_hour_list (&v, &mask);
+					if (ok)
+						out_cfg->day_night_hour_mask = mask;
+					} else if (slice_matches_str (&k, "seasons")) {
+						unsigned int mask = 0;
+						ok = parse_tile_animation_season_list (&v, &mask);
+						if (ok)
+							out_cfg->season_mask = mask;
+					} else if (slice_matches_str (&k, "direction")) {
+						enum direction dir = DIR_ZERO;
+						ok = read_direction_value (&v, &dir);
+						if (ok) {
+							out_cfg->direction = dir;
+							out_cfg->has_direction = true;
+						}
+					} else if (slice_matches_str (&k, "frame_time_seconds")) {
+						float frame_time_seconds = 0.0f;
+						ok = read_float (&v, &frame_time_seconds);
+						if (ok) {
+							out_cfg->frame_time_seconds = frame_time_seconds;
+							out_cfg->has_frame_time_seconds = true;
+						}
+					} else if (slice_matches_str (&k, "offsets")) {
+						char * offsets_text = extract_slice (&v);
+						if (offsets_text == NULL)
+							ok = false;
+						else {
+							char * off_cursor = offsets_text;
+							int x = 0, y = 0;
+							ok = parse_int (&off_cursor, &x) &&
+								skip_horiz_space (&off_cursor) &&
+								(*off_cursor == ',');
+							if (ok) {
+								off_cursor++;
+								ok = parse_int (&off_cursor, &y) &&
+									skip_horiz_space (&off_cursor) &&
+									(*off_cursor == '\0');
+							}
+							if (ok) {
+								out_cfg->x_offset = x;
+								out_cfg->y_offset = y;
+								out_cfg->has_offsets = true;
+							}
+							free (offsets_text);
+						}
+					} else
+						ok = false;
+				}
+			}
+
+		if (saved == ';')
+			cursor++;
+	}
+
+	free (text);
+	if ((! ok) || (! has_ini)) {
+		if (out_cfg->ini_path != NULL) {
+			free ((void *)out_cfg->ini_path);
+			out_cfg->ini_path = NULL;
+		}
+		return false;
+	}
+	return true;
 }
 
 void
@@ -11169,6 +11407,17 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 		} else {
 			def->has_impassable_to_wheeled = false;
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "animation")) {
+		if (def->animation_count >= ARRAY_LEN (def->animations))
+			add_key_parse_error (parse_errors, line_number, key, value, "(too many animations for one wonder)");
+		else {
+			struct natural_wonder_animation_config anim = {0};
+			if (parse_natural_wonder_animation_entry (value, &anim))
+				def->animations[def->animation_count++] = anim;
+			else
+				add_key_parse_error (parse_errors, line_number, key, value, "(expected \"ini:<path>; hours:<0..23 list>; seasons:<season list>\")");
 		}
 
 	} else
@@ -17065,7 +17314,7 @@ read_in_dir(PCX_Image *img,
     PCX_Image_read_file(img, __, temp_path, NULL, 0, 0x100, 2);
 }
 
-bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char *art_dir, const char *hour)
+bool load_day_night_hour_and_season_images(struct day_night_cycle_img_set *this, const char *art_dir, const char *season, const char *hour)
 {
 	char ss[200];
     PCX_Image img; 
@@ -17360,7 +17609,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 	if (is->current_config.enable_districts) {
 		char art_dir[200];
 		char temp_path[2*MAX_PATH];
-		snprintf (art_dir, sizeof art_dir, "Districts/%s", hour);
+		snprintf (art_dir, sizeof art_dir, "Districts/%s/%s", season, hour);
 		get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 		for (int dc = 0; dc < is->district_count; dc++) {
 			struct district_config const * cfg = &is->district_configs[dc];
@@ -17469,7 +17718,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 	if (is->current_config.enable_natural_wonders && (is->natural_wonder_count > 0)) {
 		char art_dir[200];
 		char temp_path[2*MAX_PATH];
-		snprintf (art_dir, sizeof art_dir, "Districts/%s", hour);
+		snprintf (art_dir, sizeof art_dir, "Districts/%s/%s", season, hour);
 		get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 
 		char const * last_img_path = NULL;
@@ -17518,169 +17767,279 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 }
 
 Sprite *
-get_sprite_proxy_for_current_hour(Sprite *s) {
-    int v;
-    int hour = is->current_day_night_cycle;  // 0..23
-    if (itable_look_up(&is->day_night_sprite_proxy_by_hour[hour], (int)s, &v))
-        return (Sprite *)v;
-    return NULL;  // not proxied, fall back to s
+get_cycle_sprite_proxy(Sprite *s) {
+	if (is->current_config.day_night_cycle_mode == DNCM_OFF && is->current_config.seasonal_cycle_mode == SCM_OFF)
+		return NULL;
+	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
+		return NULL;
+
+	int season = (is->current_config.seasonal_cycle_mode != SCM_OFF)   ? clamp (0, 3, is->current_seasonal_cycle) : CS_SUMMER;
+	int hour   = (is->current_config.day_night_cycle_mode != DNCM_OFF) ? clamp (0, 23, is->current_day_night_cycle) : 12;
+	int cycle_idx = 24 * season + hour;
+	int v;
+	if (itable_look_up (&is->day_night_sprite_proxy_by_season_and_hour[cycle_idx], (int)s, &v))
+		return (Sprite *)v;
+	return NULL;
 }
 
 void
-insert_spritelist_proxies(SpriteList *ss, SpriteList *ps, int hour, int len1, int len2) {
+insert_spritelist_proxies(SpriteList *ss, SpriteList *ps, int season, int hour, int len1, int len2) {
+	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
+		return;
+	int cycle_idx = 24 * season + hour;
 	for (int i = 0; i < len1; i++) {
 		for (int j = 0; j < len2; j++) {
 			Sprite *s = &ss[i].field_0[j];
 			Sprite *p = &ps[i].field_0[j];
 			if (s && p) {
-				itable_insert(&is->day_night_sprite_proxy_by_hour[hour], (int)s, (int)p);
+				itable_insert(&is->day_night_sprite_proxy_by_season_and_hour[cycle_idx], (int)s, (int)p);
 			}
 		}
 	}
 }
 
 void
-insert_sprite_proxies(Sprite *ss, Sprite *ps, int hour, int len) {
+insert_sprite_proxies(Sprite *ss, Sprite *ps, int season, int hour, int len) {
+	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
+		return;
+	int cycle_idx = 24 * season + hour;
 	for (int i = 0; i < len; i++) {
 		Sprite *s = &ss[i];
 		Sprite *p = &ps[i];
 		if (s && p) {
-			itable_insert(&is->day_night_sprite_proxy_by_hour[hour], (int)s, (int)p);
+			itable_insert(&is->day_night_sprite_proxy_by_season_and_hour[cycle_idx], (int)s, (int)p);
 		}
 	}
 }
 
 void
-insert_sprite_proxy(Sprite *s, Sprite *p, int hour) {
+insert_sprite_proxy(Sprite *s, Sprite *p, int season, int hour) {
+	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
+		return;
+	int cycle_idx = 24 * season + hour;
 	if (s && p) {
-		itable_insert(&is->day_night_sprite_proxy_by_hour[hour], (int)s, (int)p);
+		itable_insert(&is->day_night_sprite_proxy_by_season_and_hour[cycle_idx], (int)s, (int)p);
 	}
 }
 
+bool
+allocate_day_night_cycle_runtime_storage ()
+{
+	int count = COUNT_CYCLE_SEASONS * 24;
+
+	if (is->cycle_imgs == NULL) {
+		is->cycle_imgs = malloc (count * sizeof is->cycle_imgs[0]);
+		if (is->cycle_imgs == NULL)
+			return false;
+		memset (is->cycle_imgs, 0, count * sizeof is->cycle_imgs[0]);
+	}
+
+	if (is->day_night_sprite_proxy_by_season_and_hour == NULL) {
+		is->day_night_sprite_proxy_by_season_and_hour = malloc (count * sizeof is->day_night_sprite_proxy_by_season_and_hour[0]);
+		if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
+			return false;
+		memset (is->day_night_sprite_proxy_by_season_and_hour, 0, count * sizeof is->day_night_sprite_proxy_by_season_and_hour[0]);
+	}
+
+	return true;
+}
+
+int
+normalize_enabled_season_mask (int mask)
+{
+	mask &= 0xF;
+	if (mask == 0)
+		mask = 1 << CS_SUMMER;
+	return mask;
+}
+
+int
+get_first_enabled_season (int mask)
+{
+	mask = normalize_enabled_season_mask (mask);
+	for (int season = 0; season < COUNT_CYCLE_SEASONS; season++)
+		if (mask & (1 << season))
+			return season;
+	return CS_SUMMER;
+}
+
+int
+get_next_enabled_season (int current_season, int mask)
+{
+	mask = normalize_enabled_season_mask (mask);
+	for (int offset = 1; offset <= COUNT_CYCLE_SEASONS; offset++) {
+		int season = (current_season + offset) % COUNT_CYCLE_SEASONS;
+		if (mask & (1 << season))
+			return season;
+	}
+	return CS_SUMMER;
+}
+
+int
+get_required_hour_mask_for_cycle_loading ()
+{
+	if (is->current_config.day_night_cycle_mode == DNCM_OFF)
+		return 1 << 12;
+
+	switch (is->current_config.day_night_cycle_mode) {
+		case DNCM_SPECIFIED:
+			return 1 << clamp (0, 23, is->current_config.pinned_hour_for_day_night_cycle);
+		default:
+			return (1 << 24) - 1;
+	}
+}
+
+int
+get_required_season_mask_for_cycle_loading ()
+{
+	if (is->current_config.seasonal_cycle_mode == SCM_OFF)
+		return 1 << CS_SUMMER;
+
+	int enabled_mask = normalize_enabled_season_mask (is->current_config.enabled_seasons_mask);
+	if (is->current_config.seasonal_cycle_mode == SCM_SPECIFIED) {
+		int pinned = clamp (CS_SUMMER, CS_SPRING, is->current_config.pinned_season_for_seasonal_cycle);
+		if ((enabled_mask & (1 << pinned)) != 0)
+			return 1 << pinned;
+		return 1 << get_first_enabled_season (enabled_mask);
+	}
+	return enabled_mask;
+}
+
+int
+get_current_local_season ()
+{
+	SYSTEMTIME st;
+	GetLocalTime (&st);
+	int month = st.wMonth;
+	if ((month == 12) || (month == 1) || (month == 2))
+		return CS_WINTER;
+	else if ((month >= 3) && (month <= 5))
+		return CS_SPRING;
+	else if ((month >= 6) && (month <= 8))
+		return CS_SUMMER;
+	else
+		return CS_FALL;
+}
+
 void 
-build_sprite_proxies_24(Map_Renderer *mr) {
-	for (int h = 0; h < 24; ++h) {
-		insert_sprite_proxies(city_sprites, is->day_night_cycle_imgs[h].City_Images, h, 80);
-		insert_sprite_proxies(destroyed_city_sprites, is->day_night_cycle_imgs[h].Destroyed_City_Images, h, 3);
-		insert_sprite_proxies(mr->Resources, is->day_night_cycle_imgs[h].Resources, h, 36);
-		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
-		insert_spritelist_proxies(mr->LM_Terrain_Images, is->day_night_cycle_imgs[h].LM_Terrain_Images, h, 9, 81);
-		insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &is->day_night_cycle_imgs[h].Terrain_Buldings_Barbarian_Camp, h);
-		insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &is->day_night_cycle_imgs[h].Terrain_Buldings_Mines, h);
-		insert_sprite_proxy(&mr->Victory_Image, &is->day_night_cycle_imgs[h].Victory_Image, h);
-		insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &is->day_night_cycle_imgs[h].Terrain_Buldings_Radar, h);
-		insert_sprite_proxies(mr->Flood_Plains_Images, is->day_night_cycle_imgs[h].Flood_Plains_Images, h, 16);
-		insert_sprite_proxies(mr->Polar_Icecaps_Images, is->day_night_cycle_imgs[h].Polar_Icecaps_Images, h, 32);
-		insert_sprite_proxies(mr->Roads_Images, is->day_night_cycle_imgs[h].Roads_Images, h, 256);
-		insert_sprite_proxies(mr->Railroads_Images, is->day_night_cycle_imgs[h].Railroads_Images, h, 272);
-		insert_sprite_proxies(mr->Terrain_Buldings_Airfields, is->day_night_cycle_imgs[h].Terrain_Buldings_Airfields, h, 2);
-		insert_sprite_proxies(mr->Terrain_Buldings_Camp, is->day_night_cycle_imgs[h].Terrain_Buldings_Camp, h, 4);
-		insert_sprite_proxies(mr->Terrain_Buldings_Fortress, is->day_night_cycle_imgs[h].Terrain_Buldings_Fortress, h, 4);
-		insert_sprite_proxies(mr->Terrain_Buldings_Barricade, is->day_night_cycle_imgs[h].Terrain_Buldings_Barricade, h, 4);
-		insert_sprite_proxies(mr->Goody_Huts_Images, is->day_night_cycle_imgs[h].Goody_Huts_Images, h, 8);
-		insert_sprite_proxies(mr->Terrain_Buldings_Outposts, is->day_night_cycle_imgs[h].Terrain_Buldings_Outposts, h, 3);
-		insert_sprite_proxies(mr->Pollution, is->day_night_cycle_imgs[h].Pollution, h, 25);
-		insert_sprite_proxies(mr->Craters, is->day_night_cycle_imgs[h].Craters, h, 25);
-		insert_sprite_proxies(mr->Tnt_Images, is->day_night_cycle_imgs[h].Tnt_Images, h, 18);
-		insert_sprite_proxies(mr->Waterfalls_Images, is->day_night_cycle_imgs[h].Waterfalls_Images, h, 4);
-		insert_sprite_proxies(mr->LM_Terrain, is->day_night_cycle_imgs[h].LM_Terrain, h, 7);
-		insert_sprite_proxies(mr->Marsh_Large, is->day_night_cycle_imgs[h].Marsh_Large, h, 8);
-		insert_sprite_proxies(mr->Marsh_Small, is->day_night_cycle_imgs[h].Marsh_Small, h, 10);
-		insert_sprite_proxies(mr->Volcanos_Images, is->day_night_cycle_imgs[h].Volcanos_Images, h, 16);
-		insert_sprite_proxies(mr->Volcanos_Forests_Images, is->day_night_cycle_imgs[h].Volcanos_Forests_Images, h, 16);
-		insert_sprite_proxies(mr->Volcanos_Jungles_Images, is->day_night_cycle_imgs[h].Volcanos_Jungles_Images, h, 16);
-		insert_sprite_proxies(mr->Volcanos_Snow_Images, is->day_night_cycle_imgs[h].Volcanos_Snow_Images, h, 16);
-		insert_sprite_proxies(mr->Grassland_Forests_Large, is->day_night_cycle_imgs[h].Grassland_Forests_Large, h, 8);
-		insert_sprite_proxies(mr->Plains_Forests_Large, is->day_night_cycle_imgs[h].Plains_Forests_Large, h, 8);
-		insert_sprite_proxies(mr->Tundra_Forests_Large, is->day_night_cycle_imgs[h].Tundra_Forests_Large, h, 8);
-		insert_sprite_proxies(mr->Grassland_Forests_Small, is->day_night_cycle_imgs[h].Grassland_Forests_Small, h, 10);
-		insert_sprite_proxies(mr->Plains_Forests_Small, is->day_night_cycle_imgs[h].Plains_Forests_Small, h, 10);
-		insert_sprite_proxies(mr->Tundra_Forests_Small, is->day_night_cycle_imgs[h].Tundra_Forests_Small, h, 10);
-		insert_sprite_proxies(mr->Grassland_Forests_Pines, is->day_night_cycle_imgs[h].Grassland_Forests_Pines, h, 12);
-		insert_sprite_proxies(mr->Plains_Forests_Pines, is->day_night_cycle_imgs[h].Plains_Forests_Pines, h, 12);
-		insert_sprite_proxies(mr->Tundra_Forests_Pines, is->day_night_cycle_imgs[h].Tundra_Forests_Pines, h, 12);
-		insert_sprite_proxies(mr->Irrigation_Desert_Images, is->day_night_cycle_imgs[h].Irrigation_Desert_Images, h, 16);
-		insert_sprite_proxies(mr->Irrigation_Plains_Images, is->day_night_cycle_imgs[h].Irrigation_Plains_Images, h, 16);
-		insert_sprite_proxies(mr->Irrigation_Images, is->day_night_cycle_imgs[h].Irrigation_Images, h, 16);
-		insert_sprite_proxies(mr->Irrigation_Tundra_Images, is->day_night_cycle_imgs[h].Irrigation_Tundra_Images, h, 16);
-		insert_sprite_proxies(mr->Grassland_Jungles_Large, is->day_night_cycle_imgs[h].Grassland_Jungles_Large, h, 8);
-		insert_sprite_proxies(mr->Grassland_Jungles_Small, is->day_night_cycle_imgs[h].Grassland_Jungles_Small, h, 12);
-		insert_sprite_proxies(mr->Mountains_Images, is->day_night_cycle_imgs[h].Mountains_Images, h, 16);
-		insert_sprite_proxies(mr->Mountains_Forests_Images, is->day_night_cycle_imgs[h].Mountains_Forests_Images, h, 16);
-		insert_sprite_proxies(mr->Mountains_Jungles_Images, is->day_night_cycle_imgs[h].Mountains_Jungles_Images, h, 16);
-		insert_sprite_proxies(mr->Mountains_Snow_Images, is->day_night_cycle_imgs[h].Mountains_Snow_Images, h, 16);
-		insert_sprite_proxies(mr->Hills_Images, is->day_night_cycle_imgs[h].Hills_Images, h, 16);
-		insert_sprite_proxies(mr->Hills_Forests_Images, is->day_night_cycle_imgs[h].Hills_Forests_Images, h, 16);
-		insert_sprite_proxies(mr->Hills_Jungle_Images, is->day_night_cycle_imgs[h].Hills_Jungle_Images, h, 16);
-		insert_sprite_proxies(mr->Delta_Rivers_Images, is->day_night_cycle_imgs[h].Delta_Rivers_Images, h, 16);
-		insert_sprite_proxies(mr->Mountain_Rivers_Images, is->day_night_cycle_imgs[h].Mountain_Rivers_Images, h, 16);
-		insert_sprite_proxies(mr->LM_Mountains_Images, is->day_night_cycle_imgs[h].LM_Mountains_Images, h, 16);
-		insert_sprite_proxies(mr->LM_Forests_Large_Images, is->day_night_cycle_imgs[h].LM_Forests_Large_Images, h, 8);
-		insert_sprite_proxies(mr->LM_Forests_Small_Images, is->day_night_cycle_imgs[h].LM_Forests_Small_Images, h, 10);
-		insert_sprite_proxies(mr->LM_Forests_Pines_Images, is->day_night_cycle_imgs[h].LM_Forests_Pines_Images, h, 12);
-		insert_sprite_proxies(mr->LM_Hills_Images, is->day_night_cycle_imgs[h].LM_Hills_Images, h, 16);
-		
-		if (is->current_config.enable_districts) {
-			for (int dc = 0; dc < is->district_count; dc++) {
-				struct district_config const * cfg = &is->district_configs[dc];
-				int variant_capacity = ARRAY_LEN (is->district_img_sets[dc].imgs);
-				int variant_count = cfg->img_path_count;
-				if (variant_count <= 0)
-					continue;
-				if (variant_count > variant_capacity)
-					variant_count = variant_capacity;
+build_sprite_proxies(Map_Renderer *mr) {
+	if (is->cycle_imgs == NULL || is->day_night_sprite_proxy_by_season_and_hour == NULL)
+		return;
 
-				int era_count    = cfg->vary_img_by_era ? 4 : 1;
-				int column_count = cfg->img_column_count;
-
-				for (int variant_i = 0; variant_i < variant_count; variant_i++) {
-					if ((cfg->img_paths[variant_i] == NULL) || (cfg->img_paths[variant_i][0] == '\0'))
+	int required_season_mask = get_required_season_mask_for_cycle_loading ();
+	int required_hour_mask = get_required_hour_mask_for_cycle_loading ();
+	for (int season = 0; season < COUNT_CYCLE_SEASONS; season++) {
+		if ((required_season_mask & (1 << season)) == 0)
+			continue;
+		for (int h = 0; h < 24; ++h) {
+			if ((required_hour_mask & (1 << h)) == 0)
+				continue;
+			struct day_night_cycle_img_set * set = &is->cycle_imgs[24 * season + h];
+			insert_sprite_proxies(city_sprites, set->City_Images, season, h, 80);
+			insert_sprite_proxies(destroyed_city_sprites, set->Destroyed_City_Images, season, h, 3);
+			insert_sprite_proxies(mr->Resources, set->Resources, season, h, 36);
+			insert_spritelist_proxies(mr->Std_Terrain_Images, set->Std_Terrain_Images, season, h, 9, 81);
+			insert_spritelist_proxies(mr->LM_Terrain_Images, set->LM_Terrain_Images, season, h, 9, 81);
+			insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &set->Terrain_Buldings_Barbarian_Camp, season, h);
+			insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &set->Terrain_Buldings_Mines, season, h);
+			insert_sprite_proxy(&mr->Victory_Image, &set->Victory_Image, season, h);
+			insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &set->Terrain_Buldings_Radar, season, h);
+			insert_sprite_proxies(mr->Flood_Plains_Images, set->Flood_Plains_Images, season, h, 16);
+			insert_sprite_proxies(mr->Polar_Icecaps_Images, set->Polar_Icecaps_Images, season, h, 32);
+			insert_sprite_proxies(mr->Roads_Images, set->Roads_Images, season, h, 256);
+			insert_sprite_proxies(mr->Railroads_Images, set->Railroads_Images, season, h, 272);
+			insert_sprite_proxies(mr->Terrain_Buldings_Airfields, set->Terrain_Buldings_Airfields, season, h, 2);
+			insert_sprite_proxies(mr->Terrain_Buldings_Camp, set->Terrain_Buldings_Camp, season, h, 4);
+			insert_sprite_proxies(mr->Terrain_Buldings_Fortress, set->Terrain_Buldings_Fortress, season, h, 4);
+			insert_sprite_proxies(mr->Terrain_Buldings_Barricade, set->Terrain_Buldings_Barricade, season, h, 4);
+			insert_sprite_proxies(mr->Goody_Huts_Images, set->Goody_Huts_Images, season, h, 8);
+			insert_sprite_proxies(mr->Terrain_Buldings_Outposts, set->Terrain_Buldings_Outposts, season, h, 3);
+			insert_sprite_proxies(mr->Pollution, set->Pollution, season, h, 25);
+			insert_sprite_proxies(mr->Craters, set->Craters, season, h, 25);
+			insert_sprite_proxies(mr->Tnt_Images, set->Tnt_Images, season, h, 18);
+			insert_sprite_proxies(mr->Waterfalls_Images, set->Waterfalls_Images, season, h, 4);
+			insert_sprite_proxies(mr->LM_Terrain, set->LM_Terrain, season, h, 7);
+			insert_sprite_proxies(mr->Marsh_Large, set->Marsh_Large, season, h, 8);
+			insert_sprite_proxies(mr->Marsh_Small, set->Marsh_Small, season, h, 10);
+			insert_sprite_proxies(mr->Volcanos_Images, set->Volcanos_Images, season, h, 16);
+			insert_sprite_proxies(mr->Volcanos_Forests_Images, set->Volcanos_Forests_Images, season, h, 16);
+			insert_sprite_proxies(mr->Volcanos_Jungles_Images, set->Volcanos_Jungles_Images, season, h, 16);
+			insert_sprite_proxies(mr->Volcanos_Snow_Images, set->Volcanos_Snow_Images, season, h, 16);
+			insert_sprite_proxies(mr->Grassland_Forests_Large, set->Grassland_Forests_Large, season, h, 8);
+			insert_sprite_proxies(mr->Plains_Forests_Large, set->Plains_Forests_Large, season, h, 8);
+			insert_sprite_proxies(mr->Tundra_Forests_Large, set->Tundra_Forests_Large, season, h, 8);
+			insert_sprite_proxies(mr->Grassland_Forests_Small, set->Grassland_Forests_Small, season, h, 10);
+			insert_sprite_proxies(mr->Plains_Forests_Small, set->Plains_Forests_Small, season, h, 10);
+			insert_sprite_proxies(mr->Tundra_Forests_Small, set->Tundra_Forests_Small, season, h, 10);
+			insert_sprite_proxies(mr->Grassland_Forests_Pines, set->Grassland_Forests_Pines, season, h, 12);
+			insert_sprite_proxies(mr->Plains_Forests_Pines, set->Plains_Forests_Pines, season, h, 12);
+			insert_sprite_proxies(mr->Tundra_Forests_Pines, set->Tundra_Forests_Pines, season, h, 12);
+			insert_sprite_proxies(mr->Irrigation_Desert_Images, set->Irrigation_Desert_Images, season, h, 16);
+			insert_sprite_proxies(mr->Irrigation_Plains_Images, set->Irrigation_Plains_Images, season, h, 16);
+			insert_sprite_proxies(mr->Irrigation_Images, set->Irrigation_Images, season, h, 16);
+			insert_sprite_proxies(mr->Irrigation_Tundra_Images, set->Irrigation_Tundra_Images, season, h, 16);
+			insert_sprite_proxies(mr->Grassland_Jungles_Large, set->Grassland_Jungles_Large, season, h, 8);
+			insert_sprite_proxies(mr->Grassland_Jungles_Small, set->Grassland_Jungles_Small, season, h, 12);
+			insert_sprite_proxies(mr->Mountains_Images, set->Mountains_Images, season, h, 16);
+			insert_sprite_proxies(mr->Mountains_Forests_Images, set->Mountains_Forests_Images, season, h, 16);
+			insert_sprite_proxies(mr->Mountains_Jungles_Images, set->Mountains_Jungles_Images, season, h, 16);
+			insert_sprite_proxies(mr->Mountains_Snow_Images, set->Mountains_Snow_Images, season, h, 16);
+			insert_sprite_proxies(mr->Hills_Images, set->Hills_Images, season, h, 16);
+			insert_sprite_proxies(mr->Hills_Forests_Images, set->Hills_Forests_Images, season, h, 16);
+			insert_sprite_proxies(mr->Hills_Jungle_Images, set->Hills_Jungle_Images, season, h, 16);
+			insert_sprite_proxies(mr->Delta_Rivers_Images, set->Delta_Rivers_Images, season, h, 16);
+			insert_sprite_proxies(mr->Mountain_Rivers_Images, set->Mountain_Rivers_Images, season, h, 16);
+			insert_sprite_proxies(mr->LM_Mountains_Images, set->LM_Mountains_Images, season, h, 16);
+			insert_sprite_proxies(mr->LM_Forests_Large_Images, set->LM_Forests_Large_Images, season, h, 8);
+			insert_sprite_proxies(mr->LM_Forests_Small_Images, set->LM_Forests_Small_Images, season, h, 10);
+			insert_sprite_proxies(mr->LM_Forests_Pines_Images, set->LM_Forests_Pines_Images, season, h, 12);
+			insert_sprite_proxies(mr->LM_Hills_Images, set->LM_Hills_Images, season, h, 16);
+			
+			if (is->current_config.enable_districts) {
+				for (int dc = 0; dc < is->district_count; dc++) {
+					struct district_config const * cfg = &is->district_configs[dc];
+					int variant_capacity = ARRAY_LEN (is->district_img_sets[dc].imgs);
+					int variant_count = cfg->img_path_count;
+					if (variant_count <= 0)
 						continue;
-					for (int era = 0; era < era_count; era++) {
-						for (int col = 0; col < column_count; col++) {
-							Sprite * base = &is->district_img_sets[dc].imgs[variant_i][era][col];
-							Sprite * proxy = &is->day_night_cycle_imgs[h].District_Images[dc][variant_i][era][col];
-							insert_sprite_proxy (base, proxy, h);
+					if (variant_count > variant_capacity)
+						variant_count = variant_capacity;
+
+					int era_count    = cfg->vary_img_by_era ? 4 : 1;
+					int column_count = cfg->img_column_count;
+
+					for (int variant_i = 0; variant_i < variant_count; variant_i++) {
+						if ((cfg->img_paths[variant_i] == NULL) || (cfg->img_paths[variant_i][0] == '\0'))
+							continue;
+						for (int era = 0; era < era_count; era++) {
+							for (int col = 0; col < column_count; col++) {
+								Sprite * base = &is->district_img_sets[dc].imgs[variant_i][era][col];
+								Sprite * proxy = &set->District_Images[dc][variant_i][era][col];
+								insert_sprite_proxy (base, proxy, season, h);
+							}
 						}
 					}
 				}
-			}
 
-			insert_sprite_proxy (&is->abandoned_district_img, &is->day_night_cycle_imgs[h].Abandoned_District_Image, h);
-			insert_sprite_proxy (&is->abandoned_maritime_district_img, &is->day_night_cycle_imgs[h].Abandoned_Maritime_District_Image, h);
+				insert_sprite_proxy (&is->abandoned_district_img, &set->Abandoned_District_Image, season, h);
+				insert_sprite_proxy (&is->abandoned_maritime_district_img, &set->Abandoned_Maritime_District_Image, season, h);
 
-			// Wonder districts
-			if (is->current_config.enable_wonder_districts) {
-				for (int wi = 0; wi < is->wonder_district_count; wi++) {
-					Sprite * base_img = &is->wonder_district_img_sets[wi].img;
-					Sprite * proxy_img = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].img;
-					insert_sprite_proxy (base_img, proxy_img, h);
+				if (is->current_config.enable_wonder_districts) {
+					for (int wi = 0; wi < is->wonder_district_count; wi++) {
+						insert_sprite_proxy (&is->wonder_district_img_sets[wi].img, &set->Wonder_District_Images[wi].img, season, h);
+						insert_sprite_proxy (&is->wonder_district_img_sets[wi].construct_img, &set->Wonder_District_Images[wi].construct_img, season, h);
 
-					Sprite * base_construct = &is->wonder_district_img_sets[wi].construct_img;
-					Sprite * proxy_construct = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].construct_img;
-					insert_sprite_proxy (base_construct, proxy_construct, h);
-
-					if (is->wonder_district_img_sets[wi].alt_dir_img.vtable != NULL) {
-						Sprite * base_alt = &is->wonder_district_img_sets[wi].alt_dir_img;
-						Sprite * proxy_alt = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].alt_dir_img;
-						insert_sprite_proxy (base_alt, proxy_alt, h);
-					}
-
-					if (is->wonder_district_img_sets[wi].alt_dir_construct_img.vtable != NULL) {
-						Sprite * base_alt_construct = &is->wonder_district_img_sets[wi].alt_dir_construct_img;
-						Sprite * proxy_alt_construct = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].alt_dir_construct_img;
-						insert_sprite_proxy (base_alt_construct, proxy_alt_construct, h);
+						if (is->wonder_district_img_sets[wi].alt_dir_img.vtable != NULL)
+							insert_sprite_proxy (&is->wonder_district_img_sets[wi].alt_dir_img, &set->Wonder_District_Images[wi].alt_dir_img, season, h);
+						if (is->wonder_district_img_sets[wi].alt_dir_construct_img.vtable != NULL)
+							insert_sprite_proxy (&is->wonder_district_img_sets[wi].alt_dir_construct_img, &set->Wonder_District_Images[wi].alt_dir_construct_img, season, h);
 					}
 				}
 			}
-		}
 
-		// Natural wonders
-		if (is->current_config.enable_natural_wonders && (is->natural_wonder_count > 0)) {
-			for (int ni = 0; ni < is->natural_wonder_count; ni++) {
-				Sprite * base_nw = &is->natural_wonder_img_sets[ni].img;
-				Sprite * proxy_nw = &is->day_night_cycle_imgs[h].Natural_Wonder_Images[ni].img;
-				insert_sprite_proxy (base_nw, proxy_nw, h);
+			if (is->current_config.enable_natural_wonders && (is->natural_wonder_count > 0)) {
+				for (int ni = 0; ni < is->natural_wonder_count; ni++)
+					insert_sprite_proxy (&is->natural_wonder_img_sets[ni].img, &set->Natural_Wonder_Images[ni].img, season, h);
 			}
 		}
 	}
@@ -17688,9 +18047,11 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 }
 
 void
-init_day_night_images()
+init_day_night_and_seasonal_images()
 {
 	if (is->day_night_cycle_img_state != IS_UNINITED)
+		return;
+	if (is->cycle_imgs == NULL)
 		return;
 
 	const char *hour_strs[24] = {
@@ -17699,26 +18060,34 @@ init_day_night_images()
 		"1600", "1700", "1800", "1900", "2000", "2100", "2200", "2300"
 	};
 
-	for (int i = 0; i < 24; i++) {
+	int required_season_mask = get_required_season_mask_for_cycle_loading ();
+	int required_hour_mask = get_required_hour_mask_for_cycle_loading ();
+	for (int season = 0; season < COUNT_CYCLE_SEASONS; season++) {
+		if ((required_season_mask & (1 << season)) == 0)
+			continue;
+		for (int i = 0; i < 24; i++) {
+			if ((required_hour_mask & (1 << i)) == 0)
+				continue;
 
-		char art_dir[200];
-		char temp_path[2*MAX_PATH];
-		snprintf (art_dir, sizeof art_dir, "DayNight/%s", hour_strs[i]);
-		get_mod_art_path (art_dir, temp_path, sizeof temp_path);
-		bool success = load_day_night_hour_images (&is->day_night_cycle_imgs[i], temp_path, hour_strs[i]);
+			char art_dir[200];
+			char temp_path[2*MAX_PATH];
+			snprintf (art_dir, sizeof art_dir, "DayNight/%s/%s", cycle_season_names[season], hour_strs[i]);
+			get_mod_art_path (art_dir, temp_path, sizeof temp_path);
+			bool success = load_day_night_hour_and_season_images (&is->cycle_imgs[24 * season + i], temp_path, cycle_season_names[season], hour_strs[i]);
 
-		if (!success) {
-			char ss[200];
-			snprintf(ss, sizeof ss, "Failed to load day/night cycle images for hour %s, reverting to base game art.", hour_strs[i]);
-			pop_up_in_game_error (ss);
+			if (!success) {
+				char ss[300];
+				snprintf (ss, sizeof ss, "Failed to load day/night cycle images for season %s at hour %s, reverting to base game art.", cycle_season_names[season], hour_strs[i]);
+				pop_up_in_game_error (ss);
 
-			is->day_night_cycle_img_state = IS_INIT_FAILED;
-			return;
+				is->day_night_cycle_img_state = IS_INIT_FAILED;
+				return;
+			}
 		}
 	}
 
 	Map_Renderer * mr = &p_bic_data->Map.Renderer;
-	build_sprite_proxies_24(mr);
+	build_sprite_proxies(mr);
 
 	is->day_night_cycle_img_state = IS_OK;
 }
@@ -17726,13 +18095,102 @@ init_day_night_images()
 void
 deindex_day_night_image_proxies()
 {
-	if (!is->day_night_cycle_img_proxies_indexed)
+	if (!is->day_night_cycle_img_proxies_indexed || is->day_night_sprite_proxy_by_season_and_hour == NULL)
 		return;
 
-	for (int i = 0; i < 24; i++) {
-		table_deinit (&is->day_night_sprite_proxy_by_hour[i]);
-	}
+	for (int season = 0; season < COUNT_CYCLE_SEASONS; season++)
+		for (int i = 0; i < 24; i++)
+			table_deinit (&is->day_night_sprite_proxy_by_season_and_hour[24 * season + i]);
 	is->day_night_cycle_img_proxies_indexed = false;
+}
+
+int
+calculate_current_seasonal_cycle (bool transition_on_day_night_hour_hit)
+{
+	int output = CS_SUMMER;
+	int enabled_mask = normalize_enabled_season_mask (is->current_config.enabled_seasons_mask);
+	switch (is->current_config.seasonal_cycle_mode) {
+		case SCM_OFF:
+			return CS_SUMMER;
+
+		case SCM_TIMER: {
+			output = get_first_enabled_season (enabled_mask);
+			if (is->seasonal_cycle_unstarted) {
+				is->current_seasonal_cycle = output;
+				QueryPerformanceCounter (&is->last_seasonal_cycle_update_time);
+			}
+
+			LARGE_INTEGER perf_freq, time_now;
+			QueryPerformanceFrequency (&perf_freq);
+			QueryPerformanceCounter (&time_now);
+
+			double elapsed_seconds =
+				(double)(time_now.QuadPart - is->last_seasonal_cycle_update_time.QuadPart) /
+				(double)perf_freq.QuadPart;
+			if (elapsed_seconds > (double)is->current_config.elapsed_minutes_per_season_transition * 60.0) {
+				output = get_next_enabled_season (is->current_seasonal_cycle, enabled_mask);
+				is->last_seasonal_cycle_update_time = time_now;
+			} else
+				output = is->current_seasonal_cycle;
+			break;
+		}
+
+		case SCM_USER_SEASON: {
+			output = get_current_local_season ();
+			if ((enabled_mask & (1 << output)) == 0)
+				output = get_first_enabled_season (enabled_mask);
+			break;
+		}
+
+		case SCM_EVERY_TURN: {
+			output = get_first_enabled_season (enabled_mask);
+			if (is->seasonal_cycle_unstarted) {
+				is->current_seasonal_cycle = output;
+				is->turns_in_current_season = 0;
+				break;
+			}
+			if ((enabled_mask & (1 << is->current_seasonal_cycle)) == 0) {
+				is->current_seasonal_cycle = output;
+				is->turns_in_current_season = 0;
+				break;
+			}
+			int turns_per_season = not_below (1, is->current_config.fixed_turns_per_season);
+			is->turns_in_current_season += 1;
+			if (is->turns_in_current_season >= turns_per_season) {
+				is->turns_in_current_season = 0;
+				output = get_next_enabled_season (is->current_seasonal_cycle, enabled_mask);
+			} else
+				output = is->current_seasonal_cycle;
+			break;
+		}
+
+		case SCM_ON_DAY_NIGHT_HOUR: {
+			output = get_first_enabled_season (enabled_mask);
+			if (is->seasonal_cycle_unstarted) {
+				is->current_seasonal_cycle = output;
+				break;
+			}
+			if ((enabled_mask & (1 << is->current_seasonal_cycle)) == 0) {
+				is->current_seasonal_cycle = output;
+				break;
+			}
+			if (transition_on_day_night_hour_hit)
+				output = get_next_enabled_season (is->current_seasonal_cycle, enabled_mask);
+			else
+				output = is->current_seasonal_cycle;
+			break;
+		}
+
+		case SCM_SPECIFIED: {
+			int pinned = clamp (CS_SUMMER, CS_SPRING, is->current_config.pinned_season_for_seasonal_cycle);
+			output = ((enabled_mask & (1 << pinned)) != 0) ? pinned : get_first_enabled_season (enabled_mask);
+			break;
+		}
+	}
+
+	output = clamp (CS_SUMMER, CS_SPRING, output);
+	is->seasonal_cycle_unstarted = false;
+	return output;
 }
 
 int
@@ -17814,19 +18272,29 @@ patch_Map_Renderer_load_images (Map_Renderer *this, int edx)
 {
 	Map_Renderer_load_images(this, __);
 
-	// Initialize day/night cycle and re-calculate hour, if applicable
-	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
-		is->current_day_night_cycle = calculate_current_day_night_cycle_hour ();
+	if (is->current_config.day_night_cycle_mode != DNCM_OFF || is->current_config.seasonal_cycle_mode != SCM_OFF) {
+		if (! allocate_day_night_cycle_runtime_storage ()) {
+			is->day_night_cycle_img_state = IS_INIT_FAILED;
+			return;
+		}
+
+		if (is->current_config.day_night_cycle_mode != DNCM_OFF)
+			is->current_day_night_cycle = calculate_current_day_night_cycle_hour ();
+		if ((is->current_config.seasonal_cycle_mode != SCM_OFF) &&
+		    (is->seasonal_cycle_unstarted ||
+		     ((is->current_config.seasonal_cycle_mode != SCM_EVERY_TURN) &&
+		      (is->current_config.seasonal_cycle_mode != SCM_ON_DAY_NIGHT_HOUR))))
+			is->current_seasonal_cycle = calculate_current_seasonal_cycle (false);
 
 		if (is->day_night_cycle_img_state == IS_UNINITED) {
-			init_day_night_images ();
+			init_day_night_and_seasonal_images ();
 		}
 
 		if (is->day_night_cycle_img_state == IS_OK) {
 			
 			// Sprite proxies are deindexed during each load event as sprite instances (really only Resources, which are reloaded) may change.
 			if (!is->day_night_cycle_img_proxies_indexed) {
-				build_sprite_proxies_24(this);
+				build_sprite_proxies(this);
 			}
 		}
 	}
@@ -17987,6 +18455,7 @@ patch_init_floating_point ()
 		{"enable_wonder_districts"                               , false, offsetof (struct c3x_config, enable_wonder_districts)},
 		{"enable_natural_wonders"                                , false, offsetof (struct c3x_config, enable_natural_wonders)},
 		{"add_natural_wonders_to_scenarios_if_none"              , false, offsetof (struct c3x_config, add_natural_wonders_to_scenarios_if_none)},
+		{"enable_custom_animations"                              , false, offsetof (struct c3x_config, enable_custom_animations)},
 		{"enable_named_tiles"                                    , false, offsetof (struct c3x_config, enable_named_tiles)},
 		{"enable_distribution_hub_districts"                     , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"enable_aerodrome_districts"                            , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
@@ -18049,10 +18518,13 @@ patch_init_floating_point ()
 		{"elapsed_minutes_per_day_night_hour_transition"     ,     3,  offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
 		{"fixed_hours_per_turn_for_day_night_cycle"          ,     1,  offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
 		{"pinned_hour_for_day_night_cycle"                   ,     0,  offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
+		{"elapsed_minutes_per_season_transition"             ,     3,  offsetof (struct c3x_config, elapsed_minutes_per_season_transition)},
+		{"fixed_turns_per_season"                            ,     3,  offsetof (struct c3x_config, fixed_turns_per_season)},
+		{"transition_season_on_day_night_hour"               ,     0,  offsetof (struct c3x_config, transition_season_on_day_night_hour)},
 		{"years_to_double_building_culture"                  ,  1000,  offsetof (struct c3x_config, years_to_double_building_culture)},
 		{"tourism_time_scale_percent"                        ,   100,  offsetof (struct c3x_config, tourism_time_scale_percent)},
-		{"luxury_randomized_appearance_rate_percent"    ,       100,   offsetof (struct c3x_config, luxury_randomized_appearance_rate_percent)},
-		{"tiles_per_non_luxury_resource"                ,        32,   offsetof (struct c3x_config, tiles_per_non_luxury_resource)},
+		{"luxury_randomized_appearance_rate_percent"         ,   100,  offsetof (struct c3x_config, luxury_randomized_appearance_rate_percent)},
+		{"tiles_per_non_luxury_resource"                     ,   32,   offsetof (struct c3x_config, tiles_per_non_luxury_resource)},
 		{"special_capital_decorruption_effect"               ,    10,  offsetof (struct c3x_config, special_capital_decorruption_effect)},
 		{"city_limit"                                        ,  2048,  offsetof (struct c3x_config, city_limit)},
 		{"maximum_pop_before_neighborhood_needed"            ,     8,  offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
@@ -18138,6 +18610,9 @@ patch_init_floating_point ()
 	base_config.unit_cycle_search_criteria = UCSC_STANDARD;
 	base_config.city_work_radius = 2;
 	base_config.day_night_cycle_mode = DNCM_OFF;
+	base_config.seasonal_cycle_mode = SCM_OFF;
+	base_config.enabled_seasons_mask = 0xF;
+	base_config.pinned_season_for_seasonal_cycle = CS_SUMMER;
 	base_config.distribution_hub_yield_division_mode = DHYDM_FLAT;
 	base_config.ai_distribution_hub_build_strategy = ADHBS_BY_CITY_COUNT;
 	base_config.ai_auto_build_great_wall_strategy = AAGWS_ALL_BORDERS;
@@ -18341,6 +18816,23 @@ patch_init_floating_point ()
 	is->accessing_save_file = NULL;
 
 	is->drawn_strat_resource_count = 0;
+	is->current_day_night_cycle = 12;
+	is->day_night_cycle_unstarted = true;
+	is->current_seasonal_cycle = CS_SUMMER;
+	is->seasonal_cycle_unstarted = true;
+	is->turns_in_current_season = 0;
+	is->day_night_cycle_img_proxies_indexed = false;
+	is->day_night_sprite_proxy_by_season_and_hour = NULL;
+	is->cycle_imgs = NULL;
+	is->tile_animation_selected_hour = -1;
+	is->tile_animation_selected_season = -1;
+	is->tile_animation_pcx_sprite_lookup = (struct table) {0};
+	is->tile_animation_pcx_rule_key_to_index = (struct table) {0};
+	is->tile_animation_pcx_rule_key_count = 0;
+	memset (is->tile_animation_pcx_rule_masks, 0, sizeof is->tile_animation_pcx_rule_masks);
+	memset (is->tile_animation_pcx_word_mask, 0, sizeof is->tile_animation_pcx_word_mask);
+	memset (is->tile_animation_pcx_active_word_mask, 0, sizeof is->tile_animation_pcx_active_word_mask);
+	is->tile_animation_has_pcx_rules = false;
 
 	is->charmed_types_converted_to_ptw_arty = NULL;
 	is->count_charmed_types_converted_to_ptw_arty = 0;
@@ -21523,6 +22015,7 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 		is->destroy_tnx_cache (is->tnx_cache);
 		is->tnx_cache = NULL;
 	}
+	reset_tile_animation_runtime_state ();
 
 	unsigned tr = load_scenario (this, __, param_1, param_2);
 	char * scenario_path = param_1;
@@ -21550,6 +22043,7 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 		reset_district_state (true);
 		load_districts_config ();
 	}
+	load_tile_animation_configs ();
 
 	// Initialize Trade Net X
 	if (is->current_config.enable_trade_net_x && (is->tnx_init_state == IS_UNINITED)) {
@@ -21779,13 +22273,30 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 	else if (is->current_config.override_no_ai_patrol == NAPO_NONE)
 		*p_allow_ai_patrol = 0 == get_int_from_conquests_ini ("NoAIPatrol", 1, 0);
 
-	// Clear day/night cycle vars and deindex sprite proxies, if necessary.
-	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
-		is->day_night_cycle_unstarted = true;
-		is->current_day_night_cycle = 12;
-		if (is->day_night_cycle_img_proxies_indexed) {
-			deindex_day_night_image_proxies ();
+	// Reset cycle vars and clear any indexed sprite proxies.
+	is->day_night_cycle_unstarted = true;
+	is->current_day_night_cycle = 12;
+	is->seasonal_cycle_unstarted = true;
+	is->current_seasonal_cycle = CS_SUMMER;
+	is->turns_in_current_season = 0;
+	if (is->day_night_cycle_img_proxies_indexed)
+		deindex_day_night_image_proxies ();
+	if ((is->current_config.day_night_cycle_mode != DNCM_OFF) ||
+	    (is->current_config.seasonal_cycle_mode != SCM_OFF)) {
+		if (! allocate_day_night_cycle_runtime_storage ()) {
+			is->day_night_cycle_img_state = IS_INIT_FAILED;
+			pop_up_in_game_error ("Could not allocate memory for day/night cycle sprite proxies.");
 		}
+	} else {
+		if (is->day_night_sprite_proxy_by_season_and_hour != NULL) {
+			free (is->day_night_sprite_proxy_by_season_and_hour);
+			is->day_night_sprite_proxy_by_season_and_hour = NULL;
+		}
+		if ((is->cycle_imgs != NULL) && (is->day_night_cycle_img_state != IS_OK)) {
+			free (is->cycle_imgs);
+			is->cycle_imgs = NULL;
+		}
+		is->day_night_cycle_img_state = IS_UNINITED;
 	}
 
 	return tr;
@@ -23963,14 +24474,16 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, bool 
 int __fastcall
 patch_Sprite_draw (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
-	Sprite * to_draw = get_sprite_proxy_for_current_hour(this);
+	Sprite * to_draw = get_cycle_sprite_proxy(this);
 	return Sprite_draw(to_draw ? to_draw : this, __, canvas, pixel_x, pixel_y, color_table);
 }
 
 int __fastcall
 patch_Sprite_draw_on_map (Sprite * this, int edx, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7)
 {
-	Sprite * to_draw = get_sprite_proxy_for_current_hour(this);
+	if (is->current_config.enable_custom_animations)
+		register_tile_animation_pcx_draw_for_current_tile (this);
+	Sprite * to_draw = get_cycle_sprite_proxy(this);
 	return Sprite_draw_on_map(to_draw ? to_draw : this, __, map_renderer, pixel_x, pixel_y, param_4, param_5, param_6, param_7);
 }
 
@@ -25179,6 +25692,16 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 		is->saved_tile_count = -1;
 	}
 
+	if (is->current_config.enable_custom_animations && is->tile_animation_has_pcx_rules) {
+		if (is->tile_animation_pcx_sprite_lookup.len == 0)
+			rebuild_tile_animation_pcx_sprite_lookup ();
+		if (tile_animation_cache_needs_rebuild ())
+			rebuild_tile_animation_rule_match_cache ();
+		// Per-frame refresh: clear stale PCX bits and rebuild only time-valid PCX candidates.
+		refresh_tile_animation_pcx_active_mask ();
+		clear_tile_animation_pcx_matches_in_cache ();
+	}
+
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
 }
 
@@ -25849,6 +26372,8 @@ patch_Map_impl_generate (Map * this, int edx, int seed, bool is_multiplayer_game
 
 	if (is->current_config.enable_natural_wonders)
 		place_natural_wonders_on_map ();
+	if (is->current_config.enable_custom_animations)
+		reset_tile_animation_runtime_state ();
 }
 
 int __fastcall
@@ -26731,6 +27256,7 @@ void * __cdecl
 patch_do_load_game (char * param_1)
 {
 	void * tr = do_load_game (param_1);
+	reset_tile_animation_runtime_state ();
 
 	if (is->current_config.restore_unit_directions_on_game_load && (p_units->Units != NULL))
 		for (int n = 0; n <= p_units->LastIndex; n++) {
@@ -26867,14 +27393,33 @@ patch_perform_interturn_in_main_loop ()
 
 	perform_interturn ();
 
-	if (is->current_config.day_night_cycle_mode) {
-		if (is->day_night_cycle_img_state == IS_OK) {
-			int new_hour = calculate_current_day_night_cycle_hour ();
+	if (is->day_night_cycle_img_state == IS_OK) {
+		bool redraw = false;
+		int old_hour = is->current_day_night_cycle;
+		int new_hour = old_hour;
+		if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
+			new_hour = calculate_current_day_night_cycle_hour ();
 			if (new_hour != is->current_day_night_cycle) {
 				is->current_day_night_cycle = new_hour;
-				p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+				redraw = true;
 			}
 		}
+		if (is->current_config.seasonal_cycle_mode != SCM_OFF) {
+			bool transition_on_day_night_hour_hit = false;
+			if (is->current_config.seasonal_cycle_mode == SCM_ON_DAY_NIGHT_HOUR) {
+				int transition_hour = clamp (0, 23, is->current_config.transition_season_on_day_night_hour);
+				transition_on_day_night_hour_hit = (is->current_config.day_night_cycle_mode != DNCM_OFF) &&
+					(new_hour != old_hour) && (new_hour == transition_hour);
+			}
+			int old_season = is->current_seasonal_cycle;
+			int new_season = calculate_current_seasonal_cycle (transition_on_day_night_hour_hit);
+			if (new_season != old_season) {
+				is->current_seasonal_cycle = new_season;
+				redraw = true;
+			}
+		}
+		if (redraw)
+			p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 	}
 
 	if (is->current_config.enable_city_work_radii_highlights && is->highlight_city_radii) {
@@ -26887,6 +27432,8 @@ patch_perform_interturn_in_main_loop ()
 		is->city_loc_display_perspective = -1;
 		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form); // Trigger map redraw
 	}
+	if (is->current_config.enable_custom_animations)
+		rebuild_tile_animation_rule_match_cache ();
 
 	if (is->current_config.measure_turn_times) {
 		long long ts_after;
@@ -27970,6 +28517,16 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 	is->move_spend_override_unit = NULL;
 	is->move_spend_override_value = 0;
 
+	bool redraw_after_move = false;
+	if (is->current_config.enable_custom_animations) {
+		FOR_TILES_AROUND (tai, 21, this->Body.X, this->Body.Y) {
+			if (tile_has_matching_resource_animation_for_draw (tai.tile, tai.tile_x, tai.tile_y)) {
+				redraw_after_move = true;
+				break;
+			}
+		}
+	}
+
 	bool const allow_worker_coast = is->current_config.enable_districts && is->current_config.workers_can_enter_coast && is_worker (this);
 	bool const allow_bridge_walk = is->current_config.enable_districts &&
 		is->current_config.enable_bridge_districts &&
@@ -28069,6 +28626,21 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 			}
 		}
 	}
+
+	if (is->current_config.enable_custom_animations) {
+		FOR_TILES_AROUND (tai, 21, this->Body.X, this->Body.Y) {
+			if (tile_has_matching_resource_animation_for_draw (tai.tile, tai.tile_x, tai.tile_y)) {
+				redraw_after_move = true;
+				break;
+			}
+		}
+	}
+
+	// We have to call the draw method directly since the game doesn't necessarily fully redraw newly (un)revealed 
+	// tiles in all cases. This avoids situations where a newly revealed tile shows both the static resource overlay 
+	// and the animated one on top of it during a turn.
+	if (redraw_after_move)
+		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 
 	is->temporarily_disallow_lethal_zoc = false;
 	is->moving_unit_to_adjacent_tile = false;
@@ -30116,6 +30688,12 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		serialize_aligned_text ("current_day_night_cycle", &mod_data);
 		int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_day_night_cycle), is->current_day_night_cycle);
 	}
+	if (is->current_config.seasonal_cycle_mode != SCM_OFF) {
+		serialize_aligned_text ("current_seasonal_cycle", &mod_data);
+		int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_seasonal_cycle), is->current_seasonal_cycle);
+		serialize_aligned_text ("turns_in_current_season", &mod_data);
+		int_to_bytes (buffer_allocate (&mod_data, sizeof is->turns_in_current_season), is->turns_in_current_season);
+	}
 	if (is->current_config.enable_districts && (is->district_count > 0)) {
 		serialize_aligned_text ("district_config_names", &mod_data);
 		int * entry_count = (int *)buffer_allocate (&mod_data, sizeof(int));
@@ -30455,6 +31033,8 @@ int __cdecl
 patch_move_game_data (byte * buffer, bool save_else_load)
 {
 	int tr = move_game_data (buffer, save_else_load);
+	if (! save_else_load && is->current_config.enable_custom_animations)
+		reset_tile_animation_runtime_state ();
 
 	if (! save_else_load) {
 		// Free all district_instance structs first
@@ -30607,11 +31187,20 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				// only the standard graphics; I didn't test). If day/night cycle mode is active, restore the proxies now if they
 				// haven't already been.
 				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
-					build_sprite_proxies_24 (&p_bic_data->Map.Renderer);
+					build_sprite_proxies (&p_bic_data->Map.Renderer);
 
 				// Because we've restored current_day_night_cycle from the save, set that is is not the first turn so the cycle
 				// doesn't get restarted.
 				is->day_night_cycle_unstarted = false;
+			
+			} else if (match_save_chunk_name (&cursor, "current_seasonal_cycle")) {
+				is->current_seasonal_cycle = clamp (CS_SUMMER, CS_SPRING, *((int *)cursor)++);
+				is->seasonal_cycle_unstarted = false;
+				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
+					build_sprite_proxies (&p_bic_data->Map.Renderer);
+			
+			} else if (match_save_chunk_name (&cursor, "turns_in_current_season")) {
+				is->turns_in_current_season = not_below (0, *((int *)cursor)++);
 			
 				// ToC-3
 			} else if (match_save_chunk_name (&cursor, "great_wall_auto_build_state")) {
@@ -33289,6 +33878,21 @@ init_district_images ()
 
 	char art_dir[200];
 	char temp_path[2*MAX_PATH];
+	int base_season = CS_SUMMER;
+	if (is->current_config.seasonal_cycle_mode != SCM_OFF) {
+		int enabled_mask = normalize_enabled_season_mask (is->current_config.enabled_seasons_mask);
+		base_season = get_first_enabled_season (enabled_mask);
+		if (is->current_config.seasonal_cycle_mode == SCM_USER_SEASON) {
+			int user_season = get_current_local_season ();
+			if (enabled_mask & (1 << user_season))
+				base_season = user_season;
+		} else if (! is->seasonal_cycle_unstarted) {
+			int current_season = clamp (CS_SUMMER, CS_SPRING, is->current_seasonal_cycle);
+			if (enabled_mask & (1 << current_season))
+				base_season = current_season;
+		}
+	}
+	char const * base_season_name = cycle_season_names[base_season];
 
 	is->dc_img_state = IS_INIT_FAILED;
 
@@ -33313,7 +33917,7 @@ init_district_images ()
 				continue;
 
 			// Read PCX file
-			snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", cfg->img_paths[variant_i]);
+			snprintf (art_dir, sizeof art_dir, "Districts/%s/1200/%s", base_season_name, cfg->img_paths[variant_i]);
 			get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 			PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 
@@ -33354,7 +33958,8 @@ init_district_images ()
 		}
 	}
 	// Load abandoned district images (land + maritime)
-	get_mod_art_path ("Districts/1200/Abandoned.pcx", temp_path, sizeof temp_path);
+	snprintf (art_dir, sizeof art_dir, "Districts/%s/1200/Abandoned.pcx", base_season_name);
+	get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 
 	if (pcx.JGL.Image == NULL) {
@@ -33401,7 +34006,7 @@ init_district_images ()
 				if (pcx_loaded)
 					wpcx.vtable->clear_JGL (&wpcx);
 
-				snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", img_path);
+				snprintf (art_dir, sizeof art_dir, "Districts/%s/1200/%s", base_season_name, img_path);
 				get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 				PCX_Image_read_file (&wpcx, __, temp_path, NULL, 0, 0x100, 2);
 
@@ -33466,7 +34071,7 @@ init_district_images ()
 				if (pcx_loaded)
 					nwpcx.vtable->clear_JGL (&nwpcx);
 
-				snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", img_path);
+				snprintf (art_dir, sizeof art_dir, "Districts/%s/1200/%s", base_season_name, img_path);
 				get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 				PCX_Image_read_file (&nwpcx, __, temp_path, NULL, 0, 0x100, 2);
 
@@ -33497,6 +34102,14 @@ init_district_images ()
 	}
 
 	is->dc_img_state = IS_OK;
+
+	if (((is->current_config.day_night_cycle_mode != DNCM_OFF) || (is->current_config.seasonal_cycle_mode != SCM_OFF)) &&
+	    (is->day_night_cycle_img_state == IS_OK)) {
+		if (is->day_night_cycle_img_proxies_indexed)
+			deindex_day_night_image_proxies ();
+		build_sprite_proxies (&p_bic_data->Map.Renderer);
+	}
+
 	pcx.vtable->destruct (&pcx, __, 0);
 }
 
@@ -34275,6 +34888,23 @@ void
 draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, struct district_instance * inst, 
 	int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int visible_to_civ_id)
 {
+	int draw_tile_x = tile_x;
+	int draw_tile_y = tile_y;
+	if (is->tile_info_open) {
+		draw_tile_x = is->viewing_tile_info_x;
+		draw_tile_y = is->viewing_tile_info_y;
+	}
+
+	int anim_civ_id = visible_to_civ_id;
+	if (((anim_civ_id < 0) || (anim_civ_id >= 32)) && (p_main_screen_form != NULL))
+		anim_civ_id = p_main_screen_form->Player_CivID;
+
+	bool tile_visible_for_animation = false;
+	if (is->current_config.enable_custom_animations &&
+	    ((*p_debug_mode_bits & 0xC) == 0) &&
+	    (anim_civ_id >= 0) && (anim_civ_id < 32))
+		tile_visible_for_animation = patch_Leader_is_tile_visible (&leaders[anim_civ_id], __, draw_tile_x, draw_tile_y);
+
 	int base_resource = Tile_get_resource_visible_to (tile, __, visible_to_civ_id);
 	int district_resource = -1;
 
@@ -34321,8 +34951,43 @@ draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, stru
 		return;
 	}
 
+	int district_resource_effect_id = -1;
+	bool suppress_district_resource_static =
+		tile_visible_for_animation &&
+		tile_has_matching_resource_animation_for_draw_with_resource (tile, draw_tile_x, draw_tile_y,
+		                                                             district_resource, &district_resource_effect_id);
+
 	if (base_resource >= 0) {
 		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, left_x, pixel_y);
+	}
+
+	if (suppress_district_resource_static) {
+		if (district_resource_effect_id >= 0)
+			clear_active_custom_tile_animation_if_different (tile, district_resource_effect_id);
+		if ((district_resource_effect_id >= 0) && (tile->Body.active_tile_effect == NULL)) {
+			struct tile_animation_config * cfg = get_tile_animation_for_effect (district_resource_effect_id);
+			bool restore_cfg = false;
+			int saved_x_offset = 0;
+			bool saved_has_x_offset = false;
+
+			// Match static split-resource placement: generated resource is shifted to the right
+			// when a native resource is also drawn on the same tile.
+			if ((cfg != NULL) && (base_resource >= 0)) {
+				restore_cfg = true;
+				saved_x_offset = cfg->x_offset;
+				saved_has_x_offset = cfg->has_x_offset;
+				cfg->x_offset = saved_x_offset + (offset >> 1);
+				cfg->has_x_offset = true;
+			}
+
+			patch_Tile_spawn_animated_effect (tile, __, district_resource_effect_id, draw_tile_x, draw_tile_y, true, DIR_SW);
+
+			if (restore_cfg) {
+				cfg->x_offset = saved_x_offset;
+				cfg->has_x_offset = saved_has_x_offset;
+			}
+		}
+		return;
 	}
 
 	int tile_height   = tile_width >> 1;
@@ -34597,6 +35262,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -34626,32 +35292,61 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 void __fastcall
 patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	if (! is->current_config.enable_districts) {
-		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
-		return;
-	}
-
 	Tile * tile = is->current_render_tile;
+	int draw_tile_x = tile_x;
+	int draw_tile_y = tile_y;
 	if (is->tile_info_open)
 		tile = tile_at (is->viewing_tile_info_x, is->viewing_tile_info_y);
+	if (is->tile_info_open) {
+		draw_tile_x = is->viewing_tile_info_x;
+		draw_tile_y = is->viewing_tile_info_y;
+	}
+
+	bool suppress_static_resource = false;
+	int resource_animation_effect_id = -1;
+	int anim_civ_id = visible_to_civ_id;
+	if (((anim_civ_id < 0) || (anim_civ_id >= 32)) && (p_main_screen_form != NULL))
+		anim_civ_id = p_main_screen_form->Player_CivID;
+	bool tile_visible_for_animation = false;
+	if (is->current_config.enable_custom_animations &&
+	    ((*p_debug_mode_bits & 0xC) == 0) &&
+	    (tile != NULL) && (tile != p_null_tile) &&
+	    (anim_civ_id >= 0) && (anim_civ_id < 32))
+		tile_visible_for_animation = patch_Leader_is_tile_visible (&leaders[anim_civ_id], __, draw_tile_x, draw_tile_y);
+
+	if (tile_visible_for_animation) {
+		int visible_resource_id = Tile_get_resource_visible_to (tile, __, anim_civ_id);
+		suppress_static_resource = tile_has_matching_resource_animation_for_draw_with_resource (tile, draw_tile_x, draw_tile_y,
+		                                                                                         visible_resource_id, &resource_animation_effect_id);
+		if (suppress_static_resource && (resource_animation_effect_id >= 0)) {
+			clear_active_custom_tile_animation_if_different (tile, resource_animation_effect_id);
+			if (tile->Body.active_tile_effect == NULL)
+				patch_Tile_spawn_animated_effect (tile, __, resource_animation_effect_id, draw_tile_x, draw_tile_y, true, DIR_SW);
+		}
+	}
+
 	if ((tile == NULL) || (tile == p_null_tile)) {
-		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		if (! suppress_static_resource)
+			Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
 	}
 
-	struct district_instance * inst = is->current_render_tile_district;
-	if (is->tile_info_open)
-		inst = get_district_instance (tile);
-	if (inst == NULL) {
-		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
-		return;
+	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
+		struct district_instance * inst = is->current_render_tile_district;
+		if (is->tile_info_open)
+			inst = get_district_instance (tile);
+		if (inst == NULL) {
+			if (! suppress_static_resource)
+				Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+			return;
+		}
+
+		// Resources that should be drawn below district are already drawn, skip in that case
+		if (is->district_configs[inst->district_id].draw_over_resources) 
+			return;
+
+		draw_district_generated_resource_on_tile (this, tile, inst, tile_x, tile_y, map_renderer, pixel_x, pixel_y, visible_to_civ_id);
 	}
-
-	// Resources that should be drawn below district are already drawn, skip in that case
-	if (is->district_configs[inst->district_id].draw_over_resources) 
-		return;
-
-	draw_district_generated_resource_on_tile (this, tile, inst, tile_x, tile_y, map_renderer, pixel_x, pixel_y, visible_to_civ_id);
 }
 
 void __fastcall
@@ -37207,6 +37902,1667 @@ patch_Tile_check_water_for_canal_move_to_adjacent_tile_dest (Tile * this)
 	return this->vtable->m35_Check_Is_Water (this);
 }
 
+int
+pack_tile_animation_pcx_lookup_value (int pcx_file_id, int pcx_index)
+{
+	int file_bits = (pcx_file_id < 0) ? 0 : (pcx_file_id + 1);
+	return (file_bits << 12) | (pcx_index & 0xFFF);
+}
+
+bool
+unpack_tile_animation_pcx_lookup_value (int packed, int * out_pcx_file_id, int * out_pcx_index)
+{
+	int file_bits = (packed >> 12) & 0xFFFFF;
+	if (file_bits <= 0)
+		return false;
+	if (out_pcx_file_id != NULL)
+		*out_pcx_file_id = file_bits - 1;
+	if (out_pcx_index != NULL)
+		*out_pcx_index = packed & 0xFFF;
+	return true;
+}
+
+void
+insert_tile_animation_pcx_sprite_mapping (Sprite * sprite, int pcx_file_id, int pcx_index)
+{
+	if ((sprite == NULL) || (sprite->vtable == NULL))
+		return;
+	itable_insert (&is->tile_animation_pcx_sprite_lookup, (int)sprite, pack_tile_animation_pcx_lookup_value (pcx_file_id, pcx_index));
+}
+
+void
+insert_tile_animation_pcx_sprite_range (Sprite * sprites, int count, int pcx_file_id)
+{
+	if ((sprites == NULL) || (count <= 0))
+		return;
+	for (int i = 0; i < count; i++)
+		insert_tile_animation_pcx_sprite_mapping (&sprites[i], pcx_file_id, i);
+}
+
+void
+clear_tile_animation_pcx_sprite_lookup ()
+{
+	table_deinit (&is->tile_animation_pcx_sprite_lookup);
+	is->tile_animation_pcx_sprite_lookup = (struct table) {0};
+}
+
+void
+clear_tile_animation_pcx_rule_lookup ()
+{
+	// Rule lookup maps packed (pcx_file_id, pcx_index) -> rule-mask row index.
+	table_deinit (&is->tile_animation_pcx_rule_key_to_index);
+	is->tile_animation_pcx_rule_key_to_index = (struct table) {0};
+	is->tile_animation_pcx_rule_key_count = 0;
+	memset (is->tile_animation_pcx_rule_masks, 0, sizeof is->tile_animation_pcx_rule_masks);
+}
+
+void
+rebuild_tile_animation_pcx_sprite_lookup ()
+{
+	// Build once-per-map_renderer pointers: Sprite* -> packed (pcx_file_id, pcx_index).
+	// This lets draw-hook registration avoid any name/index inference work.
+	clear_tile_animation_pcx_sprite_lookup ();
+
+	Map_Renderer * mr = &p_bic_data->Map.Renderer;
+	insert_tile_animation_pcx_sprite_mapping (&mr->Terrain_Buldings_Mines, TAPF_TERRAINBUILDINGS, 0);
+	insert_tile_animation_pcx_sprite_range (mr->Waterfalls_Images, 4, TAPF_WATERFALLS);
+	insert_tile_animation_pcx_sprite_range (mr->Flood_Plains_Images, 16, TAPF_FLOODPLAINS);
+	insert_tile_animation_pcx_sprite_range (mr->Delta_Rivers_Images, 16, TAPF_DELTARIVERS);
+	insert_tile_animation_pcx_sprite_range (mr->Mountain_Rivers_Images, 16, TAPF_MTNRIVERS);
+	insert_tile_animation_pcx_sprite_range (mr->Irrigation_Desert_Images, 16, TAPF_IRRIGATION_DESETT);
+	insert_tile_animation_pcx_sprite_range (mr->Irrigation_Plains_Images, 16, TAPF_IRRIGATION_PLAINS);
+	insert_tile_animation_pcx_sprite_range (mr->Irrigation_Images, 16, TAPF_IRRIGATION);
+	insert_tile_animation_pcx_sprite_range (mr->Irrigation_Tundra_Images, 16, TAPF_IRRIGATION_TUNDRA);
+	insert_tile_animation_pcx_sprite_range (mr->Volcanos_Images, 16, TAPF_VOLCANOS);
+	insert_tile_animation_pcx_sprite_range (mr->Volcanos_Forests_Images, 16, TAPF_VOLCANOS_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Volcanos_Jungles_Images, 16, TAPF_VOLCANOS_JUNGLES);
+	insert_tile_animation_pcx_sprite_range (mr->Volcanos_Snow_Images, 16, TAPF_VOLCANOS_SNOW);
+	insert_tile_animation_pcx_sprite_range (mr->Grassland_Forests_Large, 8, TAPF_GRASSLAND_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Grassland_Forests_Small, 10, TAPF_GRASSLAND_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Grassland_Forests_Pines, 12, TAPF_GRASSLAND_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Plains_Forests_Large, 8, TAPF_PLAINS_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Plains_Forests_Small, 10, TAPF_PLAINS_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Plains_Forests_Pines, 12, TAPF_PLAINS_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Tundra_Forests_Large, 8, TAPF_TUNDRA_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Tundra_Forests_Small, 10, TAPF_TUNDRA_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Tundra_Forests_Pines, 12, TAPF_TUNDRA_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->LM_Forests_Large_Images, 8, TAPF_LMFORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->LM_Forests_Small_Images, 10, TAPF_LMFORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->LM_Forests_Pines_Images, 12, TAPF_LMFORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Mountains_Images, 16, TAPF_MOUNTAINS);
+	insert_tile_animation_pcx_sprite_range (mr->Mountains_Forests_Images, 16, TAPF_MOUNTAIN_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Mountains_Jungles_Images, 16, TAPF_MOUNTAIN_JUNGLES);
+	insert_tile_animation_pcx_sprite_range (mr->Mountains_Snow_Images, 16, TAPF_MOUNTAINS_SNOW);
+	insert_tile_animation_pcx_sprite_range (mr->Hills_Images, 16, TAPF_XHILLS);
+	insert_tile_animation_pcx_sprite_range (mr->Hills_Forests_Images, 16, TAPF_HILL_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Hills_Jungle_Images, 16, TAPF_HILL_JUNGLE);
+	insert_tile_animation_pcx_sprite_range (mr->LM_Hills_Images, 16, TAPF_LMHILLS);
+	insert_tile_animation_pcx_sprite_range (mr->Roads_Images, 256, TAPF_ROADS);
+	insert_tile_animation_pcx_sprite_range (mr->Railroads_Images, 272, TAPF_RAILROADS);
+}
+
+bool
+read_tile_animation_pcx_file (struct string_slice const * s, int * out_id)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	int id = TILE_ANIM_PCX_FILE_UNKNOWN;
+	if (slice_matches_str (&trimmed, "deltaRivers.pcx"))            id = TAPF_DELTARIVERS;
+	else if (slice_matches_str (&trimmed, "floodplains.pcx"))       id = TAPF_FLOODPLAINS;
+	else if (slice_matches_str (&trimmed, "LMHills.pcx"))           id = TAPF_LMHILLS;
+	else if (slice_matches_str (&trimmed, "Mountains.pcx"))         id = TAPF_MOUNTAINS;
+	else if (slice_matches_str (&trimmed, "Mountains-snow.pcx"))    id = TAPF_MOUNTAINS_SNOW;
+	else if (slice_matches_str (&trimmed, "mtnRivers.pcx"))         id = TAPF_MTNRIVERS;
+	else if (slice_matches_str (&trimmed, "Volcanos.pcx"))          id = TAPF_VOLCANOS;
+	else if (slice_matches_str (&trimmed, "Volcanos-snow.pcx"))     id = TAPF_VOLCANOS_SNOW;
+	else if (slice_matches_str (&trimmed, "waterfalls.pcx"))        id = TAPF_WATERFALLS;
+	else if (slice_matches_str (&trimmed, "xhills.pcx"))            id = TAPF_XHILLS;
+
+	if (id == TILE_ANIM_PCX_FILE_UNKNOWN)
+		return false;
+	if (out_id != NULL)
+		*out_id = id;
+	return true;
+}
+
+void
+refresh_tile_animation_pcx_rule_mask ()
+{
+	// Precompute two things:
+	// 1) which animation bits are PCX-driven at all (tile_animation_pcx_word_mask),
+	// 2) key-specific bitmasks for fast per-draw assignment.
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	for (int w = 0; w < words_per_tile; w++)
+		is->tile_animation_pcx_word_mask[w] = 0;
+	for (int w = 0; w < words_per_tile; w++)
+		is->tile_animation_pcx_active_word_mask[w] = 0;
+	is->tile_animation_has_pcx_rules = false;
+	clear_tile_animation_pcx_rule_lookup ();
+
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+		if (! cfg->in_use || (cfg->type != TAT_PCX))
+			continue;
+		is->tile_animation_pcx_word_mask[i / 32] |= 1u << (i % 32);
+		is->tile_animation_has_pcx_rules = true;
+
+		int packed = pack_tile_animation_pcx_lookup_value (cfg->pcx_file_id, cfg->pcx_index);
+		int key_index = -1;
+		if (! itable_look_up (&is->tile_animation_pcx_rule_key_to_index, packed, &key_index)) {
+			if (is->tile_animation_pcx_rule_key_count >= MAX_TILE_ANIMATION_CONFIGS)
+				continue;
+			key_index = is->tile_animation_pcx_rule_key_count++;
+			itable_insert (&is->tile_animation_pcx_rule_key_to_index, packed, key_index);
+		}
+		// One row per unique (pcx_file, pcx_index), bits mark matching animation configs.
+		is->tile_animation_pcx_rule_masks[key_index][i / 32] |= 1u << (i % 32);
+	}
+
+	refresh_tile_animation_pcx_active_mask ();
+}
+
+void
+refresh_tile_animation_pcx_active_mask ()
+{
+	// Time/season gating is recomputed once per Draw_Tiles pass, then ANDed at draw time.
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	for (int w = 0; w < words_per_tile; w++)
+		is->tile_animation_pcx_active_word_mask[w] = 0;
+	if (! is->tile_animation_has_pcx_rules)
+		return;
+
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+		if (! cfg->in_use || (cfg->type != TAT_PCX))
+			continue;
+		if (! tile_animation_matches_time_filters (cfg))
+			continue;
+		is->tile_animation_pcx_active_word_mask[i / 32] |= 1u << (i % 32);
+	}
+}
+
+void
+clear_tile_animation_pcx_matches_in_cache ()
+{
+	// PCX matches are dynamic because they depend on what sprites were actually drawn this frame.
+	// Keep static terrain/resource cache bits, clear only the PCX-controlled bits.
+	if (! is->tile_animation_has_pcx_rules)
+		return;
+	if (! is->tile_animation_selected_valid || (is->tile_animation_selected_mask_matrix == NULL))
+		return;
+	if ((is->tile_animation_selected_next_index == NULL) || (is->tile_animation_selected_tile_indices == NULL))
+		return;
+	int tile_count = p_bic_data->Map.TileCount;
+	if (tile_count <= 0)
+		return;
+	if (is->tile_animation_selected_tile_count <= 0)
+		return;
+	if (tile_count > is->tile_animation_selected_tile_count)
+		tile_count = is->tile_animation_selected_tile_count;
+
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	is->tile_animation_selected_match_count = 0;
+	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
+		unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
+		for (int w = 0; w < words_per_tile; w++) {
+			unsigned int clear_mask = is->tile_animation_pcx_word_mask[w];
+			if (clear_mask != 0)
+				tile_mask[w] &= ~clear_mask;
+		}
+
+		int winner = pick_tile_animation_winner_for_tile (tile_mask);
+		if ((winner >= 0) && (winner < is->tile_animation_count)) {
+			is->tile_animation_selected_next_index[tile_index] = winner;
+			is->tile_animation_selected_tile_indices[is->tile_animation_selected_match_count++] = tile_index;
+		} else
+			is->tile_animation_selected_next_index[tile_index] = 0xFF;
+	}
+}
+
+void
+register_tile_animation_pcx_draw_for_current_tile (Sprite * sprite)
+{
+	// Called from patch_Sprite_draw_on_map while current_render_tile_* points at the tile being drawn.
+	// We mark candidate animations onto that tile's mask; spawning still happens later in scheduler_tick.
+	if (! is->tile_animation_has_pcx_rules)
+		return;
+	if (! is->tile_animation_selected_valid ||
+	    (is->tile_animation_selected_mask_matrix == NULL) ||
+	    (is->current_render_tile == NULL) ||
+	    (is->current_render_tile == p_null_tile))
+		return;
+	if ((is->current_render_tile_x < 0) || (is->current_render_tile_y < 0))
+		return;
+
+	int packed = 0;
+	if (! itable_look_up (&is->tile_animation_pcx_sprite_lookup, (int)sprite, &packed))
+		return;
+
+	int pcx_file_id = TILE_ANIM_PCX_FILE_UNKNOWN;
+	int pcx_index = -1;
+	if (! unpack_tile_animation_pcx_lookup_value (packed, &pcx_file_id, &pcx_index))
+		return;
+
+	int tile_index = tile_coords_to_index (&p_bic_data->Map, is->current_render_tile_x, is->current_render_tile_y);
+	if ((tile_index < 0) || (tile_index >= is->tile_animation_selected_tile_count))
+		return;
+
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
+	byte prev_winner = is->tile_animation_selected_next_index[tile_index];
+	int key_index = -1;
+	// Exact file+index match.
+	if (itable_look_up (&is->tile_animation_pcx_rule_key_to_index, packed, &key_index) &&
+	    (key_index >= 0) &&
+	    (key_index < is->tile_animation_pcx_rule_key_count)) {
+		for (int w = 0; w < words_per_tile; w++)
+			tile_mask[w] |= is->tile_animation_pcx_rule_masks[key_index][w] & is->tile_animation_pcx_active_word_mask[w];
+	}
+
+	if (pcx_index >= 0) {
+		// Also allow wildcard rules keyed as (same file, index = -1).
+		int wildcard_packed = pack_tile_animation_pcx_lookup_value (pcx_file_id, -1);
+		if ((wildcard_packed != packed) &&
+		    itable_look_up (&is->tile_animation_pcx_rule_key_to_index, wildcard_packed, &key_index) &&
+		    (key_index >= 0) &&
+		    (key_index < is->tile_animation_pcx_rule_key_count)) {
+			for (int w = 0; w < words_per_tile; w++)
+				tile_mask[w] |= is->tile_animation_pcx_rule_masks[key_index][w] & is->tile_animation_pcx_active_word_mask[w];
+		}
+	}
+
+	int winner = pick_tile_animation_winner_for_tile (tile_mask);
+	if ((winner >= 0) && (winner < is->tile_animation_count)) {
+		is->tile_animation_selected_next_index[tile_index] = winner;
+		if ((prev_winner == 0xFF) && (is->tile_animation_selected_tile_indices != NULL) &&
+		    (is->tile_animation_selected_match_count < is->tile_animation_selected_tile_count))
+			is->tile_animation_selected_tile_indices[is->tile_animation_selected_match_count++] = tile_index;
+	} else
+		is->tile_animation_selected_next_index[tile_index] = 0xFF;
+}
+
+bool
+read_tile_animation_terrain_types (struct string_slice const * value,
+				       unsigned int * out_mask,
+				       bool * out_include_land)
+{
+	char * text = extract_slice (value);
+	if (text == NULL)
+		return false;
+
+	unsigned int mask = 0;
+	bool include_land = false;
+	bool saw_token = false;
+	char * cursor = text;
+	while (*cursor != '\0') {
+		while ((*cursor == ' ') || (*cursor == '\t') || (*cursor == ','))
+			cursor++;
+		if (*cursor == '\0')
+			break;
+
+		char * token_start = cursor;
+		while ((*cursor != '\0') && (*cursor != ','))
+			cursor++;
+		struct string_slice token = { .str = token_start, .len = cursor - token_start };
+		token = trim_string_slice (&token, 1);
+		if (token.len > 0) {
+			saw_token = true;
+			if (slice_matches_str (&token, "land"))
+				include_land = true;
+			else {
+				enum SquareTypes terrain = SQ_INVALID;
+				if (! read_tile_terrain_type_value (&token, &terrain)) {
+					free (text);
+					return false;
+				}
+				if (terrain == SQ_INVALID) {
+					mask |= all_square_types_mask ();
+					include_land = true;
+				} else {
+					unsigned int bit = square_type_mask_bit (terrain);
+					if (bit == 0) {
+						free (text);
+						return false;
+					}
+					mask |= bit;
+				}
+			}
+		}
+
+		if (*cursor == ',')
+			cursor++;
+	}
+
+	free (text);
+	if (! saw_token)
+		return false;
+	if (out_mask != NULL)
+		*out_mask = mask;
+	if (out_include_land != NULL)
+		*out_include_land = include_land;
+	return true;
+}
+
+bool
+tile_matches_terrain_types (Tile * tile, unsigned int terrain_types_mask, bool include_land)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	if (include_land && ! tile->vtable->m35_Check_Is_Water (tile))
+		return true;
+	return tile_matches_square_type_mask (tile, terrain_types_mask);
+}
+
+bool
+get_tile_animation_coastal_wave_direction (int tile_x, int tile_y, enum direction * out_dir)
+{
+	bool nw_is_land = ! tile_is_water (tile_x - 1, tile_y - 1);
+	bool ne_is_land = ! tile_is_water (tile_x + 1, tile_y - 1);
+	bool se_is_land = ! tile_is_water (tile_x + 1, tile_y + 1);
+	bool sw_is_land = ! tile_is_water (tile_x - 1, tile_y + 1);
+
+	if (nw_is_land && ! se_is_land && ! ne_is_land && ! sw_is_land) {
+		*out_dir = DIR_NW;
+		return true;
+	}
+	if (ne_is_land && ! sw_is_land && ! se_is_land && !nw_is_land) {
+		*out_dir = DIR_NE;
+		return true;
+	}
+	if (sw_is_land && ! ne_is_land && ! se_is_land && ! nw_is_land) {
+		*out_dir = DIR_SW;
+		return true;
+	}
+	if (se_is_land && ! nw_is_land && ! ne_is_land && ! sw_is_land) {
+		*out_dir = DIR_SE;
+		return true;
+	}
+	return false;
+}
+
+bool
+tile_animation_adjacent_requirement_matches (struct tile_animation_adjacent_requirement const * req,
+						     int tile_x,
+						     int tile_y)
+{
+	if (req == NULL)
+		return false;
+
+	int diffs[8][2] = {
+		{ 1, -1}, { 2,  0}, { 1,  1}, { 0,  2},
+		{-1,  1}, {-2,  0}, {-1, -1}, { 0, -2}
+	};
+
+	int begin = 0, end = 8;
+	if (req->has_direction) {
+		begin = req->direction - DIR_NE;
+		end = begin + 1;
+	}
+
+	for (int i = begin; i < end; i++) {
+		int nx = tile_x + diffs[i][0];
+		int ny = tile_y + diffs[i][1];
+		wrap_tile_coords (&p_bic_data->Map, &nx, &ny);
+		Tile * n = tile_at (nx, ny);
+		if ((n == NULL) || (n == p_null_tile))
+			continue;
+
+		bool matches = req->is_land ? ! n->vtable->m35_Check_Is_Water (n) : tile_matches_square_type (n, req->square_type);
+		if (matches)
+			return true;
+	}
+
+	return false;
+}
+
+int
+get_tile_animation_hour_for_match ()
+{
+	if (is->current_config.day_night_cycle_mode != DNCM_OFF)
+		return clamp (0, 23, is->current_day_night_cycle);
+	return 12;
+}
+
+int
+get_tile_animation_season_for_match ()
+{
+	if (is->current_config.seasonal_cycle_mode != SCM_OFF)
+		return clamp (CS_SUMMER, CS_SPRING, is->current_seasonal_cycle);
+	return CS_SUMMER;
+}
+
+bool
+tile_animation_matches_time_filters (struct tile_animation_config const * cfg)
+{
+	if (cfg == NULL)
+		return false;
+
+	int hour = get_tile_animation_hour_for_match ();
+	int season = get_tile_animation_season_for_match ();
+	if ((cfg->day_night_hour_mask != 0) && ((cfg->day_night_hour_mask & (1u << hour)) == 0))
+		return false;
+	if ((cfg->season_mask != 0) && ((cfg->season_mask & (1u << season)) == 0))
+		return false;
+	return true;
+}
+
+bool
+tile_animation_rule_matches_tile_base (struct tile_animation_config const * cfg, Tile * tile, int tile_x, int tile_y)
+{
+	if ((cfg == NULL) || (! cfg->in_use) || (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (Tile_has_city (tile))
+		return false;
+
+	if (cfg->type == TAT_RESOURCE) {
+		// Resource visibility is civ/tech-specific. Resource animations are matched from
+		// the resource draw hook, where Tile_get_resource_visible_to is available.
+		return false;
+	} else if (cfg->type == TAT_NATURAL_WONDER) {
+		struct district_instance * inst = get_district_instance (tile);
+		if ((inst == NULL) || (inst->district_id != NATURAL_WONDER_DISTRICT_ID))
+			return false;
+		if ((cfg->natural_wonder_id >= 0) &&
+		    (inst->natural_wonder_info.natural_wonder_id != cfg->natural_wonder_id))
+			return false;
+	} else if (cfg->type == TAT_TERRAIN) {
+		if (! tile_matches_terrain_types (tile, cfg->terrain_types_mask, cfg->terrain_types_include_land))
+			return false;
+	} else if (cfg->type == TAT_COASTAL_WAVE) {
+		if (! tile_matches_square_type (tile, SQ_Coast))
+			return false;
+	} else {
+		// PCX-based animations are discovered from actual draw calls in patch_Sprite_draw_on_map.
+		return false;
+	}
+
+	if (cfg->adjacent_to_count > 0) {
+		bool matched = false;
+		for (int i = 0; i < cfg->adjacent_to_count; i++)
+			if (tile_animation_adjacent_requirement_matches (&cfg->adjacent_to[i], tile_x, tile_y)) {
+				matched = true;
+				break;
+			}
+		if (! matched)
+			return false;
+	}
+
+	if (cfg->type == TAT_COASTAL_WAVE) {
+		enum direction dir = DIR_ZERO;
+		if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &dir))
+			return false;
+	}
+
+	return true;
+}
+
+void
+free_tile_animation_selected_matrix ()
+{
+	if (is->tile_animation_selected_mask_matrix != NULL)
+		free (is->tile_animation_selected_mask_matrix);
+	if (is->tile_animation_selected_next_index != NULL)
+		free (is->tile_animation_selected_next_index);
+	if (is->tile_animation_selected_tile_indices != NULL)
+		free (is->tile_animation_selected_tile_indices);
+	is->tile_animation_selected_mask_matrix = NULL;
+	is->tile_animation_selected_next_index = NULL;
+	is->tile_animation_selected_tile_indices = NULL;
+	is->tile_animation_selected_match_count = 0;
+	is->tile_animation_selected_tile_count = 0;
+	is->tile_animation_selected_animation_count = 0;
+	is->tile_animation_selected_hour = -1;
+	is->tile_animation_selected_season = -1;
+	is->tile_animation_selected_valid = false;
+}
+
+void
+clear_stale_custom_tile_animation_effects ()
+{
+	if (p_main_screen_form == NULL)
+		return;
+	if (! is->tile_animation_selected_valid || (is->tile_animation_selected_next_index == NULL))
+		return;
+
+	Map * map = &p_bic_data->Map;
+	int tile_count = map->TileCount;
+	if (tile_count != is->tile_animation_selected_tile_count)
+		return;
+
+	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
+		int tile_x, tile_y;
+		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile == NULL) || (tile == p_null_tile) || (tile->Body.active_tile_effect == NULL))
+			continue;
+
+		int effect_id = tile->Body.active_tile_effect->V[2];
+		if (! is_custom_tile_animation_effect (effect_id))
+			continue;
+
+		struct tile_animation_config * cfg = get_tile_animation_for_effect (effect_id);
+		if ((cfg != NULL) && (cfg->type == TAT_RESOURCE))
+			continue;
+
+		int animation_index = effect_id - is->tile_animation_effect_base;
+		if (is->tile_animation_selected_next_index[tile_index] != animation_index)
+			Tile_clear_animated_effect (tile);
+	}
+}
+
+void
+rebuild_tile_animation_rule_match_cache ()
+{
+	Map * map = &p_bic_data->Map;
+	int tile_count = map->TileCount;
+	if ((tile_count <= 0) || (is->tile_animation_count <= 0)) {
+		free_tile_animation_selected_matrix ();
+		return;
+	}
+
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	free_tile_animation_selected_matrix ();
+	is->tile_animation_selected_mask_matrix = calloc (tile_count * words_per_tile, sizeof *is->tile_animation_selected_mask_matrix);
+	is->tile_animation_selected_next_index = malloc (tile_count * sizeof *is->tile_animation_selected_next_index);
+	is->tile_animation_selected_tile_indices = malloc (tile_count * sizeof *is->tile_animation_selected_tile_indices);
+	if ((is->tile_animation_selected_mask_matrix == NULL) ||
+	    (is->tile_animation_selected_next_index == NULL) ||
+	    (is->tile_animation_selected_tile_indices == NULL)) {
+		free_tile_animation_selected_matrix ();
+		return;
+	}
+	memset (is->tile_animation_selected_next_index, 0xFF, tile_count * sizeof *is->tile_animation_selected_next_index);
+	is->tile_animation_selected_match_count = 0;
+
+	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
+		int tile_x, tile_y;
+		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+		unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
+
+		for (int i = 0; i < is->tile_animation_count; i++) {
+			struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+			if (! cfg->in_use)
+				continue;
+
+				bool matches = tile_animation_matches_time_filters (cfg)
+					&& tile_animation_rule_matches_tile_base (cfg, tile, tile_x, tile_y);
+				if (! matches)
+					continue;
+
+					tile_mask[i / 32] |= 1u << (i % 32);
+				}
+
+		int winner = pick_tile_animation_winner_for_tile (tile_mask);
+		if ((winner >= 0) && (winner < is->tile_animation_count)) {
+			is->tile_animation_selected_next_index[tile_index] = winner;
+			is->tile_animation_selected_tile_indices[is->tile_animation_selected_match_count++] = tile_index;
+		}
+	}
+
+	is->tile_animation_selected_tile_count = tile_count;
+	is->tile_animation_selected_animation_count = is->tile_animation_count;
+	is->tile_animation_selected_hour = get_tile_animation_hour_for_match ();
+	is->tile_animation_selected_season = get_tile_animation_season_for_match ();
+	is->tile_animation_selected_valid = true;
+	clear_stale_custom_tile_animation_effects ();
+}
+
+bool
+tile_animation_cache_needs_rebuild ()
+{
+	if (! is->tile_animation_selected_valid)
+		return true;
+	if (is->tile_animation_selected_mask_matrix == NULL)
+		return true;
+	if (is->tile_animation_selected_next_index == NULL)
+		return true;
+	if (is->tile_animation_selected_tile_indices == NULL)
+		return true;
+	if (is->tile_animation_count <= 0)
+		return true;
+	if (is->tile_animation_selected_tile_count != p_bic_data->Map.TileCount)
+		return true;
+	if (is->tile_animation_selected_animation_count != is->tile_animation_count)
+		return true;
+	if (is->tile_animation_selected_hour != get_tile_animation_hour_for_match ())
+		return true;
+	if (is->tile_animation_selected_season != get_tile_animation_season_for_match ())
+		return true;
+	return false;
+}
+
+bool
+tile_animation_rule_matches_tile (struct tile_animation_config const * cfg, Tile * tile, int tile_x, int tile_y, bool for_draw)
+{
+	if ((cfg == NULL) || (! cfg->in_use) || (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (cfg->type == TAT_COASTAL_WAVE) {
+		enum direction dir = DIR_ZERO;
+		if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &dir))
+			return false;
+	}
+
+	if (is->tile_animation_selected_valid &&
+	    (is->tile_animation_selected_mask_matrix != NULL) &&
+	    (tile_x >= 0) && (tile_y >= 0) &&
+	    (tile_x < p_bic_data->Map.Width) &&
+	    (tile_y < p_bic_data->Map.Height)) {
+		int tile_index = tile_coords_to_index (&p_bic_data->Map, tile_x, tile_y);
+		int animation_index = cfg - &is->tile_animation_configs[0];
+			if ((tile_index >= 0) &&
+			    (tile_index < is->tile_animation_selected_tile_count) &&
+			    (animation_index >= 0) &&
+			    (animation_index < is->tile_animation_count)) {
+				int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+				unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
+				bool selected = (tile_mask[animation_index / 32] & (1u << (animation_index % 32))) != 0;
+				if (for_draw)
+					return selected;
+			}
+	}
+
+	(void)for_draw;
+	return tile_animation_matches_time_filters (cfg) &&
+		tile_animation_rule_matches_tile_base (cfg, tile, tile_x, tile_y);
+}
+
+bool
+tile_has_matching_resource_animation_for_draw (Tile * tile, int tile_x, int tile_y)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	int resource_id = tile->vtable->m39_Get_Resource_Type (tile);
+	return tile_has_matching_resource_animation_for_draw_with_resource (tile, tile_x, tile_y, resource_id, NULL);
+}
+
+bool
+tile_has_matching_resource_animation_for_draw_with_resource (Tile * tile, int tile_x, int tile_y, int resource_id, int * out_effect_id)
+{
+	if (out_effect_id != NULL)
+		*out_effect_id = -1;
+
+	if (! is->current_config.enable_custom_animations)
+		return false;
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	if ((resource_id < 0) || (resource_id >= p_bic_data->ResourceTypeCount))
+		return false;
+	if (Tile_has_city (tile))
+		return false;
+
+	int matched_animation_index = -1;
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+		if ((cfg == NULL) || (! cfg->in_use))
+			continue;
+		if ((cfg->type != TAT_RESOURCE) || (cfg->resource_id != resource_id))
+			continue;
+		if (! tile_animation_matches_time_filters (cfg))
+			continue;
+
+		bool adjacent_ok = true;
+		if (cfg->adjacent_to_count > 0) {
+			adjacent_ok = false;
+			for (int k = 0; k < cfg->adjacent_to_count; k++)
+				if (tile_animation_adjacent_requirement_matches (&cfg->adjacent_to[k], tile_x, tile_y)) {
+					adjacent_ok = true;
+					break;
+				}
+		}
+		if (! adjacent_ok)
+			continue;
+
+		if (matched_animation_index < i)
+			matched_animation_index = i;
+	}
+
+	if (matched_animation_index < 0)
+		return false;
+	if (out_effect_id != NULL)
+		*out_effect_id = is->tile_animation_configs[matched_animation_index].effect_id;
+	return true;
+}
+
+void
+reset_tile_animation_runtime_state ()
+{
+	free_tile_animation_selected_matrix ();
+	clear_tile_animation_pcx_sprite_lookup ();
+	refresh_tile_animation_pcx_rule_mask ();
+	is->tile_animation_spawn_effect_override = 0;
+	is->tile_animation_spawn_effect_override_active = false;
+}
+
+void
+clear_tile_animation_configs ()
+{
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		struct tile_animation_config * cfg = &is->tile_animation_configs[i];
+		if (cfg->name != NULL)
+			free ((void *)cfg->name);
+		if (cfg->ini_path != NULL)
+			free ((void *)cfg->ini_path);
+		memset (cfg, 0, sizeof *cfg);
+	}
+	is->tile_animation_count = 0;
+	reset_tile_animation_runtime_state ();
+}
+
+void
+init_parsed_tile_animation_definition (struct parsed_tile_animation_definition * def)
+{
+	memset (def, 0, sizeof *def);
+	def->type = TAT_TERRAIN;
+	def->terrain_types_mask = square_type_mask_bit (SQ_Grassland);
+	def->natural_wonder_id = -1;
+	def->pcx_file_id = TILE_ANIM_PCX_FILE_UNKNOWN;
+	def->pcx_index = -1;
+}
+
+void
+free_parsed_tile_animation_definition (struct parsed_tile_animation_definition * def)
+{
+	if (def->name != NULL)
+		free (def->name);
+	if (def->ini_path != NULL)
+		free (def->ini_path);
+	if (def->resource_type != NULL)
+		free (def->resource_type);
+	if (def->pcx_file != NULL)
+		free (def->pcx_file);
+	init_parsed_tile_animation_definition (def);
+}
+
+bool
+parse_tile_animation_hour_list (struct string_slice const * value, unsigned int * out_mask)
+{
+	char * text = extract_slice (value);
+	if (text == NULL)
+		return false;
+
+	unsigned int mask = 0;
+	char * cursor = text;
+	while (*cursor != '\0') {
+		while ((*cursor == ' ') || (*cursor == '\t') || (*cursor == ','))
+			cursor++;
+		if (*cursor == '\0')
+			break;
+
+		if ((*cursor < '0') || (*cursor > '9')) {
+			free (text);
+			return false;
+		}
+		int start_hour = 0;
+		while ((*cursor >= '0') && (*cursor <= '9')) {
+			start_hour = start_hour * 10 + (*cursor - '0');
+			cursor++;
+		}
+		if ((start_hour < 0) || (start_hour > 23)) {
+			free (text);
+			return false;
+		}
+
+		int end_hour = start_hour;
+		bool has_range = false;
+		while ((*cursor == ' ') || (*cursor == '\t'))
+			cursor++;
+		if (*cursor == '-') {
+			has_range = true;
+			cursor++;
+			while ((*cursor == ' ') || (*cursor == '\t'))
+				cursor++;
+			if ((*cursor < '0') || (*cursor > '9')) {
+				free (text);
+				return false;
+			}
+			end_hour = 0;
+			while ((*cursor >= '0') && (*cursor <= '9')) {
+				end_hour = end_hour * 10 + (*cursor - '0');
+				cursor++;
+			}
+			if ((end_hour < 0) || (end_hour > 23)) {
+				free (text);
+				return false;
+			}
+		}
+		if (! has_range || (end_hour >= start_hour)) {
+			for (int hour = start_hour; hour <= end_hour; hour++)
+				mask |= (1u << hour);
+		} else {
+			// Wraparound range, e.g. 18-5 => 18..23 plus 0..5.
+			for (int hour = start_hour; hour <= 23; hour++)
+				mask |= (1u << hour);
+			for (int hour = 0; hour <= end_hour; hour++)
+				mask |= (1u << hour);
+		}
+
+		while ((*cursor == ' ') || (*cursor == '\t'))
+			cursor++;
+		if (*cursor == ',')
+			cursor++;
+		else if (*cursor != '\0') {
+			free (text);
+			return false;
+		}
+	}
+
+	free (text);
+	*out_mask = mask;
+	return true;
+}
+
+bool
+parse_tile_animation_season_list (struct string_slice const * value, unsigned int * out_mask)
+{
+	char * text = extract_slice (value);
+	if (text == NULL)
+		return false;
+
+	unsigned int mask = 0;
+	char * cursor = text;
+	while (*cursor != '\0') {
+		while ((*cursor == ' ') || (*cursor == '\t') || (*cursor == ','))
+			cursor++;
+		if (*cursor == '\0')
+			break;
+
+		char * start = cursor;
+		while ((*cursor != '\0') && (*cursor != ','))
+			cursor++;
+		struct string_slice token = { .str = start, .len = cursor - start };
+		token = trim_string_slice (&token, 1);
+
+		if (slice_matches_str (&token, "spring"))
+			mask |= 1u << CS_SPRING;
+		else if (slice_matches_str (&token, "summer"))
+			mask |= 1u << CS_SUMMER;
+		else if (slice_matches_str (&token, "fall"))
+			mask |= 1u << CS_FALL;
+		else if (slice_matches_str (&token, "winter"))
+			mask |= 1u << CS_WINTER;
+		else {
+			free (text);
+			return false;
+		}
+
+		if (*cursor == ',')
+			cursor++;
+	}
+
+	free (text);
+	*out_mask = mask;
+	return true;
+}
+
+bool
+parse_tile_animation_adjacent_to (struct string_slice const * value,
+				  struct tile_animation_adjacent_requirement * out_reqs,
+				  int * out_count)
+{
+	char * text = extract_slice (value);
+	if (text == NULL)
+		return false;
+
+	int count = 0;
+	char * cursor = text;
+	while (*cursor != '\0') {
+		while ((*cursor == ' ') || (*cursor == '\t') || (*cursor == ','))
+			cursor++;
+		if (*cursor == '\0')
+			break;
+
+		char * token_start = cursor;
+		while ((*cursor != '\0') && (*cursor != ','))
+			cursor++;
+		struct string_slice token = { .str = token_start, .len = cursor - token_start };
+		token = trim_string_slice (&token, 1);
+		if (token.len <= 0) {
+			if (*cursor == ',')
+				cursor++;
+			continue;
+		}
+
+		char * colon = NULL;
+		for (int i = 0; i < token.len; i++)
+			if (token.str[i] == ':') {
+				colon = token.str + i;
+				break;
+			}
+
+		struct string_slice terrain_token = token;
+		struct string_slice dir_token = {0};
+		if (colon != NULL) {
+			terrain_token.len = colon - terrain_token.str;
+			dir_token.str = colon + 1;
+			dir_token.len = token.len - (terrain_token.len + 1);
+			dir_token = trim_string_slice (&dir_token, 1);
+		}
+		terrain_token = trim_string_slice (&terrain_token, 1);
+
+		if ((count < MAX_TILE_ANIMATION_ADJACENCY) && (terrain_token.len > 0)) {
+			struct tile_animation_adjacent_requirement * req = &out_reqs[count];
+			memset (req, 0, sizeof *req);
+
+			if (slice_matches_str (&terrain_token, "land")) {
+				req->is_land = true;
+				req->square_type = SQ_Grassland;
+			} else if (! read_tile_terrain_type_value (&terrain_token, &req->square_type)) {
+				free (text);
+				return false;
+			}
+
+			if (dir_token.len > 0) {
+				if (! read_direction_value (&dir_token, &req->direction)) {
+					free (text);
+					return false;
+				}
+				req->has_direction = true;
+			}
+			count++;
+		}
+
+		if (*cursor == ',')
+			cursor++;
+	}
+
+	free (text);
+	*out_count = count;
+	return true;
+}
+
+int
+find_tile_animation_index_by_name (char const * name)
+{
+	if ((name == NULL) || (name[0] == '\0'))
+		return -1;
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		char const * existing = is->tile_animation_configs[i].name;
+		if ((existing != NULL) && (strcmp (existing, name) == 0))
+			return i;
+	}
+	return -1;
+}
+
+bool
+add_tile_animation_from_definition (struct parsed_tile_animation_definition * def)
+{
+	if ((def == NULL) || (! def->has_name) || (def->name == NULL))
+		return false;
+
+	int existing = find_tile_animation_index_by_name (def->name);
+	int dest = (existing >= 0) ? existing : is->tile_animation_count;
+	if ((dest < 0) || (dest >= MAX_TILE_ANIMATION_CONFIGS))
+		return false;
+
+	struct tile_animation_config cfg;
+	memset (&cfg, 0, sizeof cfg);
+	cfg.name = strdup (def->name);
+	cfg.ini_path = strdup (def->ini_path);
+	cfg.type = def->type;
+	cfg.terrain_types_mask = def->terrain_types_mask;
+	cfg.terrain_types_include_land = def->terrain_types_include_land;
+	cfg.natural_wonder_id = def->natural_wonder_id;
+	cfg.pcx_file_id = def->pcx_file_id;
+	cfg.pcx_index = def->pcx_index;
+	cfg.direction = def->direction;
+	cfg.x_offset = def->x_offset;
+	cfg.y_offset = def->y_offset;
+	cfg.frame_time_seconds = def->frame_time_seconds;
+	cfg.has_direction = def->has_direction;
+	cfg.has_x_offset = def->has_x_offset;
+	cfg.has_y_offset = def->has_y_offset;
+	cfg.has_frame_time_seconds = def->has_frame_time_seconds;
+	cfg.day_night_hour_mask = def->day_night_hour_mask;
+	cfg.season_mask = def->season_mask;
+	cfg.adjacent_to_count = def->adjacent_to_count;
+	for (int i = 0; i < def->adjacent_to_count; i++)
+		cfg.adjacent_to[i] = def->adjacent_to[i];
+	cfg.resource_id = -1;
+	if (cfg.type == TAT_RESOURCE) {
+		struct string_slice resource_name = {.str = def->resource_type, .len = strlen (def->resource_type)};
+		if (! find_resource_id_by_name (&resource_name, &cfg.resource_id)) {
+			free ((void *)cfg.name);
+			free ((void *)cfg.ini_path);
+			return false;
+		}
+	} else if (cfg.type == TAT_PCX) {
+		if ((cfg.pcx_file_id < 0) || (cfg.pcx_index < 0)) {
+			free ((void *)cfg.name);
+			free ((void *)cfg.ini_path);
+			return false;
+		}
+	} else if (cfg.type == TAT_COASTAL_WAVE) {
+		// No extra required fields.
+	}
+
+	cfg.effect_id = is->tile_animation_effect_base + dest;
+	cfg.in_use = true;
+
+	if (existing >= 0) {
+		struct tile_animation_config * old = &is->tile_animation_configs[existing];
+		if (old->name != NULL)
+			free ((void *)old->name);
+		if (old->ini_path != NULL)
+			free ((void *)old->ini_path);
+		*old = cfg;
+	} else {
+		is->tile_animation_configs[dest] = cfg;
+		is->tile_animation_count = dest + 1;
+	}
+	refresh_tile_animation_pcx_rule_mask ();
+	return true;
+}
+
+void
+finalize_parsed_tile_animation_definition (struct parsed_tile_animation_definition * def,
+					   int section_start_line,
+					   struct error_line ** parse_errors)
+{
+	bool ok = true;
+	if (! def->has_name) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: name (value is required)", section_start_line);
+	}
+	if (! def->has_ini_path) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: ini_path (value is required)", section_start_line);
+	}
+	if (! def->has_type) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: type (value is required)", section_start_line);
+	}
+	if (def->type == TAT_RESOURCE && ! def->has_resource_type) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: resource_type (value is required for type=resource)", section_start_line);
+	}
+	if (def->type == TAT_PCX && ! def->has_pcx_file) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: pcx_file (value is required for type=pcx)", section_start_line);
+	}
+	if (def->type == TAT_PCX && ! def->has_pcx_index) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: pcx_index (value is required for type=pcx)", section_start_line);
+	}
+	if (def->type == TAT_TERRAIN && ! def->has_terrain_types) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: terrain_types (value is required for type=terrain)", section_start_line);
+	}
+	if (ok && ! add_tile_animation_from_definition (def)) {
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: failed to add animation entry", section_start_line);
+	}
+	free_parsed_tile_animation_definition (def);
+}
+
+void
+handle_tile_animation_definition_key (struct parsed_tile_animation_definition * def,
+				      struct string_slice const * key,
+				      struct string_slice const * value,
+				      int line_number,
+				      struct error_line ** parse_errors,
+				      struct error_line ** unrecognized_keys)
+{
+	if (slice_matches_str (key, "name")) {
+		if (def->name != NULL) free (def->name);
+		struct string_slice v = trim_string_slice (value, 1);
+		if (v.len <= 0) {
+			def->has_name = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
+		} else {
+			def->name = extract_slice (&v);
+			def->has_name = def->name != NULL;
+		}
+	} else if (slice_matches_str (key, "ini_path")) {
+		if (def->ini_path != NULL) free (def->ini_path);
+		struct string_slice v = trim_string_slice (value, 1);
+		if (v.len <= 0) {
+			def->has_ini_path = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
+		} else {
+			def->ini_path = extract_slice (&v);
+			def->has_ini_path = def->ini_path != NULL;
+		}
+	} else if (slice_matches_str (key, "type")) {
+		struct string_slice v = trim_string_slice (value, 1);
+		if (slice_matches_str (&v, "terrain")) {
+			def->type = TAT_TERRAIN;
+			def->has_type = true;
+		} else if (slice_matches_str (&v, "resource")) {
+			def->type = TAT_RESOURCE;
+			def->has_type = true;
+		} else if (slice_matches_str (&v, "pcx")) {
+			def->type = TAT_PCX;
+			def->has_type = true;
+		} else if (slice_matches_str (&v, "coastal-wave")) {
+			def->type = TAT_COASTAL_WAVE;
+			def->has_type = true;
+		} else {
+			def->has_type = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected \"terrain\", \"resource\", \"pcx\", or \"coastal-wave\")");
+		}
+	} else if (slice_matches_str (key, "resource_type")) {
+		if (def->resource_type != NULL) free (def->resource_type);
+		struct string_slice v = trim_string_slice (value, 1);
+		def->resource_type = extract_slice (&v);
+		def->has_resource_type = (def->resource_type != NULL) && (def->resource_type[0] != '\0');
+	} else if (slice_matches_str (key, "pcx_file")) {
+		if (def->pcx_file != NULL) free (def->pcx_file);
+		def->pcx_file = NULL;
+		def->pcx_file_id = TILE_ANIM_PCX_FILE_UNKNOWN;
+		if (read_tile_animation_pcx_file (value, &def->pcx_file_id)) {
+			struct string_slice v = trim_string_slice (value, 1);
+			def->pcx_file = extract_slice (&v);
+			def->has_pcx_file = true;
+		} else {
+			def->has_pcx_file = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(unsupported pcx_file)");
+		}
+	} else if (slice_matches_str (key, "pcx_index")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival) && (ival >= 0) && (ival <= 4095)) {
+			def->pcx_index = ival;
+			def->has_pcx_index = true;
+		} else {
+			def->has_pcx_index = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer 0..4095)");
+		}
+	} else if (slice_matches_str (key, "terrain_types")) {
+		unsigned int terrain_types_mask = 0;
+		bool include_land = false;
+		if (read_tile_animation_terrain_types (value, &terrain_types_mask, &include_land)) {
+			def->terrain_types_mask = terrain_types_mask;
+			def->terrain_types_include_land = include_land;
+			def->has_terrain_types = true;
+		} else {
+			def->has_terrain_types = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized terrain type list)");
+		}
+	} else if (slice_matches_str (key, "direction")) {
+		enum direction dir;
+		if (read_tile_animation_direction_value (value, &dir)) {
+			def->direction = dir;
+			def->has_direction = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized direction)");
+	} else if (slice_matches_str (key, "x_offset")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->x_offset = ival;
+			def->has_x_offset = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+	} else if (slice_matches_str (key, "y_offset")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->y_offset = ival;
+			def->has_y_offset = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+	} else if (slice_matches_str (key, "frame_time_seconds")) {
+		float fval;
+		if (read_float (value, &fval)) {
+			def->frame_time_seconds = fval;
+			def->has_frame_time_seconds = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected float)");
+	} else if (slice_matches_str (key, "adjacent_to")) {
+		if (parse_tile_animation_adjacent_to (value, def->adjacent_to, &def->adjacent_to_count))
+			def->has_adjacent_to = true;
+		else
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized adjacent_to value)");
+	} else if (slice_matches_str (key, "show_in_day_night_hours")) {
+		unsigned int mask = 0;
+		if (parse_tile_animation_hour_list (value, &mask)) { def->day_night_hour_mask = mask; def->has_day_night_hour_mask = true; }
+		else add_key_parse_error (parse_errors, line_number, key, value, "(expected comma-delimited 0..23 hour list)");
+	} else if (slice_matches_str (key, "show_in_seasons")) {
+		unsigned int mask = 0;
+		if (parse_tile_animation_season_list (value, &mask)) { def->season_mask = mask; def->has_season_mask = true; }
+		else add_key_parse_error (parse_errors, line_number, key, value, "(expected comma-delimited season list)");
+	} else
+		add_unrecognized_key_error (unrecognized_keys, line_number, key);
+}
+
+void
+load_tile_animation_config_file (char const * file_path, int path_is_relative_to_mod_dir, int log_missing, int drop_existing_configs)
+{
+	char path[MAX_PATH];
+	if (path_is_relative_to_mod_dir) {
+		if (is->mod_rel_dir == NULL)
+			return;
+		snprintf (path, sizeof path, "%s\\%s", is->mod_rel_dir, file_path);
+	} else
+		strncpy (path, file_path, sizeof path);
+	path[(sizeof path) - 1] = '\0';
+
+	char * text = file_to_string (path);
+	if (text == NULL) {
+		if (log_missing) {
+			char ss[256];
+			snprintf (ss, sizeof ss, "[C3X] Tile animations config file not found: %s", path);
+			(*p_OutputDebugStringA) (ss);
+		}
+		return;
+	}
+
+	if (drop_existing_configs)
+		clear_tile_animation_configs ();
+	snprintf (is->current_tile_animations_config_path, sizeof is->current_tile_animations_config_path, path);
+
+	struct parsed_tile_animation_definition def;
+	init_parsed_tile_animation_definition (&def);
+	bool in_section = false;
+	int section_start_line = 0;
+	int line_number = 0;
+	struct error_line * parse_errors = NULL;
+	struct error_line * unrecognized_keys = NULL;
+
+	char * cursor = text;
+	while (*cursor != '\0') {
+		line_number++;
+		char * line_start = cursor;
+		char * line_end = cursor;
+		while ((*line_end != '\0') && (*line_end != '\n'))
+			line_end++;
+		bool has_newline = (*line_end == '\n');
+		if (has_newline)
+			*line_end = '\0';
+		struct string_slice line = { .str = line_start, .len = line_end - line_start };
+		struct string_slice trimmed = trim_string_slice (&line, 0);
+		if (line_is_empty_or_comment (&trimmed)) {
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		if (trimmed.str[0] == '#') {
+			struct string_slice directive = trimmed;
+			directive.str++;
+			directive.len--;
+			directive = trim_string_slice (&directive, 0);
+			if ((directive.len > 0) && slice_matches_str (&directive, "Animation")) {
+				if (in_section)
+					finalize_parsed_tile_animation_definition (&def, section_start_line, &parse_errors);
+				in_section = true;
+				section_start_line = line_number;
+			}
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		if (! in_section) {
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		struct string_slice key = {0}, value = {0};
+		enum key_value_parse_status status = parse_trimmed_key_value (&trimmed, &key, &value);
+		if (status == KVP_NO_EQUALS) {
+			char * line_text = extract_slice (&trimmed);
+			struct error_line * err = add_error_line (&parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected '=')", line_number, line_text);
+			free (line_text);
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		} else if (status == KVP_EMPTY_KEY) {
+			struct error_line * err = add_error_line (&parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: (missing key)", line_number);
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		handle_tile_animation_definition_key (&def, &key, &value, line_number, &parse_errors, &unrecognized_keys);
+		cursor = has_newline ? line_end + 1 : line_end;
+	}
+
+	if (in_section)
+		finalize_parsed_tile_animation_definition (&def, section_start_line, &parse_errors);
+	free_parsed_tile_animation_definition (&def);
+	free (text);
+
+	struct loaded_config_name * top_lcn = is->loaded_config_names;
+	while (top_lcn->next != NULL)
+		top_lcn = top_lcn->next;
+	struct loaded_config_name * new_lcn = malloc (sizeof *new_lcn);
+	new_lcn->name = strdup (path);
+	new_lcn->next = NULL;
+	top_lcn->next = new_lcn;
+
+	if ((parse_errors != NULL) || (unrecognized_keys != NULL)) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "Tile animation config errors in %s:", path);
+		PopupForm_add_text (popup, __, s, false);
+		for (struct error_line * line = parse_errors; line != NULL; line = line->next)
+			PopupForm_add_text (popup, __, line->text, false);
+		if (unrecognized_keys != NULL) {
+			PopupForm_add_text (popup, __, "", false);
+			PopupForm_add_text (popup, __, "Unrecognized keys:", false);
+			for (struct error_line * line = unrecognized_keys; line != NULL; line = line->next)
+				PopupForm_add_text (popup, __, line->text, false);
+		}
+		patch_show_popup (popup, __, 0, 0);
+	}
+	free_error_lines (parse_errors);
+	free_error_lines (unrecognized_keys);
+}
+
+void
+add_natural_wonder_tile_animation_configs ()
+{
+	if (! is->current_config.enable_natural_wonders)
+		return;
+
+	for (int wonder_id = 0; wonder_id < is->natural_wonder_count; wonder_id++) {
+		struct natural_wonder_district_config const * nw = &is->natural_wonder_configs[wonder_id];
+		for (int i = 0; i < nw->animation_count; i++) {
+			struct natural_wonder_animation_config const * anim = &nw->animations[i];
+			if ((anim->ini_path == NULL) || (anim->ini_path[0] == '\0'))
+				continue;
+			if (is->tile_animation_count >= MAX_TILE_ANIMATION_CONFIGS)
+				return;
+
+			int dest = is->tile_animation_count++;
+			struct tile_animation_config * cfg = &is->tile_animation_configs[dest];
+			memset (cfg, 0, sizeof *cfg);
+			cfg->type = TAT_NATURAL_WONDER;
+			cfg->natural_wonder_id = wonder_id;
+			cfg->ini_path = strdup (anim->ini_path);
+			if (cfg->ini_path == NULL) {
+				is->tile_animation_count--;
+				continue;
+			}
+				cfg->day_night_hour_mask = anim->day_night_hour_mask;
+				cfg->season_mask = anim->season_mask;
+				if (anim->has_direction) {
+					cfg->direction = anim->direction;
+					cfg->has_direction = true;
+				}
+				if (anim->has_frame_time_seconds) {
+					cfg->frame_time_seconds = anim->frame_time_seconds;
+					cfg->has_frame_time_seconds = true;
+				}
+				if (anim->has_offsets) {
+					cfg->x_offset = anim->x_offset;
+					cfg->y_offset = anim->y_offset;
+					cfg->has_x_offset = true;
+					cfg->has_y_offset = true;
+				}
+				cfg->effect_id = is->tile_animation_effect_base + dest;
+				cfg->in_use = true;
+			}
+	}
+	refresh_tile_animation_pcx_rule_mask ();
+}
+
+void
+load_tile_animation_configs ()
+{
+	if (! is->current_config.enable_custom_animations) {
+		clear_tile_animation_configs ();
+		return;
+	}
+
+	if (is->tile_animation_effect_base <= 0)
+		is->tile_animation_effect_base = 1000;
+	load_tile_animation_config_file ("default.tile_animations.txt", 1, 1, 1);
+	load_tile_animation_config_file ("user.tile_animations.txt", 1, 0, 1);
+
+	char * scenario_filename = "scenario.tile_animations.txt";
+	char * scenario_path = BIC_get_asset_path (p_bic_data, __, scenario_filename, false);
+	if ((scenario_path != NULL) && (0 != strcmp (scenario_filename, scenario_path)))
+		load_tile_animation_config_file (scenario_path, 0, 0, 1);
+	add_natural_wonder_tile_animation_configs ();
+
+	rebuild_tile_animation_pcx_sprite_lookup ();
+	rebuild_tile_animation_rule_match_cache ();
+}
+
+int
+get_tile_animation_type_priority (enum tile_animation_type type)
+{
+	// Higher number = stronger winner preference.
+	// Keep this centralized so new animation types (district/natural wonder/etc.)
+	// can be assigned clearly without touching scheduler logic.
+	switch (type) {
+		case TAT_RESOURCE:       return 50;
+		case TAT_NATURAL_WONDER: return 40;
+		case TAT_PCX:            return 30;
+		case TAT_TERRAIN:        return 20;
+		case TAT_COASTAL_WAVE:   return 10;
+		default:                 return 0;
+	}
+}
+
+int
+pick_tile_animation_winner_for_tile (unsigned int * tile_mask)
+{
+	if ((tile_mask == NULL) || (is->tile_animation_count <= 0))
+		return -1;
+
+	int winner = -1;
+	int winner_score = -1;
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		if ((tile_mask[i / 32] & (1u << (i % 32))) == 0)
+			continue;
+
+		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+		if ((cfg == NULL) || (! cfg->in_use))
+			continue;
+
+		int score = get_tile_animation_type_priority (cfg->type);
+		if (cfg->season_mask != 0)
+			score += 1;
+		if (cfg->day_night_hour_mask != 0)
+			score += 1;
+
+		// Deterministic tie-break: higher config index wins for same score.
+		if ((winner < 0) || (score > winner_score) || ((score == winner_score) && (i > winner))) {
+			winner = i;
+			winner_score = score;
+		}
+	}
+	return winner;
+}
+
+void
+tile_animation_scheduler_tick ()
+{
+	if (! is->current_config.enable_custom_animations)
+		return;
+	// Trade_Net recompute_resources temporarily increases Map.TileCount to include synthetic
+	// resource tiles. Custom animation selection buffers are sized for real map tiles, so
+	// running the scheduler in that window can overrun those buffers.
+	if (is->saved_tile_count >= 0)
+		return;
+	if ((p_main_screen_form == NULL) || p_main_screen_form->is_now_loading_game)
+		return;
+	if (is->tile_animation_count <= 0)
+		return;
+
+	if (tile_animation_cache_needs_rebuild ())
+		rebuild_tile_animation_rule_match_cache ();
+	if (! is->tile_animation_selected_valid ||
+	    (is->tile_animation_selected_mask_matrix == NULL) ||
+	    (is->tile_animation_selected_next_index == NULL) ||
+	    (is->tile_animation_selected_tile_indices == NULL))
+		return;
+
+	Map * map = &p_bic_data->Map;
+	int tile_count = map->TileCount;
+	if (tile_count != is->tile_animation_selected_tile_count)
+		return;
+
+	for (int n = 0; n < is->tile_animation_selected_match_count; n++) {
+		int tile_index = is->tile_animation_selected_tile_indices[n];
+		if ((tile_index < 0) || (tile_index >= tile_count))
+			continue;
+		int tile_x, tile_y;
+		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+
+		int i = is->tile_animation_selected_next_index[tile_index];
+		if ((i < 0) || (i >= is->tile_animation_count))
+			continue;
+
+		struct tile_animation_config * cfg = &is->tile_animation_configs[i];
+		if ((cfg == NULL) || (! cfg->in_use))
+			continue;
+
+		// Keep one ambient effect per tile. Runtime effect IDs are reused from vanilla,
+		// so don't key this check off effect_id.
+		if (tile->Body.active_tile_effect != NULL)
+			continue;
+		patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true, DIR_SW);
+	}
+}
+
+bool
+is_custom_tile_animation_effect (int effect_id)
+{
+	int e = effect_id;
+	int base = is->tile_animation_effect_base;
+	return (e >= base) && (e < base + is->tile_animation_count);
+}
+
+struct tile_animation_config *
+get_tile_animation_for_effect (int effect_id)
+{
+	if (! is_custom_tile_animation_effect (effect_id))
+		return NULL;
+	int idx = effect_id - is->tile_animation_effect_base;
+	if ((idx < 0) || (idx >= is->tile_animation_count))
+		return NULL;
+	return &is->tile_animation_configs[idx];
+}
+
+void
+clear_active_custom_tile_animation_if_different (Tile * tile, int effect_id)
+{
+	if ((tile == NULL) || (tile == p_null_tile) || (tile->Body.active_tile_effect == NULL))
+		return;
+
+	int active_effect_id = tile->Body.active_tile_effect->V[2];
+	if ((active_effect_id != effect_id) && is_custom_tile_animation_effect (active_effect_id))
+		Tile_clear_animated_effect (tile);
+}
+
+void __stdcall
+patch_on_timer_0x9F6500 (void)
+{
+	if (is->current_config.enable_custom_animations &&
+	    ((*p_debug_mode_bits & 0xC) == 0))
+		tile_animation_scheduler_tick ();
+	on_timer_0x9F6500 ();
+}
+
+void __fastcall
+patch_Units_Image_Data_load_animated_effect (Units_Image_Data * this, int edx, FLC_Animation * anim, int effect_id)
+{
+	if (! is->current_config.enable_custom_animations) {
+		Units_Image_Data_load_animated_effect (this, __, anim, effect_id);
+		return;
+	}
+
+	int cfg_effect_id = effect_id;
+	if (is->tile_animation_spawn_effect_override_active)
+		cfg_effect_id = is->tile_animation_spawn_effect_override;
+	struct tile_animation_config * cfg = get_tile_animation_for_effect (cfg_effect_id);
+	if ((cfg == NULL) || (cfg->ini_path == NULL) || (cfg->ini_path[0] == '\0')) {
+		Units_Image_Data_load_animated_effect (this, __, anim, effect_id);
+		return;
+	}
+
+	char rel_art_path[MAX_PATH];
+	snprintf (rel_art_path, sizeof rel_art_path, "Animations\\%s", cfg->ini_path);
+	rel_art_path[(sizeof rel_art_path) - 1] = '\0';
+
+	char asset_path[MAX_PATH];
+	get_mod_art_path (rel_art_path, asset_path, sizeof asset_path);
+	asset_path[(sizeof asset_path) - 1] = '\0';
+
+	Units_Image_Data_load_animation (this, __, asset_path, anim, 0, -1, 1, true);
+	if ((anim == NULL) || (anim->Animation_Info == NULL)) {
+		Units_Image_Data_load_animated_effect (this, __, anim, effect_id);
+		return;
+	}
+
+	float frame_time_seconds = cfg->has_frame_time_seconds ? cfg->frame_time_seconds : 0.15f;
+	if (anim->Animation_Info->anim_frame_time_seconds != NULL)
+		anim->Animation_Info->anim_frame_time_seconds[AT_ATTACK1] = frame_time_seconds;
+}
+void __fastcall
+patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effect, int tile_x, int tile_y, bool randomize_start_frame, enum direction dummy_dir)
+{
+	if (is->current_config.enable_custom_animations && is_custom_tile_animation_effect (effect)) {
+		struct tile_animation_config * cfg = get_tile_animation_for_effect (effect);
+		struct district_instance * inst = get_district_instance (this);
+		if (Tile_has_city (this))
+			return;
+		if (inst != NULL) {
+			bool allow_natural_wonder_tile = (cfg != NULL) && (cfg->type == TAT_NATURAL_WONDER) &&
+				(inst->district_id == NATURAL_WONDER_DISTRICT_ID) &&
+				((cfg->natural_wonder_id < 0) || (inst->natural_wonder_info.natural_wonder_id == cfg->natural_wonder_id));
+			bool allow_resource_on_district_tile = (cfg != NULL) && (cfg->type == TAT_RESOURCE);
+			if (! allow_natural_wonder_tile && ! allow_resource_on_district_tile)
+				return;
+		}
+		enum direction effective_direction = DIR_ZERO;
+		bool has_effective_direction = false;
+		if (cfg != NULL) {
+			if (cfg->type == TAT_COASTAL_WAVE) {
+				if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &effective_direction))
+					return;
+				has_effective_direction = true;
+			} else if (cfg->has_direction) {
+				effective_direction = cfg->direction;
+				has_effective_direction = true;
+			}
+		}
+		int prev_override = is->tile_animation_spawn_effect_override;
+		bool had_override = is->tile_animation_spawn_effect_override_active;
+		is->tile_animation_spawn_effect_override = effect;
+		is->tile_animation_spawn_effect_override_active = true;
+		Tile_spawn_animated_effect (this, __, AE_Disorder, tile_x, tile_y, randomize_start_frame, dummy_dir);
+
+		// Optional per-effect direction and pixel offsets after vanilla centers the animation on the tile.
+		// Positive X moves right, positive Y moves down.
+		Tile_Animated_Effect * fx = this->Body.active_tile_effect;
+		if ((fx != NULL) && (cfg != NULL)) {
+			fx->V[2] = effect;
+			if (has_effective_direction) {
+				fx->flc_animation.summary.direction = effective_direction;
+				fx->flc_animation.summary.direction_2 = effective_direction;
+			}
+			int x_off = cfg->has_x_offset ? cfg->x_offset : 0;
+			int y_off = cfg->has_y_offset ? cfg->y_offset : 0;
+			fx->flc_animation.summary.pixel_loc_x += x_off;
+			fx->flc_animation.summary.pixel_loc_y += y_off;
+			fx->flc_animation.summary.pixel_target_x += x_off;
+			fx->flc_animation.summary.pixel_target_y += y_off;
+		}
+
+		is->tile_animation_spawn_effect_override = prev_override;
+		is->tile_animation_spawn_effect_override_active = had_override;
+		return;
+	}
+	Tile_spawn_animated_effect (this, __, effect, tile_x, tile_y, randomize_start_frame, dummy_dir);
+}
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

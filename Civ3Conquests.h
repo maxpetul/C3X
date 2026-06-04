@@ -207,7 +207,7 @@ typedef struct Unit_Body Unit_Body;
 typedef struct Tile Tile;
 typedef struct Map Map;
 typedef struct BIC BIC;
-typedef struct _1A4 _1A4;
+typedef struct Tile_Animated_Effect Tile_Animated_Effect;
 typedef struct Scroll_Bar Scroll_Bar;
 typedef struct Base_Form Base_Form;
 typedef struct Advisor_Military_Form Advisor_Military_Form;
@@ -1680,7 +1680,7 @@ struct UnitType
   int field_CC;
   int requires_support;
   int field_D4;
-  int field_D8;
+  int active_tile_effect;
   IntList unit_telepads;
   int enslave_results_in;
   IntList stealth_attack_targets;
@@ -3913,7 +3913,7 @@ struct Animation_Info
   Flic_Anim_Info **Animations;
   int field_140[17];
   int field_184[21];
-  float *field_1D8;
+  float *anim_frame_time_seconds;
   int field_1DC;
   int field_1E0;
   int field_1E4;
@@ -4391,7 +4391,7 @@ struct Tile_Body
   short field_92;
   int field_D0_Visibility;
   int field_D4;
-  _1A4 *field_D8;
+  Tile_Animated_Effect *active_tile_effect;
 };
 
 struct Race
@@ -4490,7 +4490,7 @@ struct City_Body
   int rally_point_x;
   int rally_point_y;
   char CityName[20];
-  int field_1D8;
+  int anim_frame_time_seconds;
   int Order_Queue_Count;
   City_Order Orders_Queue[9];
   int FoodRequired;
@@ -5169,10 +5169,10 @@ struct BIC
   Map Map;
 };
 
-struct _1A4
+struct Tile_Animated_Effect
 {
   int V[3];
-  FLC_Animation struct_188;
+  FLC_Animation flc_animation;
   int field_194[4];
 };
 
@@ -5996,7 +5996,7 @@ struct City_Form
   int Units_Start_Index;
   int field_96B0;
   int field_96B4[5];
-  FLC_Animation struct_188;
+  FLC_Animation flc_animation;
   City_Form_Labels Labels;
   int field_98D0[67];
   Sprite QueueBase_Image;
