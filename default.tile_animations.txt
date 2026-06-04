@@ -166,8 +166,8 @@ type                    = resource
 resource_type           = Fish
 show_in_day_night_hours = 7-17
 frame_time_seconds      = 0.11
-y_offset                = -20
-x_offset                = -15
+y_offset                = -14
+x_offset                = -2
 
 #Animation
 name                    = Furs
