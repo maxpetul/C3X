@@ -247,6 +247,7 @@ int count_neighborhoods_in_city_radius (City * city);
 int count_utilized_neighborhoods_in_city_radius (City * city);
 char * copy_trimmed_string_or_null (struct string_slice const * slice, int remove_quotes);
 bool city_has_resource_r (City * city, int resource_id, int max_generated_resource_id);
+int calc_max_visibility_range ();
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -299,21 +300,6 @@ pop_up_in_game_error (char const * msg)
 	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
 	PopupForm_add_text (popup, __, (char *)msg, false);
 	patch_show_popup (popup, __, 0, 0);
-}
-
-void error_message2(char* cstr, int num1, int num2, int num3)
-{
-	PopupForm * popup = get_popup_form ();
-	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "DEBUG_ERROR", -1, 0, 0, 0);
-	char s[200];
-	snprintf (s, sizeof s, cstr, num1, num2, num3);
-	s[(sizeof s) - 1] = '\0';
-	PopupForm_add_text (popup, __, s, false);
-	patch_show_popup (popup, __, 0, 0);
-}
-void error_message(char* cstr)
-{
-	error_message2(cstr, 0, 0, 0);
 }
 
 void
@@ -21973,10 +21959,8 @@ bool check_tile_heights_less_than(int tx1, int ty1, int tx2, int ty2, int height
 {
 	Tile * inter_tile = tile_at(tx1, ty1);
 	enum SquareTypes inter_type = inter_tile->vtable->m50_Get_Square_BaseType (inter_tile);
-	if (inter_type < 0 || inter_type >= 14) {
-		error_message("invalid type 1");
-		return false; //Unhandled!!!
-	}
+	if (inter_type < 0 || inter_type >= 14)
+		return false;
 	int inter_height = is->current_config.terrain_visibility_seen_height[inter_type];
 	if (inter_height < height) {
 		return true;
@@ -21984,10 +21968,8 @@ bool check_tile_heights_less_than(int tx1, int ty1, int tx2, int ty2, int height
 	if (tx1 != tx2 || ty1 != ty2) {
 		inter_tile = tile_at(tx2, ty2);
 		inter_type = inter_tile->vtable->m50_Get_Square_BaseType (inter_tile);
-		if (inter_type < 0 || inter_type >= 14) {
-			error_message("invalid type 2");
-			return false; //Unhandled!!!
-		}
+		if (inter_type < 0 || inter_type >= 14)
+			return false;
 
 		inter_height = is->current_config.terrain_visibility_seen_height[inter_type];
 		if (inter_height < height) {
@@ -22007,10 +21989,8 @@ void add_tile_flat_bonus(int * flat_bonus, int tx, int dx, int tx1, int ty1, int
 	}
 	Tile * inter_tile = tile_at(tx1, ty1);
 	enum SquareTypes inter_type = inter_tile->vtable->m50_Get_Square_BaseType (inter_tile);
-	if (inter_type < 0 || inter_type >= 14) {
-		error_message("invalid type 1");
-		return; //Unhandled!!!
-	}
+	if (inter_type < 0 || inter_type >= 14)
+		return;
 	if (is->current_config.terrain_visibility_flat_bonus[inter_type]) {
 		*flat_bonus += 1;
 		return;
@@ -22018,10 +21998,8 @@ void add_tile_flat_bonus(int * flat_bonus, int tx, int dx, int tx1, int ty1, int
 	if (tx1 != tx2 || ty1 != ty2) {
 		inter_tile = tile_at(tx2, ty2);
 		inter_type = inter_tile->vtable->m50_Get_Square_BaseType (inter_tile);
-		if (inter_type < 0 || inter_type >= 14) {
-			error_message("invalid type 2");
-			return; //Unhandled!!!
-		}
+		if (inter_type < 0 || inter_type >= 14)
+			return;
 		if (is->current_config.terrain_visibility_flat_bonus[inter_type]) {
 			*flat_bonus += 1;
 			return;
@@ -22037,8 +22015,6 @@ void map_abstract_coords_to_tile_coords(int * dx, int * dy, int reference_x, int
 	wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
 	*dx = tx;
 	*dy = ty;
-	/**dx = *dx + reference_x;
-	*dy = *dy + reference_y;*/
 }
 void map_tile_coords_to_abstract_coords(int * dx, int * dy, int reference_x, int reference_y)
 {
@@ -22061,11 +22037,8 @@ void map_tile_coords_to_abstract_coords(int * dx, int * dy, int reference_x, int
 	}
 	int ax = (diffx + diffy)/2;
 	int ay = (diffy - diffx)/2;
-	//maybe minimise somehow
 	*dx = ax;
 	*dy = ay;
-	/**dx = *dx - reference_x;
-	*dy = *dy - reference_y;*/
 }
 
 int calc_max_visibility_range ()
@@ -22100,6 +22073,7 @@ int calc_max_visibility_range ()
 	if (max < 0) max = 0;
 	if (max > 7) max = 7;
 	//Limited to 7. 7*2+1 = 15; 15*15 = 225; largest value in one byte.
+	//Maybe worth checkin in future if there is more than 1 byte space - some instructions can take it.
 	return max;
 }
 
@@ -22115,7 +22089,7 @@ bool visibility_test_range(int dist, int sight)
 	return true;
 }
 bool __fastcall
-deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
+patch_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 {
 	if (!is->current_config.enable_alternate_view_distance_logic)
 		return Unit_can_see_tile(this, edx, x, y);
@@ -22164,15 +22138,11 @@ deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 		fortified = false;
 	}
 	enum SquareTypes local_type = local_tile->vtable->m50_Get_Square_BaseType (local_tile);
-	if (local_type < 0 || local_type >= 14) {
-		error_message("invalid type 3");
-		return false; //Unhandled!!!
-	}
+	if (local_type < 0 || local_type >= 14)
+		return false;
 	enum SquareTypes seen_type = seen_tile->vtable->m50_Get_Square_BaseType (seen_tile);
-	if (seen_type < 0 || seen_type >= 14) {
-		error_message("invalid type 3");
-		return false; //Unhandled!!!
-	}
+	if (seen_type < 0 || seen_type >= 14)
+		return false;
 	int height_local = is->current_config.terrain_visibility_see_height[local_type];
 	int height_seen = is->current_config.terrain_visibility_see_height[seen_type];
 	int height_for_occlusion = height_local;
@@ -22276,17 +22246,6 @@ deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 	if (!visibility_test_range(dist, sightDistance))
 		return false;
 	return true;
-}
-
-bool __fastcall
-patch_Unit_can_see_tile (Unit * this, int edx, int x, int y)
-{
-	//bool vanilla = Unit_can_see_tile(this, edx, x, y);
-	bool modded = deferred_Unit_can_see_tile(this, edx, x, y);
-	//if (vanilla != modded) {
-	//	error_message2("behaviour mismatch! %d %d %d", x, y, vanilla?1:0);
-	//}
-	return modded;
 }
 
 void __fastcall
