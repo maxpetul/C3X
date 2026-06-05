@@ -16947,6 +16947,31 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	WITH_MEM_PROTECTION (ADDR_CIV_UNIT_VISIBILITY_RADIUS, 1, PAGE_EXECUTE_READWRITE) {
 		*ADDR_CIV_UNIT_VISIBILITY_RADIUS = (byte)(max_tile_iter_2);
 	}
+
+	WITH_MEM_PROTECTION (ADDR_UTC_SEA_CMP_1, 8, PAGE_EXECUTE_READWRITE) {
+		byte normal[8] = {0x83, 0xBC, 0xCA, 0x9C, 0x00, 0x00, 0x00, 0x01}; // cmp
+		byte bypass[8] = {0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00, 0x39, 0xD2}; // nop, cmp
+		for (int n = 0; n < 8; n++)
+			((byte *)ADDR_UTC_SEA_CMP_1)[n] = cfg->enable_alternate_view_distance_logic ? bypass[n] : normal[n];
+	}
+	WITH_MEM_PROTECTION (ADDR_UTC_SEA_CMP_2, 8, PAGE_EXECUTE_READWRITE) {
+		byte normal[8] = {0x83, 0xBC, 0xCA, 0x9C, 0x00, 0x00, 0x00, 0x01}; // cmp
+		byte bypass[8] = {0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00, 0x39, 0xD2}; // nop, cmp
+		for (int n = 0; n < 8; n++)
+			((byte *)ADDR_UTC_SEA_CMP_2)[n] = cfg->enable_alternate_view_distance_logic ? bypass[n] : normal[n];
+	}
+	WITH_MEM_PROTECTION (ADDR_UTC_SEA_CMP_3, 8, PAGE_EXECUTE_READWRITE) {
+		byte normal[8] = {0x83, 0xBC, 0xCA, 0x9C, 0x00, 0x00, 0x00, 0x01}; // cmp
+		byte bypass[8] = {0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00, 0x39, 0xD2}; // nop, cmp
+		for (int n = 0; n < 8; n++)
+			((byte *)ADDR_UTC_SEA_CMP_3)[n] = cfg->enable_alternate_view_distance_logic ? bypass[n] : normal[n];
+	}
+	WITH_MEM_PROTECTION (ADDR_UTC_SEA_CMP_4, 8, PAGE_EXECUTE_READWRITE) {
+		byte normal[8] = {0x83, 0xBC, 0x08, 0x9C, 0x00, 0x00, 0x00, 0x01}; // cmp
+		byte bypass[8] = {0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00, 0x39, 0xD2}; // nop, cmp
+		for (int n = 0; n < 8; n++)
+			((byte *)ADDR_UTC_SEA_CMP_4)[n] = cfg->enable_alternate_view_distance_logic ? bypass[n] : normal[n];
+	}
 }
 
 void
