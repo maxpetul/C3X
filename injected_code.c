@@ -1413,6 +1413,66 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 }
 
 enum recognizable_parse_result
+parse_unit_visibility_rule (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_unit_visibility_rule)
+{
+	char * cur = *p_cursor;
+	struct unit_visibility_rule * out = out_parsed_unit_visibility_rule;
+
+	struct string_slice name;
+	struct unit_visibility_rule rule = {0};
+	rule.base_visibility = 1;
+	rule.terrain_bonus_multiplier = 1;
+	rule.unit_id = -1;
+	rule.unit_class = -1;
+
+	if (skip_white_space (&cur) &&
+	    parse_string (&cur, &name) &&
+	    skip_punctuation (&cur, ':')) {
+
+		do {
+			int num;
+			if (! parse_int (&cur, &num))
+				return RPR_PARSE_ERROR;
+
+			struct string_slice ss;
+			if (parse_string (&cur, &ss)) {
+				if (slice_matches_str (&ss, "times_bonus"))
+					rule.terrain_bonus_multiplier = num;
+				else if (slice_matches_str (&ss, "when_fortified"))
+					rule.fortification_bonus = num;
+				else if (slice_matches_str (&ss, "when_fortified_same_continent")) {
+					rule.fortification_bonus = num;
+					rule.fortification_bonus_continent_lock = true;
+				} else
+					return RPR_PARSE_ERROR;
+			} else
+				rule.base_visibility = num;
+
+		} while (skip_punctuation (&cur, '+'));
+
+		int id;
+		if (find_unit_type_id_by_name (&name, 0, &id)) {
+			rule.unit_id = id;
+		} else if (slice_matches_str (&name, "UTC_Land")) {
+			rule.unit_class = UTC_Land;
+		} else if (slice_matches_str (&name, "UTC_Sea")) {
+			rule.unit_class = UTC_Sea;
+		} else if (slice_matches_str (&name, "UTC_Air")) {
+			rule.unit_class = UTC_Air;
+		} else {
+			add_unrecognized_line (p_unrecognized_lines, &name);
+			*p_cursor = cur;
+			return RPR_UNRECOGNIZED;
+		}
+		*out = rule;
+		*p_cursor = cur;
+		return RPR_OK;
+
+	} else
+		return RPR_PARSE_ERROR;
+}
+
+enum recognizable_parse_result
 parse_work_area_improvement (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_work_area_improvement)
 {
 	char * cur = *p_cursor;
@@ -2716,12 +2776,18 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					if (read_fixed_bool_array(&value, cfg->terrain_visibility_flat_bonus, 14) == 0) {
 						handle_config_error (&p, CPE_GENERIC);
 					}
+				} else if (slice_matches_str (&p.key, "unit_visibility_rules")) {
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct unit_visibility_rule),
+											 parse_unit_visibility_rule,
+											 (void **)&cfg->unit_visibility_rule_list,
+											 &cfg->c_unit_visibility_rules)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
 				}
-
-				cfg->c_unit_visibility_rules = 0;
 
 			} else { // Failed to parse value
 				handle_config_error (&p, CPE_BAD_VALUE);
@@ -22046,7 +22112,7 @@ deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 
 	for (int i=0; i<is->current_config.c_unit_visibility_rules; i++) {
 		struct unit_visibility_rule rule = is->current_config.unit_visibility_rule_list[i];
-		if (rule.unit_id > 0) {
+		if (rule.unit_id >= 0) {
 			if (rule.unit_id == this->Body.UnitTypeID) {
 				current_rules = rule;
 				break;
@@ -22059,13 +22125,6 @@ deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 			}
 		}
 	}
-	//temp hack
-	UnitType const * unit_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
-	if (unit_type->Unit_Class == 1) {
-		current_rules.fortification_bonus = 2;
-		current_rules.fortification_bonus_continent_lock = true;
-	}
-	//
 
 	Tile * local_tile = tile_at(this->Body.X, this->Body.Y);
 	Tile * seen_tile = tile_at(x, y);
@@ -22120,10 +22179,8 @@ deferred_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 
 	if (fortified && current_rules.fortification_bonus_continent_lock) {
 		if (local_tile->vtable->m46_Get_ContinentID(local_tile) == seen_tile->vtable->m46_Get_ContinentID(seen_tile)) {
-			if (seen_type > 10) {//why is this here? doublecheck
-				if (visibility_test_range(dist, sightDistance))
-					return true;
-			}
+			if (visibility_test_range(dist, sightDistance))
+				return true;
 		}
 		//if continental lock is active, fort bonus doesn't apply to diff-continent tiles
 		sightDistance -= current_rules.fortification_bonus;
