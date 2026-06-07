@@ -30668,6 +30668,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 			
 			} else if (match_save_chunk_name (&cursor, "current_seasonal_cycle")) {
 				is->current_seasonal_cycle = clamp (CS_SUMMER, CS_SPRING, *((int *)cursor)++);
+				QueryPerformanceCounter (&is->last_seasonal_cycle_update_time);
 				is->seasonal_cycle_unstarted = false;
 				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
 					build_sprite_proxies (&p_bic_data->Map.Renderer);
