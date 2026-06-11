@@ -2710,6 +2710,18 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		}
 	}
 
+	// If seasonal cycle mode is on "day_night_hour" but day/night cycle mode is off, disable seasonal cycle mode and show a warning
+	if (cfg->seasonal_cycle_mode == SCM_ON_DAY_NIGHT_HOUR && cfg->day_night_cycle_mode == DNCM_OFF) {
+		cfg->seasonal_cycle_mode = SCM_OFF;
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "\"seasonal_cycle_mode\" set to \"on_day_night_hour\", but \"day_night_cycle_mode\" is off. Disabling seasonal cycle mode.");
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, false);
+		patch_show_popup (popup, __, 0, 0);
+	}
+
 	if (cfg->warn_about_unrecognized_names && (unrecognized_lines != NULL)) {
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
