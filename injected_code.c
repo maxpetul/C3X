@@ -18094,6 +18094,7 @@ patch_init_floating_point ()
 		{"dont_end_units_turn_after_airdrop"                     , false, offsetof (struct c3x_config, dont_end_units_turn_after_airdrop)},
 		{"allow_airdrop_without_airport"                         , false, offsetof (struct c3x_config, allow_airdrop_without_airport)},
 		{"enable_negative_pop_pollution"                         , true , offsetof (struct c3x_config, enable_negative_pop_pollution)},
+		{"enable_pollution_from_free_improvements"               , false, offsetof (struct c3x_config, enable_pollution_from_free_improvements)},
 		{"allow_defensive_retreat_on_water"                      , false, offsetof (struct c3x_config, allow_defensive_retreat_on_water)},
 		{"promote_wonder_decorruption_effect"                    , false, offsetof (struct c3x_config, promote_wonder_decorruption_effect)},
 		{"allow_military_leaders_to_hurry_wonders"               , false, offsetof (struct c3x_config, allow_military_leaders_to_hurry_wonders)},
@@ -24581,6 +24582,39 @@ patch_City_cycle_specialist_type (City * this, int edx, int mouse_x, int mouse_y
 }
 
 int __fastcall
+patch_City_get_pollution_from_buildings (City * this)
+{
+	if (! is->current_config.enable_pollution_from_free_improvements)
+		return City_get_pollution_from_buildings (this);
+
+	int pollution = this->Body.Improvements_Pollution;
+	bool reduces_pollution = false;
+	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+		Improvement * improv = &p_bic_data->Improvements[n];
+		if (! patch_City_has_improvement (this, __, n, true))
+			continue;
+
+		if ((improv->ImprovementFlags & ITF_Reduces_Buildings_Pollution) && has_active_building (this, n))
+			reduces_pollution = true;
+
+		// Built improvements are already included in Improvements_Pollution. Like pollution from built improvements, pollution from free
+		// improvements continues after they become obsolete. Negative population-pollution effects are accounted for separately.
+		if ((! patch_City_has_improvement (this, __, n, false)) &&
+		    (! (is->current_config.enable_negative_pop_pollution &&
+		        (improv->ImprovementFlags & ITF_Removes_Population_Pollution) &&
+		        (improv->Pollution < 0))))
+			pollution += improv->Pollution;
+	}
+
+	if (pollution <= 0)
+		return 0;
+	else if (reduces_pollution)
+		return 1;
+	else
+		return pollution;
+}
+
+int __fastcall
 patch_City_get_pollution_from_pop (City * this)
 {
 	if (! is->current_config.enable_negative_pop_pollution)
@@ -24617,7 +24651,7 @@ patch_City_get_pollution_from_pop (City * this)
 int __fastcall
 patch_City_get_total_pollution (City * this)
 {
-    return City_get_pollution_from_buildings (this) + patch_City_get_pollution_from_pop (this);
+	return patch_City_get_pollution_from_buildings (this) + patch_City_get_pollution_from_pop (this);
 }
 
 void remove_extra_palaces (City * city, City * excluded_destination);

@@ -3,6 +3,7 @@
   - See the 'type' and 'ai_build_strategy' options in the districts config
 - Districts may consume a worker on completion, option consumes_worker in districts config
 - Allow districts to suppress resources on their tiles, option subsumes_tile_resource in districts config
+- Option enable_pollution_from_free_improvements that causes improvs granted for free by wonders to contribute pollution to their cities
 - Fix crash related to resource generation
 
 * RELEASE 27
