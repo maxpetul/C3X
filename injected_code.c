@@ -18833,6 +18833,7 @@ patch_init_floating_point ()
 		{"charm_flag_triggers_ptw_like_targeting"                , false, offsetof (struct c3x_config, charm_flag_triggers_ptw_like_targeting)},
 		{"city_icons_show_unit_effects_not_trade"                , true , offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
 		{"ignore_king_ability_for_defense_priority"              , false, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
+		{"prefer_less_expensive_defenders"                        , false, offsetof (struct c3x_config, prefer_less_expensive_defenders)},
 		{"show_untradable_techs_on_trade_screen"                 , false, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
 		{"disallow_useless_bombard_vs_airfields"                 , true , offsetof (struct c3x_config, disallow_useless_bombard_vs_airfields)},
 		{"compact_luxury_display_on_city_screen"                 , false, offsetof (struct c3x_config, compact_luxury_display_on_city_screen)},
@@ -30050,11 +30051,29 @@ patch_Fighter_prefer_first_defender_1 (Fighter * this, int edx, Unit * first, in
 		second_strength = counter_adjusted_defender_strength (
 			second_attacker, second, second_strength,
 			include_defensive_bonuses);
+	}
 
-		bool result = Fighter_prefer_first_defender_1 (
-			this, __, first, first_strength, second, second_strength,
-			param_5);
-		return result;
+	if (is->current_config.prefer_less_expensive_defenders &&
+	    unit_has_valid_type_id (first) &&
+	    unit_has_valid_type_id (second) &&
+	    (first_strength > 0) &&
+	    (first_strength == second_strength)) {
+		bool first_is_king =
+			patch_Unit_check_king_for_defense_priority (
+				first, __, UTA_King);
+		bool second_is_king =
+			patch_Unit_check_king_for_defense_priority (
+				second, __, UTA_King);
+		if (first_is_king == second_is_king) {
+			int first_cost =
+				p_bic_data->UnitTypes[first->Body.UnitTypeID].Cost;
+			int second_cost =
+				p_bic_data->UnitTypes[second->Body.UnitTypeID].Cost;
+			if ((first_cost > 0) &&
+			    (second_cost > 0) &&
+			    (first_cost != second_cost))
+				return first_cost < second_cost;
+		}
 	}
 
 	return Fighter_prefer_first_defender_1 (this, __, first, first_strength, second, second_strength, param_5);
@@ -30090,73 +30109,53 @@ find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x,
 		};
 
 	Unit * best = NULL;
-	bool best_pass_had_counter_effect = false;
-	for (int pass = 0; pass < 2; pass++) {
-		bool skip_requires_escort_units = pass == 0;
-		bool pass_had_counter_effect = false;
+	FOR_UNITS_ON (uti, tile) {
+		Unit * unit = uti.unit;
+		if ((unit == NULL) ||
+		    (unit == excluded) ||
+		    (unit->Body.Container_Unit >= 0) ||
+		    ! unit_has_valid_type_id (unit) ||
+		    (unit->Body.CivID == attacker_civ) ||
+		    ! unit->vtable->is_enemy_of_civ (unit, __, attacker_civ, 0) ||
+		    (Unit_get_defense_strength (unit) <= 0) ||
+		    (require_visible &&
+		     ! patch_Unit_is_visible_to_civ (unit, __, attacker_civ, 0)))
+			continue;
 
-		FOR_UNITS_ON (uti, tile) {
-			Unit * unit = uti.unit;
-			if ((unit == NULL) ||
-			    (unit == excluded) ||
-			    (unit->Body.Container_Unit >= 0) ||
-			    ! unit_has_valid_type_id (unit) ||
-			    (unit->Body.CivID == attacker_civ) ||
-			    ! unit->vtable->is_enemy_of_civ (unit, __, attacker_civ, 0) ||
-			    (Unit_get_defense_strength (unit) <= 0) ||
-			    (require_visible &&
-			     ! patch_Unit_is_visible_to_civ (unit, __, attacker_civ, 0)))
-				continue;
+		p_bic_data->fighter.attacker            = attacker;
+		p_bic_data->fighter.defender            = unit;
+		p_bic_data->fighter.attacker_location_x = attacker->Body.X;
+		p_bic_data->fighter.attacker_location_y = attacker->Body.Y;
+		p_bic_data->fighter.defender_location_x = tile_x;
+		p_bic_data->fighter.defender_location_y = tile_y;
 
-			UnitType * unit_type =
-				&p_bic_data->UnitTypes[unit->Body.UnitTypeID];
-			if (skip_requires_escort_units &&
-			    UnitType_has_ability (unit_type, __, UTA_Requires_Escort))
-				continue;
+		if (! Fighter_unit_can_defend (&p_bic_data->fighter, __, unit, tile_x, tile_y))
+			continue;
 
-			p_bic_data->fighter.attacker            = attacker;
-			p_bic_data->fighter.defender            = unit;
-			p_bic_data->fighter.attacker_location_x = attacker->Body.X;
-			p_bic_data->fighter.attacker_location_y = attacker->Body.Y;
-			p_bic_data->fighter.defender_location_x = tile_x;
-			p_bic_data->fighter.defender_location_y = tile_y;
-
-			if (! Fighter_unit_can_defend (&p_bic_data->fighter, __, unit, tile_x, tile_y))
-				continue;
-
-			if (out_any_counter_effect != NULL) {
-				Unit * counter_attacker =
-					counter_attacker_for_defender_selection (
-						attacker, unit);
-				int attacker_atk_pct, defender_def_pct;
-				bool ignore_defensive_bonuses;
-				apply_counter_rules (
-					&is->current_config, counter_attacker, unit, tile,
-					&attacker_atk_pct, &defender_def_pct,
-					&ignore_defensive_bonuses);
-				if ((attacker_atk_pct != 100) ||
-				    (defender_def_pct != 100) ||
-				    ignore_defensive_bonuses)
-					pass_had_counter_effect = true;
-			}
-
-			if ((best == NULL) ||
-			    patch_Fighter_prefer_first_defender_1 (
-				&p_bic_data->fighter, __,
-				unit, Unit_get_defense_strength (unit),
-				best, Unit_get_defense_strength (best),
-				true))
-				best = unit;
+		if (out_any_counter_effect != NULL) {
+			Unit * counter_attacker =
+				counter_attacker_for_defender_selection (
+					attacker, unit);
+			int attacker_atk_pct, defender_def_pct;
+			bool ignore_defensive_bonuses;
+			apply_counter_rules (
+				&is->current_config, counter_attacker, unit, tile,
+				&attacker_atk_pct, &defender_def_pct,
+				&ignore_defensive_bonuses);
+			if ((attacker_atk_pct != 100) ||
+			    (defender_def_pct != 100) ||
+			    ignore_defensive_bonuses)
+				*out_any_counter_effect = true;
 		}
 
-		if (best != NULL) {
-			best_pass_had_counter_effect = pass_had_counter_effect;
-			break;
-		}
+		if ((best == NULL) ||
+		    patch_Fighter_prefer_first_defender_1 (
+			&p_bic_data->fighter, __,
+			unit, Unit_get_defense_strength (unit),
+			best, Unit_get_defense_strength (best),
+			true))
+			best = unit;
 	}
-
-	if (out_any_counter_effect != NULL)
-		*out_any_counter_effect = best_pass_had_counter_effect;
 
 	p_bic_data->fighter.attacker            = saved_fighter_attacker;
 	p_bic_data->fighter.defender            = saved_fighter_defender;
