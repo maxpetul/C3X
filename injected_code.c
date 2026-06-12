@@ -18417,6 +18417,7 @@ patch_init_floating_point ()
 		{"charm_flag_triggers_ptw_like_targeting"                , false, offsetof (struct c3x_config, charm_flag_triggers_ptw_like_targeting)},
 		{"city_icons_show_unit_effects_not_trade"                , true , offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
 		{"ignore_king_ability_for_defense_priority"              , false, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
+		{"prefer_less_expensive_defenders"                        , false, offsetof (struct c3x_config, prefer_less_expensive_defenders)},
 		{"show_untradable_techs_on_trade_screen"                 , false, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
 		{"disallow_useless_bombard_vs_airfields"                 , true , offsetof (struct c3x_config, disallow_useless_bombard_vs_airfields)},
 		{"compact_luxury_display_on_city_screen"                 , false, offsetof (struct c3x_config, compact_luxury_display_on_city_screen)},
@@ -29578,11 +29579,29 @@ patch_Fighter_prefer_first_defender_1 (Fighter * this, int edx, Unit * first, in
 		second_strength = counter_adjusted_defender_strength (
 			second_attacker, second, second_strength,
 			include_defensive_bonuses);
+	}
 
-		bool result = Fighter_prefer_first_defender_1 (
-			this, __, first, first_strength, second, second_strength,
-			param_5);
-		return result;
+	if (is->current_config.prefer_less_expensive_defenders &&
+	    unit_has_valid_type_id (first) &&
+	    unit_has_valid_type_id (second) &&
+	    (first_strength > 0) &&
+	    (first_strength == second_strength)) {
+		bool first_is_king =
+			patch_Unit_check_king_for_defense_priority (
+				first, __, UTA_King);
+		bool second_is_king =
+			patch_Unit_check_king_for_defense_priority (
+				second, __, UTA_King);
+		if (first_is_king == second_is_king) {
+			int first_cost =
+				p_bic_data->UnitTypes[first->Body.UnitTypeID].Cost;
+			int second_cost =
+				p_bic_data->UnitTypes[second->Body.UnitTypeID].Cost;
+			if ((first_cost > 0) &&
+			    (second_cost > 0) &&
+			    (first_cost != second_cost))
+				return first_cost < second_cost;
+		}
 	}
 
 	return Fighter_prefer_first_defender_1 (this, __, first, first_strength, second, second_strength, param_5);

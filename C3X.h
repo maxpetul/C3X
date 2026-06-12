@@ -321,6 +321,7 @@ struct c3x_config {
 	bool charm_flag_triggers_ptw_like_targeting;
 	bool city_icons_show_unit_effects_not_trade;
 	bool ignore_king_ability_for_defense_priority;
+	bool prefer_less_expensive_defenders;
 	bool show_untradable_techs_on_trade_screen;
 	bool disallow_useless_bombard_vs_airfields;
 	enum line_drawing_override draw_lines_using_gdi_plus;
