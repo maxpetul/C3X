@@ -20466,7 +20466,16 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 
 	clear_memo ();
 
-	if (command == UCV_Fortify) {
+	if (command == UCV_Skip_Turn) {
+		FOR_UNITS_ON (uti, tile)
+			if ((uti.unit->Body.UnitTypeID == unit_type_id) &&
+			    (uti.unit->Body.Container_Unit < 0) &&
+			    (uti.unit->Body.UnitState == 0) &&
+			    (uti.unit->Body.CivID == unit->Body.CivID) &&
+			    (uti.unit->Body.Moves < patch_Unit_get_max_move_points (uti.unit)))
+				Main_Screen_Form_issue_command (p_main_screen_form, __, UCV_Skip_Turn, uti.unit);
+
+	} else if (command == UCV_Fortify) {
 		// This probably won't work for online games since "fortify all" does additional work in that case. See Main_Screen_Form::fortify_all.
 		// I don't like how this method doesn't place units in the fortified pose. One workaround is so use
 		// Main_Screen_Form::issue_fortify_command, but that plays the entire fortify animation for each unit which is a major annoyance for
