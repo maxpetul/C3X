@@ -18243,6 +18243,7 @@ patch_init_floating_point ()
 		{"limit_railroad_movement"                           ,     0,  offsetof (struct c3x_config, limit_railroad_movement)},
 		{"minimum_city_separation"                           ,     1,  offsetof (struct c3x_config, minimum_city_separation)},
 		{"anarchy_length_percent"                            ,   100,  offsetof (struct c3x_config, anarchy_length_percent)},
+		{"steal_plans_duration"                              ,     1,  offsetof (struct c3x_config, steal_plans_duration)},
 		{"ai_multi_city_start"                               ,     0,  offsetof (struct c3x_config, ai_multi_city_start)},
 		{"max_tries_to_place_fp_city"                        , 10000,  offsetof (struct c3x_config, max_tries_to_place_fp_city)},
 		{"ai_research_multiplier"                            ,   100,  offsetof (struct c3x_config, ai_research_multiplier)},
@@ -18534,6 +18535,8 @@ patch_init_floating_point ()
 
 	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
 	memset (&is->unit_type_duplicates    , 0, sizeof is->unit_type_duplicates);
+	memset (&is->steal_plans_expiration_turns, 0, sizeof is->steal_plans_expiration_turns);
+	is->steal_plans_success_roll = 0;
 	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
 	memset (&is->airdrops_this_turn      , 0, sizeof is->airdrops_this_turn);
 	memset (&is->unit_transport_ties     , 0, sizeof is->unit_transport_ties);
@@ -21832,6 +21835,7 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 	table_deinit (&is->extra_defensive_bombards);
 	table_deinit (&is->airdrops_this_turn);
 	table_deinit (&is->unit_transport_ties);
+	table_deinit (&is->steal_plans_expiration_turns);
 	is->last_selected_unit.initial_x = is->last_selected_unit.initial_y = -1;
 	is->last_selected_unit.last_x = is->last_selected_unit.last_y = is->last_selected_unit.type_id = -1;
 	is->last_selected_unit.ptr = NULL;
@@ -26724,6 +26728,32 @@ patch_Leader_begin_turn (Leader * this)
 	Leader_begin_turn (this);
 }
 
+int __fastcall
+patch_rand_int_for_steal_plans (void * this, int edx, int lim)
+{
+	int tr = rand_int (this, __, lim);
+	is->steal_plans_success_roll = tr;
+	return tr;
+}
+
+void __fastcall
+patch_Espionage_do_steal_plans (Espionage * this)
+{
+	Espionage_do_steal_plans (this);
+
+	City * target_city = get_city_ptr (this->city_id);
+	int spying_civ_id = this->civ_id;
+	if ((is->current_config.steal_plans_duration > 1) &&
+	    ((is->steal_plans_success_roll & 0xFFFF) < (byte)this->base_success_chance) &&
+	    (target_city != NULL) &&
+	    (spying_civ_id >= 0) && (spying_civ_id < 32) &&
+	    (target_city->Body.CivID >= 0) && (target_city->Body.CivID < 32)) {
+		int key = (spying_civ_id << 5) | target_city->Body.CivID;
+		int duration = not_below (1, is->current_config.steal_plans_duration);
+		itable_insert (&is->steal_plans_expiration_turns, key, *p_current_turn_no + duration);
+	}
+}
+
 void __fastcall
 patch_Leader_begin_unit_turns (Leader * this)
 {
@@ -27917,6 +27947,18 @@ patch_Leader_do_production_phase (Leader * this)
 		*p_barb_activity = 1;
 
 	Leader_do_production_phase (this);
+
+	// The base game clears stolen-plans visibility during every production phase. Restore it until the configured duration expires.
+	for (int target_civ_id = 0; target_civ_id < 32; target_civ_id++) {
+		int key = (this->ID << 5) | target_civ_id;
+		int expiration_turn;
+		if (itable_look_up (&is->steal_plans_expiration_turns, key, &expiration_turn)) {
+			if (*p_current_turn_no + 1 < expiration_turn)
+				this->Contacts[target_civ_id] |= CCT_Have_Military_Map;
+			else
+				itable_remove (&is->steal_plans_expiration_turns, key);
+		}
+	}
 
 	if (is->force_barb_activity_for_cities) {
 		*p_barb_activity = saved_barb_activity;
@@ -30286,6 +30328,10 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			serialize_aligned_text ("unit_transport_ties", &mod_data);
 			itable_serialize (&is->unit_transport_ties, &mod_data);
 		}
+		if (is->steal_plans_expiration_turns.len > 0) {
+			serialize_aligned_text ("steal_plans_expiration_turns", &mod_data);
+			itable_serialize (&is->steal_plans_expiration_turns, &mod_data);
+		}
 		if (is->current_config.unit_cycle_search_criteria != UCSC_STANDARD && is->waiting_units.len > 0) {
 			serialize_aligned_text ("waiting_units", &mod_data);
 			itable_serialize (&is->waiting_units, &mod_data);
@@ -30747,6 +30793,15 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					cursor += bytes_read;
 				else {
 					error_chunk_name = "unit_transport_ties";
+					break;
+				}
+
+			} else if (match_save_chunk_name (&cursor, "steal_plans_expiration_turns")) {
+				int bytes_read = itable_deserialize (cursor, seg + seg_size, &is->steal_plans_expiration_turns);
+				if (bytes_read > 0)
+					cursor += bytes_read;
+				else {
+					error_chunk_name = "steal_plans_expiration_turns";
 					break;
 				}
 

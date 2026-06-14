@@ -285,6 +285,7 @@ struct c3x_config {
 	bool include_stealth_attack_cancel_option;
 	bool intercept_recon_missions;
 	bool charge_one_move_for_recon_and_interception;
+	int steal_plans_duration;
 	bool polish_precision_striking;
 	bool enable_stealth_attack_via_bombardment;
 	bool immunize_aircraft_against_bombardment;
@@ -1618,6 +1619,10 @@ struct injected_state {
 	// Records the turn number on which each player has most recently founded a city. This is intended to be used for the temp settler perfume
 	// after founding feature so it may not be set if that feature is not activated or applicable. Defaults to -1.
 	int turn_no_of_last_founding_for_settler_perfume[32];
+
+	// Maps pairs of spying and target civ IDs to the turn on which their stolen plans visibility expires. Keys are (spying ID << 5) | target ID.
+	struct table steal_plans_expiration_turns;
+	int steal_plans_success_roll;
 
 	// Stores the byte offsets into the c3x_config struct of all boolean/integer config options, accessible using the options' names as
 	// strings. Used when reading in a config INI file.

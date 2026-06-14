@@ -3,6 +3,7 @@
   - See the 'type' and 'ai_build_strategy' options in the districts config
 - Districts may consume a worker on completion, option consumes_worker in districts config
 - Allow districts to suppress resources on their tiles, option subsumes_tile_resource in districts config
+- Option to configure the duration of the "Steal Plans" espionage mission, named steal_plans_duration
 - Fix crash related to resource generation
 
 * RELEASE 27
