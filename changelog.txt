@@ -6,6 +6,7 @@
 - Option to configure the duration of the "Steal Plans" espionage mission, named steal_plans_duration
 - Enable stack skip turn
 - Fix crash related to resource generation
+- Ignore new lines and other space characters at the start of config lists such as buildings_generating_resources
 
 * RELEASE 27
 - Add ability to apply perfume to resources under option named resource_perfume

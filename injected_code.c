@@ -1578,7 +1578,11 @@ read_recognizables (struct string_slice const * s,
 	int new_items_capacity = 0;
 	void * temp_item = malloc (item_size);
 
-	while (1) {
+	skip_white_space (&cursor);
+	if (*cursor == '\0')
+		success = true;
+
+	while (! success) {
 		enum recognizable_parse_result result = parse_item (&cursor, p_unrecognized_lines, temp_item);
 		if (result != RPR_PARSE_ERROR) {
 			if (result == RPR_OK) {
