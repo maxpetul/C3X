@@ -347,6 +347,8 @@ struct c3x_config {
 	int chance_for_nukes_to_destroy_max_one_hp_units;
 	bool allow_sale_of_aqueducts_and_hospitals;
 	bool no_cross_shore_detection;
+	int radar_tower_detection_distance;
+	int outpost_detection_distance;
 	int city_work_radius;
 	bool auto_zoom_city_screen_for_large_work_areas;
 	enum work_area_limit work_area_limit;

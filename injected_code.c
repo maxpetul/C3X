@@ -18259,6 +18259,8 @@ patch_init_floating_point ()
 		{"max_ai_naval_escorts"                              ,     3,  offsetof (struct c3x_config, max_ai_naval_escorts)},
 		{"ai_worker_requirement_percent"                     ,   150,  offsetof (struct c3x_config, ai_worker_requirement_percent)},
 		{"chance_for_nukes_to_destroy_max_one_hp_units"      ,   100,  offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
+		{"radar_tower_detection_distance"                    ,     0,  offsetof (struct c3x_config, radar_tower_detection_distance)},
+		{"outpost_detection_distance"                        ,     0,  offsetof (struct c3x_config, outpost_detection_distance)},
 		{"rebase_range_multiplier"                           ,     6,  offsetof (struct c3x_config, rebase_range_multiplier)},
 		{"elapsed_minutes_per_day_night_hour_transition"     ,     3,  offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
 		{"fixed_hours_per_turn_for_day_night_cycle"          ,     1,  offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
@@ -19106,6 +19108,69 @@ can_damage_bombarding (UnitType * attacker_type, Unit * defender, Tile * defende
 		return false;
 }
 
+bool
+tile_improvements_detect_unit_for_civ (Unit * unit, int civ_id)
+{
+	int radar_dist = is->current_config.radar_tower_detection_distance;
+	int outpost_dist = is->current_config.outpost_detection_distance;
+	int max_dist = (radar_dist > outpost_dist) ? radar_dist : outpost_dist;
+	if ((max_dist <= 0) || (civ_id < 0) || (civ_id >= 32))
+		return false;
+
+	unsigned detector_owner_bits = 1u << civ_id;
+	if (is->current_config.share_visibility_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) &&
+	    ((detector_owner_bits & *p_human_player_bits) != 0))
+		detector_owner_bits = *p_human_player_bits;
+
+	bool unit_is_sea = p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Sea;
+
+	// Larger distances cannot cover any new tiles, but would make this ring scan unnecessarily expensive.
+	int largest_useful_dist = (p_bic_data->Map.Width + p_bic_data->Map.Height) / 2;
+	if (max_dist > largest_useful_dist)
+		max_dist = largest_useful_dist;
+	for (int dist = 0; dist <= max_dist; dist++) {
+		struct vertex {
+			int x, y;
+		} vertices[4] = {
+			{unit->Body.X         , unit->Body.Y - 2*dist},
+			{unit->Body.X + 2*dist, unit->Body.Y         },
+			{unit->Body.X         , unit->Body.Y + 2*dist},
+			{unit->Body.X - 2*dist, unit->Body.Y         }
+		};
+
+		int edge_dirs[4] = {3, 5, 7, 1};
+		int edge_len = (dist == 0) ? 1 : 2 * dist;
+		for (int vert = 0; vert < 4; vert++) {
+			wrap_tile_coords (&p_bic_data->Map, &vertices[vert].x, &vertices[vert].y);
+			int dx, dy;
+			neighbor_index_to_diff (edge_dirs[vert], &dx, &dy);
+			for (int j = 0; j < edge_len; j++) {
+				int x = vertices[vert].x + j * dx;
+				int y = vertices[vert].y + j * dy;
+				wrap_tile_coords (&p_bic_data->Map, &x, &y);
+
+				Tile * tile = tile_at (x, y);
+				if ((tile == NULL) || (tile == p_null_tile))
+					continue;
+
+				unsigned overlays = tile->vtable->m42_Get_Overlays (tile, __, 0);
+				bool has_detector = ((dist <= radar_dist) && ((overlays & 0x40000000) != 0)) ||
+						    ((dist <= outpost_dist) && ((overlays & 0x80000000) != 0));
+				if (has_detector &&
+				    (! is->current_config.no_cross_shore_detection ||
+				     ((tile->vtable->m35_Check_Is_Water (tile) != 0) == unit_is_sea))) {
+					int owner_id = tile->vtable->m70_Get_Tile_Building_OwnerID (tile);
+					if ((owner_id >= 0) && (owner_id < 32) && ((detector_owner_bits & (1u << owner_id)) != 0))
+						return true;
+				}
+			}
+		}
+	}
+
+	return false;
+}
+
 char __fastcall
 patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2)
 {
@@ -19114,6 +19179,8 @@ patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2)
 	is->checking_visibility_for_unit = this;
 
 	char base_vis = Unit_is_visible_to_civ (this, __, civ_id, param_2);
+	if ((! base_vis) && tile_improvements_detect_unit_for_civ (this, civ_id))
+		base_vis = true;
 	if ((! base_vis) && // if unit is not visible to civ_id AND
 	    is->current_config.share_visibility_in_hotseat && // shared hotseat vis is enabled AND
 	    ((1 << civ_id) & *p_human_player_bits) && // civ_id is a human player AND
