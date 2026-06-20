@@ -164,7 +164,6 @@ name                    = Fish
 ini_path                = Resources\Fish\Fish.INI
 type                    = resource
 resource_type           = Fish
-show_in_day_night_hours = 7-17
 frame_time_seconds      = 0.11
 y_offset                = -14
 x_offset                = -2
