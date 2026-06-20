@@ -174,11 +174,16 @@ name                    = Fish
 ini_path                = Resources\Fish\Fish.INI
 type                    = resource
 resource_type           = Fish
-direction               = southeast
-show_in_day_night_hours = 7-17
-frame_time_seconds      = 0.13
-y_offset                = -20
-x_offset                = -15
+frame_time_seconds      = 0.11
+y_offset                = -14
+x_offset                = -2
+
+#Animation
+name                    = Furs
+ini_path                = Resources\Fox\Fox.ini
+type                    = resource
+resource_type           = Furs
+direction               = southwest
 
 #Animation
 name                    = DestructInitial
