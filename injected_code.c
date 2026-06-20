@@ -19217,6 +19217,8 @@ patch_init_floating_point ()
 	is->saved_bombard_target_display_override_2 = (struct unit_display_override) {-1, -1, -1};
 	is->current_bombard_target_display_override = (struct unit_display_override) {-1, -1, -1};
 	is->counter_defender_selection_ctx = (struct counter_defender_selection_context) {0};
+	is->counter_army_attacker_selection_ctx =
+		(struct counter_army_attacker_selection_context) {0};
 
 	is->dbe = (struct defensive_bombard_event) {0};
 
@@ -26149,6 +26151,28 @@ counter_defender_selection_can_pass_null_defender (Unit * attacker,
 	return true;
 }
 
+Unit *
+combat_display_unit (Unit * unit)
+{
+	if (unit == NULL)
+		return NULL;
+
+	Unit * army = Unit_get_containing_army (unit);
+	return (army != NULL) ? army : unit;
+}
+
+void
+set_combat_unit_display_override (Unit * unit)
+{
+	Unit * display_unit = combat_display_unit (unit);
+	if (display_unit != NULL)
+		is->unit_display_override = (struct unit_display_override) {
+			display_unit->Body.ID,
+			display_unit->Body.X,
+			display_unit->Body.Y
+		};
+}
+
 void __fastcall
 patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direction, Unit * defender)
 {
@@ -26177,11 +26201,8 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 	is->counter_defender_selection_ctx = saved_selection_ctx;
 
 	if (is->combat_unit_display_override_active &&
-	    unit_has_valid_type_id (this->defender)) {
-		is->unit_display_override = (struct unit_display_override) {
-			this->defender->Body.ID, this->defender->Body.X, this->defender->Body.Y
-		};
-	}
+	    unit_has_valid_type_id (this->defender))
+		set_combat_unit_display_override (this->defender);
 
 	// Apply override of retreat eligibility
 	// Must use this->defender instead of the defender argument since the argument is often NULL, in which case Fighter_begin finds a defender on
@@ -29682,9 +29703,7 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 		is->unit_display_override = bombard_target_udo;
 		is->unit_display_override_2 = bombard_target_udo;
 	} else if (is->combat_unit_display_override_active && (this->defender != NULL)) {
-		is->unit_display_override = (struct unit_display_override) {
-			this->defender->Body.ID, this->defender->Body.X, this->defender->Body.Y
-		};
+		set_combat_unit_display_override (this->defender);
 		is->unit_display_override_2 = saved_udo_2;
 	} else {
 		is->unit_display_override = saved_udo;
@@ -29730,9 +29749,7 @@ int __fastcall
 patch_Fighter_get_odds_for_main_combat_loop (Fighter * this, int edx, Unit * attacker, Unit * defender, bool bombarding, bool ignore_defensive_bonuses)
 {
 	if (is->combat_unit_display_override_active && (defender != NULL))
-		is->unit_display_override = (struct unit_display_override) {
-			defender->Body.ID, defender->Body.X, defender->Body.Y
-		};
+		set_combat_unit_display_override (defender);
 
 	if (is->dbe.defender_was_destroyed)
 		return 1025;
@@ -29957,7 +29974,8 @@ counter_adjusted_attacker_strength (Unit * attacker, Unit * defender, int attack
 }
 
 Unit *
-select_counter_best_attacking_army_member (Unit * army, Unit * defender)
+select_counter_best_attacking_army_member (Unit * army, Unit * defender,
+                                           int army_hp_remaining)
 {
 	if (! (is->current_config.enable_unit_counters &&
 	       unit_has_valid_type_id (army) &&
@@ -29966,34 +29984,33 @@ select_counter_best_attacking_army_member (Unit * army, Unit * defender)
 		return NULL;
 
 	Tile * tile = tile_at (army->Body.X, army->Body.Y);
-	if ((tile == NULL) || (tile == p_null_tile))
-		return NULL;
-
-	Unit * best = NULL;
-	int best_strength = -1;
-	int best_base_strength = -1;
-	FOR_UNITS_ON (uti, tile) {
-		Unit * unit = uti.unit;
-		if ((unit == NULL) ||
-		    (unit->Body.Container_Unit != army->Body.ID) ||
-		    ! unit_has_valid_type_id (unit))
-			continue;
-
-		int base_strength = Unit_get_attack_strength (unit);
-		if (base_strength <= 0)
-			continue;
-
-		int strength = counter_adjusted_attacker_strength (unit, defender, base_strength);
-		if ((best == NULL) ||
-		    (strength > best_strength) ||
-		    ((strength == best_strength) && (base_strength > best_base_strength))) {
-			best = unit;
-			best_strength = strength;
-			best_base_strength = base_strength;
+	bool has_member = false;
+	if ((tile != NULL) && (tile != p_null_tile)) {
+		FOR_UNITS_ON (uti, tile) {
+			if ((uti.unit != NULL) &&
+			    (uti.unit->Body.Container_Unit == army->Body.ID)) {
+				has_member = true;
+				break;
+			}
 		}
 	}
+	if (! has_member)
+		return NULL;
 
-	return best;
+	struct counter_army_attacker_selection_context saved_ctx =
+		is->counter_army_attacker_selection_ctx;
+	is->counter_army_attacker_selection_ctx =
+		(struct counter_army_attacker_selection_context) {
+			true, army, defender
+		};
+
+	// Keep the base selector's HP allocation and tie-breaking. Its calls to
+	// get_attack_strength are adjusted by the temporary context above.
+	Unit * selected = Unit_select_army_member_for_combat (
+		army, __, army_hp_remaining, true);
+
+	is->counter_army_attacker_selection_ctx = saved_ctx;
+	return selected;
 }
 
 Unit *
@@ -30002,7 +30019,11 @@ counter_attacker_for_defender_selection (Unit * attacker, Unit * defender)
 	if (unit_has_valid_type_id (attacker) &&
 	    unit_has_valid_type_id (defender) &&
 	    Unit_has_ability (attacker, __, UTA_Army)) {
-		Unit * member = select_counter_best_attacking_army_member (attacker, defender);
+		int hp_remaining = clamp (
+			Unit_get_max_hp (attacker) - attacker->Body.Damage,
+			0, 9999);
+		Unit * member = select_counter_best_attacking_army_member (
+			attacker, defender, hp_remaining);
 		if (member != NULL)
 			return member;
 	}
@@ -30229,6 +30250,16 @@ int __fastcall
 patch_Unit_get_attack_strength (Unit * this)
 {
 	int base = Unit_get_attack_strength (this);
+	if (is->counter_army_attacker_selection_ctx.active &&
+	    unit_has_valid_type_id (
+		is->counter_army_attacker_selection_ctx.army) &&
+	    unit_has_valid_type_id (this) &&
+	    (this->Body.Container_Unit ==
+	     is->counter_army_attacker_selection_ctx.army->Body.ID))
+		return counter_adjusted_attacker_strength (
+			this,
+			is->counter_army_attacker_selection_ctx.defender,
+			base);
 	if (! is->counter_combat_ctx.active)
 		return base;
 	if (this == is->counter_combat_ctx.attacker)
@@ -39304,45 +39335,20 @@ patch_Unit_select_army_member_for_combat (Unit * this, int edx, int param_1, cha
 			return this;
 	}
 
-	if (is->current_config.enable_unit_counters &&
+	// Defensive selection stays entirely in the base function below. Its calls
+	// to prefer_first_defender already receive counter-adjusted comparisons and
+	// the base function preserves the army's HP-band rotation.
+	if ((param_2 != 0) &&
+	    is->current_config.enable_unit_counters &&
 	    Unit_has_ability (this, __, UTA_Army) &&
 	    unit_has_valid_type_id (p_bic_data->fighter.defender) &&
 	    (p_bic_data->fighter.defender->Body.CivID != this->Body.CivID) &&
 	    p_bic_data->fighter.defender->vtable->is_enemy_of_civ (
 		p_bic_data->fighter.defender, __, this->Body.CivID, 0)) {
 		Unit * best_attacker = select_counter_best_attacking_army_member (
-			this, p_bic_data->fighter.defender);
+			this, p_bic_data->fighter.defender, param_1);
 		if (best_attacker != NULL)
 			return best_attacker;
-	}
-
-	if (is->current_config.enable_unit_counters &&
-	    Unit_has_ability (this, __, UTA_Army) &&
-	    unit_has_valid_type_id (p_bic_data->fighter.attacker) &&
-	    (p_bic_data->fighter.attacker->Body.CivID != this->Body.CivID) &&
-	    this->vtable->is_enemy_of_civ (this, __, p_bic_data->fighter.attacker->Body.CivID, 0)) {
-		Tile * tile = tile_at (this->Body.X, this->Body.Y);
-		Unit * best = NULL;
-		if ((tile != NULL) && (tile != p_null_tile)) {
-			FOR_UNITS_ON (uti, tile) {
-				Unit * unit = uti.unit;
-				if ((unit == NULL) ||
-				    (unit->Body.Container_Unit != this->Body.ID) ||
-				    (Unit_get_defense_strength (unit) <= 0))
-					continue;
-				if ((best == NULL) ||
-				    patch_Fighter_prefer_first_defender_1 (
-					&p_bic_data->fighter, __,
-					unit, Unit_get_defense_strength (unit),
-					best, Unit_get_defense_strength (best),
-					true))
-					best = unit;
-			}
-		}
-		if (best != NULL) {
-			this->Body.army_top_defender_id = best->Body.ID;
-			return best;
-		}
 	}
 
 	return Unit_select_army_member_for_combat (this, __, param_1, param_2);

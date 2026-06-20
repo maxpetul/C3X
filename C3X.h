@@ -1925,6 +1925,14 @@ struct injected_state {
 		int    tile_x;
 		int    tile_y;
 	} counter_defender_selection_ctx;
+	// Set while the base army-member selector is ranking attacking members. This
+	// lets get_attack_strength expose counter-adjusted values without replacing
+	// the base selector's HP-band logic.
+	struct counter_army_attacker_selection_context {
+		bool   active;
+		Unit * army;
+		Unit * defender;
+	} counter_army_attacker_selection_ctx;
 
 	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
 	Unit * zoc_interceptor;
