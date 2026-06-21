@@ -34604,6 +34604,7 @@ draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, stru
 
 	bool tile_visible_for_animation = false;
 	if (is->current_config.enable_custom_animations &&
+	    (! is->tile_info_open) &&
 	    ((*p_debug_mode_bits & 0xC) == 0) &&
 	    (anim_civ_id >= 0) && (anim_civ_id < 32))
 		tile_visible_for_animation = patch_Leader_is_tile_visible (&leaders[anim_civ_id], __, draw_tile_x, draw_tile_y);
@@ -34965,7 +34966,6 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -35012,6 +35012,7 @@ patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int vi
 		anim_civ_id = p_main_screen_form->Player_CivID;
 	bool tile_visible_for_animation = false;
 	if (is->current_config.enable_custom_animations &&
+	    (! is->tile_info_open) &&
 	    ((*p_debug_mode_bits & 0xC) == 0) &&
 	    (tile != NULL) && (tile != p_null_tile) &&
 	    (anim_civ_id >= 0) && (anim_civ_id < 32))
