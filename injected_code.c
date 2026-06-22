@@ -17320,7 +17320,7 @@ join_path(char *out, size_t out_sz, const char *dir, const char *file)
     snprintf(out, out_sz, "%s%s%s", dir, need_sep ? "\\" : "", file);
 }
 
-void 
+void
 read_in_dir(PCX_Image *img,
             const char *art_dir,
             const char *filename,
@@ -17338,6 +17338,25 @@ read_in_dir(PCX_Image *img,
 	if (img->JGL.Image != NULL)
 		img->vtable->clear_JGL (img);
     PCX_Image_read_file(img, __, temp_path, NULL, 0, 0x100, 2);
+}
+
+bool
+construct_cycle_sprite_array (Sprite ** out_sprites, int count)
+{
+	*out_sprites = NULL;
+	if (count <= 0)
+		return true;
+
+	Sprite * sprites = malloc (count * sizeof sprites[0]);
+	if (sprites == NULL)
+		return false;
+
+	memset (sprites, 0, count * sizeof sprites[0]);
+	for (int i = 0; i < count; i++)
+		Sprite_construct (&sprites[i]);
+
+	*out_sprites = sprites;
+	return true;
 }
 
 bool load_day_night_hour_and_season_images(struct day_night_cycle_img_set *this, const char *art_dir, const char *season, const char *hour)
@@ -17574,15 +17593,22 @@ bool load_day_night_hour_and_season_images(struct day_night_cycle_img_set *this,
 	if (img.JGL.Image == NULL) return false;
     Sprite_slice_pcx(&this->Victory_Image, __, &img, 0, 0, 0x80, 0x40, 1, 1);
 
-    // Resources
-    read_in_dir(&img, art_dir, "resources.pcx", NULL);
+	// Resources
+	read_in_dir(&img, art_dir, "resources.pcx", NULL);
 	if (img.JGL.Image == NULL) return false;
-    size_t k = 0;
-    for (int r = 0, y = 1; r < 6; ++r, y += 50) {
-        for (int c = 0, x = 1; c < 6; ++c, x += 50) {
-            Sprite_slice_pcx(&this->Resources[k++], __, &img, x, y, 49, 49, 1, 1);
-        }
-    }
+	int resource_cols = img.JGL.Image->vtable->m54_Get_Width (img.JGL.Image) / 50;
+	int resource_rows = img.JGL.Image->vtable->m55_Get_Height (img.JGL.Image) / 50;
+	int resource_count = resource_cols * resource_rows;
+	if ((resource_cols <= 0) || (resource_rows <= 0) ||
+	    ! construct_cycle_sprite_array (&this->Resources, resource_count))
+		return false;
+	this->ResourceCount = resource_count;
+	int k = 0;
+	for (int r = 0, y = 1; r < resource_rows; ++r, y += 50) {
+		for (int c = 0, x = 1; c < resource_cols; ++c, x += 50) {
+			Sprite_slice_pcx(&this->Resources[k++], __, &img, x, y, 49, 49, 1, 1);
+		}
+	}
 
 	// Base cities
 	static const char *CITY_BASE[5] = {
@@ -17928,13 +17954,25 @@ deinit_sprite_if_needed (Sprite * sprite)
 }
 
 void
+deinit_cycle_sprite_array (Sprite ** sprites, int count)
+{
+	if (*sprites == NULL)
+		return;
+
+	for (int i = 0; i < count; i++)
+		deinit_sprite_if_needed (&(*sprites)[i]);
+	free (*sprites);
+	*sprites = NULL;
+}
+
+void
 construct_day_night_cycle_img_set (struct day_night_cycle_img_set * set)
 {
 	if (set == NULL)
 		return;
 
 	Sprite * sprites = (Sprite *)set;
-	int sprite_count = sizeof *set / sizeof sprites[0];
+	int sprite_count = (int)(((char *)&set->Resources - (char *)set) / sizeof sprites[0]);
 	for (int i = 0; i < sprite_count; i++)
 		Sprite_construct (&sprites[i]);
 }
@@ -17946,9 +17984,10 @@ deinit_day_night_cycle_img_set (struct day_night_cycle_img_set * set)
 		return;
 
 	Sprite * sprites = (Sprite *)set;
-	int sprite_count = sizeof *set / sizeof sprites[0];
+	int sprite_count = (int)(((char *)&set->Resources - (char *)set) / sizeof sprites[0]);
 	for (int i = 0; i < sprite_count; i++)
 		deinit_sprite_if_needed (&sprites[i]);
+	deinit_cycle_sprite_array (&set->Resources, set->ResourceCount);
 	memset (set, 0, sizeof *set);
 }
 
@@ -17963,7 +18002,12 @@ build_sprite_proxies(Map_Renderer *mr) {
 
 	insert_sprite_proxies(city_sprites, set->City_Images, season, h, 80);
 	insert_sprite_proxies(destroyed_city_sprites, set->Destroyed_City_Images, season, h, 3);
-	insert_sprite_proxies(mr->Resources, set->Resources, season, h, 36);
+	if ((mr->Resources != NULL) && (set->Resources != NULL)) {
+		int resource_count = ((int *)mr->Resources)[-1];
+		if (resource_count > set->ResourceCount)
+			resource_count = set->ResourceCount;
+		insert_sprite_proxies(mr->Resources, set->Resources, season, h, resource_count);
+	}
 	insert_spritelist_proxies(mr->Std_Terrain_Images, set->Std_Terrain_Images, season, h, 9, 81);
 	insert_spritelist_proxies(mr->LM_Terrain_Images, set->LM_Terrain_Images, season, h, 9, 81);
 	insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &set->Terrain_Buldings_Barbarian_Camp, season, h);
