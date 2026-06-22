@@ -325,7 +325,7 @@ tooltip                = Build Wind Farm
 img_paths              = WindFarm.pcx
 animation              = ini=Districts/WindFarm/WindFarm.INI; hours=7-17
 animation              = ini=Districts/WindFarm/WindFarm_night.INI; hours=18-6
-btn_tile_sheet_row     = 1
+btn_tile_sheet_row     = 0
 btn_tile_sheet_column  = 10
 vary_img_by_era        = 0
 vary_img_by_culture    = 0
