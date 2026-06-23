@@ -28034,7 +28034,7 @@ patch_Leader_do_production_phase (Leader * this)
 		int expiration_turn;
 		if (itable_look_up (&is->steal_plans_expiration_turns, key, &expiration_turn)) {
 			if (*p_current_turn_no + 1 < expiration_turn)
-				this->Contacts[target_civ_id] |= CCT_Have_Military_Map;
+				this->Contacts[target_civ_id] |= LCF_HAVE_MILITARY_MAP;
 			else
 				itable_remove (&is->steal_plans_expiration_turns, key);
 		}

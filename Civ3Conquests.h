@@ -875,10 +875,12 @@ enum FLIC_Chuck_Types
   FLCT_HUFFMAN_TABLE = 0xF1FC,
 };
 
-enum Civ_Contact_Type
+typedef enum leader_contact_flags
 {
-  CCT_Have_Military_Map = 0x40,
-};
+  LCF_HAVE_CONTACT = 0x1,
+  LCF_PLOTTING_WAR = 0x20,
+  LCF_HAVE_MILITARY_MAP = 0x40,
+} LeaderContactFlags;
 
 enum Game_Render_Flags
 {
@@ -1809,7 +1811,7 @@ struct Race_vtable
   char * (__fastcall * GetTitle) (Race *);
   char * (__fastcall * GetSingularName) (Race *);
   int (__fastcall * GetStartupAdvance) (Race *, __, int);
-  int (__fastcall * f1) (Race *);
+  int (__fastcall * get_effective_aggression_level) (Race *);
 };
 
 struct Citizens
@@ -4251,7 +4253,8 @@ struct Leader
   int field_4[6];
   int ID;
   int RaceID;
-  int field_24[2];
+  int power_rank; // 31 = strongest, 30 = second strongest, 29 = third, and so forth
+  int power_level;
   int CapitalID;
   int player_difficulty;
   int field_34;
@@ -4361,7 +4364,7 @@ struct Government
   void *PropagandaData;
   int HurryProduction;
   int AssimilationChange;
-  int DratfLimit;
+  int DraftLimit;
   int Military_Police_Limit;
   int field_1B0;
   int Ruler_Titles_Count;
@@ -4374,7 +4377,7 @@ struct Government
   int All_Units_Free;
   int City_Class_Free_Units[3];
   int Unit_Support_Cost;
-  int Last;
+  int war_weariness; // 0 = none, 1 = low, 2 = high
 };
 
 struct Tile_Body
@@ -5785,7 +5788,10 @@ struct New_Game_Player_Form
   Button DescriptionBtn;
   Button ConstraintsBtn;
   PCX_Image PCX2;
-  int field_2E18[4];
+  int field_2E18;
+  int field_2E1C;
+  int field_2E20;
+  int ai_aggression;
   Game_Limits Turns_Limit;
   int field_2E64;
   int field_2E68;
