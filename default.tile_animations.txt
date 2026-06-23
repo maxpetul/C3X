@@ -184,6 +184,15 @@ ini_path                = Resources\Fox\Fox.ini
 type                    = resource
 resource_type           = Furs
 direction               = southwest
+show_in_day_night_hours = 7-17
+
+#Animation
+name                    = Furs_night
+ini_path                = Resources\Fox\Fox_night.ini
+type                    = resource
+resource_type           = Furs
+direction               = southwest
+show_in_day_night_hours = 18-6
 
 #Animation
 name                    = DestructInitial
