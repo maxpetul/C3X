@@ -88,9 +88,17 @@ show_in_day_night_hours = 18-6
 name                    = Snow
 ini_path                = Terrain\Snow\Snow.INI
 type                    = terrain
-terrain_types           = mountains, snow-mountains, volcanos, snow-volcanos
+terrain_types           = mountains, snow-mountains, volcanoes, snow-volcanoes
 show_in_seasons         = winter
 show_in_day_night_hours = 7-17
+
+#Animation
+name                    = Snow_night
+ini_path                = Terrain\Snow\Snow_night.INI
+type                    = terrain
+terrain_types           = mountains, snow-mountains, volcanoes, snow-volcanoes
+show_in_seasons         = winter
+show_in_day_night_hours = 18-6
 
 #Animation
 name                    = Whales
