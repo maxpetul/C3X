@@ -882,6 +882,15 @@ typedef enum leader_contact_flags
   LCF_HAVE_MILITARY_MAP = 0x40,
 } LeaderContactFlags;
 
+typedef enum diplomatic_mood
+{
+  DM_GRACIOUS = 0,
+  DM_POLITE,
+  DM_CAUTIOUS,
+  DM_ANGRY,
+  DM_FURIOUS
+} DiplomaticMood;
+
 enum Game_Render_Flags
 {
   GRF_Show_Enemy_Units = 0x8,
@@ -3304,10 +3313,10 @@ struct Leader_vtable
   void *m28;
   int m29;
   int m30;
-  int (__fastcall * get_attitude_toward) (Leader * this, int edx, int civ_id, int param_2);
+  int m31;
   int m32;
-  int m33;
-  int m34;
+  int (__fastcall * get_attitude_toward) (Leader * this, int edx, int civ_id, int param_2);
+  DiplomaticMood (__fastcall * get_diplomatic_mood_toward) (Leader * this, int edx, int civ_id, int param_2);
   int m35;
   int m36;
   int m37;
@@ -4242,8 +4251,8 @@ struct Reputation
 	int field_28;
 	int icbm;
 	int icbm_other;
-	int recent_ww_given;
-	int recent_ww_taken; // war weariness inflicted on us (= Leader object) by this player (= index in the reputations array) during the last turn
+	int war_damage_memory; // Combat damage taken by 'us' (the Leader object) from this player in the reputations array. Decays over time.
+	int war_damage_this_turn; // Like war_damage_from but cleared every turn
 	int field_3C[4];
 };
 
@@ -5132,7 +5141,7 @@ struct BIC
   int TileTypesCount;
   int UnitsCount;
   int WorldSizesCount;
-  int field_8C8;
+  int transition_government;
   int Header;
   int field_8D0;
   int field_8D4[180];
