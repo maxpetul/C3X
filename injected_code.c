@@ -37106,7 +37106,7 @@ patch_Leader_get_attitude_toward (Leader * this, int edx, int civ_id, int param_
 					continue;
 				if (colony_body->OwnerID != civ_id)
 					continue;
-				score -= penalty;
+				score += penalty;
 			}
 		}
 	}

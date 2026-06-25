@@ -7,6 +7,7 @@
 - Option to configure the duration of the "Steal Plans" espionage mission, named steal_plans_duration
 - Enable stack skip turn
 - Fix crash related to resource generation
+- Fix extraterritorial colony relations penalty improving instead of harming relations
 - Ignore new lines and other space characters at the start of config lists such as buildings_generating_resources
 
 * RELEASE 27
