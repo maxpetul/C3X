@@ -17715,6 +17715,8 @@ bool load_day_night_hour_and_season_images(struct day_night_cycle_img_set *this,
 				char const * img_path = cfg->img_path;
 				if (img_path == NULL)
 					img_path = "Wonders.pcx";
+				int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
+				int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
 
 				// Load new image file if different from previous
 				if ((last_img_path == NULL) || (strcmp (img_path, last_img_path) != 0)) {
@@ -17738,25 +17740,25 @@ bool load_day_night_hour_and_season_images(struct day_night_cycle_img_set *this,
 				struct wonder_district_image_set * set = &this->Wonder_District_Images[wi];
 
 				Sprite_construct (&set->img);
-				int x = 128 * cfg->img_column;
-				int y =  64 * cfg->img_row;
-				Sprite_slice_pcx (&set->img, __, &wpcx, x, y, 128, 64, 1, 1);
+				int x = sprite_width * cfg->img_column;
+				int y = sprite_height * cfg->img_row;
+				Sprite_slice_pcx (&set->img, __, &wpcx, x, y, sprite_width, sprite_height, 1, 1);
 
 				Sprite_construct (&set->construct_img);
-				int cx = 128 * cfg->img_construct_column;
-				int cy =  64 * cfg->img_construct_row;
-				Sprite_slice_pcx (&set->construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
+				int cx = sprite_width * cfg->img_construct_column;
+				int cy = sprite_height * cfg->img_construct_row;
+				Sprite_slice_pcx (&set->construct_img, __, &wpcx, cx, cy, sprite_width, sprite_height, 1, 1);
 
 				if (cfg->enable_img_alt_dir) {
 					Sprite_construct (&set->alt_dir_img);
-					int ax = 128 * cfg->img_alt_dir_column;
-					int ay =  64 * cfg->img_alt_dir_row;
-					Sprite_slice_pcx (&set->alt_dir_img, __, &wpcx, ax, ay, 128, 64, 1, 1);
+					int ax = sprite_width * cfg->img_alt_dir_column;
+					int ay = sprite_height * cfg->img_alt_dir_row;
+					Sprite_slice_pcx (&set->alt_dir_img, __, &wpcx, ax, ay, sprite_width, sprite_height, 1, 1);
 
 					Sprite_construct (&set->alt_dir_construct_img);
-					int acx = 128 * cfg->img_alt_dir_construct_column;
-					int acy =  64 * cfg->img_alt_dir_construct_row;
-					Sprite_slice_pcx (&set->alt_dir_construct_img, __, &wpcx, acx, acy, 128, 64, 1, 1);
+					int acx = sprite_width * cfg->img_alt_dir_construct_column;
+					int acy = sprite_height * cfg->img_alt_dir_construct_row;
+					Sprite_slice_pcx (&set->alt_dir_construct_img, __, &wpcx, acx, acy, sprite_width, sprite_height, 1, 1);
 				}
 			}
 
