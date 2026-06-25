@@ -30160,6 +30160,8 @@ patch_Map_place_scenario_things (Map * this)
 		if (! any_natural_wonders)
 			place_natural_wonders_on_map ();
 	}
+	if (is->current_config.enable_custom_animations)
+		rebuild_tile_animation_rule_match_cache ();
 	is->is_placing_scenario_things = false;
 }
 
