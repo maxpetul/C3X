@@ -39337,6 +39337,9 @@ age_tile_destruct_animations ()
 void
 rebuild_tile_animation_rule_match_cache ()
 {
+	if (is->saved_tile_count >= 0)
+		return;
+
 	Map * map = &p_bic_data->Map;
 	int tile_count = map->TileCount;
 	if ((tile_count <= 0) || (is->tile_animation_count <= 0)) {
@@ -39407,7 +39410,8 @@ tile_animation_cache_needs_rebuild ()
 		return true;
 	if (is->tile_animation_count <= 0)
 		return true;
-	if (is->tile_animation_selected_tile_count != p_bic_data->Map.TileCount)
+	int real_tile_count = (is->saved_tile_count >= 0) ? is->saved_tile_count : p_bic_data->Map.TileCount;
+	if (is->tile_animation_selected_tile_count != real_tile_count)
 		return true;
 	if (is->tile_animation_selected_animation_count != is->tile_animation_count)
 		return true;
