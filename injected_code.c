@@ -216,6 +216,9 @@ enum recognizable_parse_result parse_unit_counter_group (char ** p_cursor, struc
 enum recognizable_parse_result parse_counter_rule (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_rule);
 Unit * find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded, bool require_visible, bool * out_any_counter_effect);
 Unit * find_counter_base_visible_defender_against (Main_Screen_Form * form, Unit * attacker, int tile_x, int tile_y, Unit * excluded);
+Unit * resolve_army_defending_member (Unit * army, Unit * attacker, bool sync_top_defender_id);
+void face_unit_toward (Unit * unit, Unit * target);
+Unit * counter_attacker_for_defender_selection (Unit * attacker, Unit * defender);
 bool unit_has_valid_type_id (Unit * unit);
 int __cdecl patch_get_building_defense_bonus_at (int x, int y, int param_3);
 
@@ -26022,6 +26025,8 @@ set_post_combat_defender_display_override (Unit * attacker, int tile_x,
 	if (next_defender == NULL)
 		return;
 
+	resolve_army_defending_member (next_defender, attacker, true);
+
 	is->post_combat_defender_display_override =
 		(struct unit_display_override) {
 			next_defender->Body.ID,
@@ -26152,25 +26157,152 @@ counter_defender_selection_can_pass_null_defender (Unit * attacker,
 }
 
 Unit *
+resolve_army_defending_member (Unit * army, Unit * attacker,
+                               bool sync_top_defender_id)
+{
+	if (! (is->current_config.enable_unit_counters &&
+	       unit_has_valid_type_id (army) &&
+	       unit_has_valid_type_id (attacker) &&
+	       Unit_has_ability (army, __, UTA_Army)))
+		return army;
+
+	Tile * tile = tile_at (army->Body.X, army->Body.Y);
+	bool has_member = false;
+	if ((tile != NULL) && (tile != p_null_tile)) {
+		FOR_UNITS_ON (uti, tile) {
+			if ((uti.unit != NULL) &&
+			    (uti.unit->Body.Container_Unit == army->Body.ID)) {
+				has_member = true;
+				break;
+			}
+		}
+	}
+	if (! has_member)
+		return army;
+
+	Unit * saved_fighter_attacker = p_bic_data->fighter.attacker;
+	Unit * saved_fighter_defender = p_bic_data->fighter.defender;
+	int    saved_fighter_atk_x    = p_bic_data->fighter.attacker_location_x;
+	int    saved_fighter_atk_y    = p_bic_data->fighter.attacker_location_y;
+	int    saved_fighter_def_x    = p_bic_data->fighter.defender_location_x;
+	int    saved_fighter_def_y    = p_bic_data->fighter.defender_location_y;
+	struct counter_defender_selection_context saved_selection_ctx =
+		is->counter_defender_selection_ctx;
+
+	p_bic_data->fighter.attacker            = attacker;
+	p_bic_data->fighter.defender            = army;
+	p_bic_data->fighter.attacker_location_x = attacker->Body.X;
+	p_bic_data->fighter.attacker_location_y = attacker->Body.Y;
+	p_bic_data->fighter.defender_location_x = army->Body.X;
+	p_bic_data->fighter.defender_location_y = army->Body.Y;
+	is->counter_defender_selection_ctx =
+		(struct counter_defender_selection_context) {
+			true, attacker, army->Body.X, army->Body.Y
+		};
+
+	int hp_remaining = clamp (
+		0, 9999, Unit_get_max_hp (army) - army->Body.Damage);
+	Unit * member = Unit_select_army_member_for_combat (
+		army, __, hp_remaining, false);
+
+	p_bic_data->fighter.attacker            = saved_fighter_attacker;
+	p_bic_data->fighter.defender            = saved_fighter_defender;
+	p_bic_data->fighter.attacker_location_x = saved_fighter_atk_x;
+	p_bic_data->fighter.attacker_location_y = saved_fighter_atk_y;
+	p_bic_data->fighter.defender_location_x = saved_fighter_def_x;
+	p_bic_data->fighter.defender_location_y = saved_fighter_def_y;
+	is->counter_defender_selection_ctx = saved_selection_ctx;
+
+	if (unit_has_valid_type_id (member) &&
+	    (member->Body.Container_Unit == army->Body.ID)) {
+		if (sync_top_defender_id) {
+			army->Body.army_top_defender_id = member->Body.ID;
+			// Orient the newly displayed member toward the attacker so it
+			// doesn't briefly face the wrong way when the displayed defender
+			// switches (e.g. between consecutive attacks on the army).
+			face_unit_toward (member, attacker);
+		}
+
+		return member;
+	}
+
+	return army;
+}
+
+// Orient `unit` to face `target` when they are on adjacent tiles. The engine
+// orients the real combatant during an active fight, but when the displayed
+// army member switches (e.g. the game auto-selects a different defender), the
+// newly shown member would otherwise keep its old/idle facing for a moment.
+// Setting it here toward the opponent removes that "facing the wrong way"
+// flicker. If the tiles aren't adjacent we leave the facing unchanged.
+void
+face_unit_toward (Unit * unit, Unit * target)
+{
+	if ((unit == NULL) || (target == NULL))
+		return;
+
+	int dx = target->Body.X - unit->Body.X,
+	    dy = target->Body.Y - unit->Body.Y;
+	int dir = -1;
+	if      ((dx ==  1) && (dy == -1)) dir = DIR_NE;
+	else if ((dx ==  2) && (dy ==  0)) dir = DIR_E;
+	else if ((dx ==  1) && (dy ==  1)) dir = DIR_SE;
+	else if ((dx ==  0) && (dy ==  2)) dir = DIR_S;
+	else if ((dx == -1) && (dy ==  1)) dir = DIR_SW;
+	else if ((dx == -2) && (dy ==  0)) dir = DIR_W;
+	else if ((dx == -1) && (dy == -1)) dir = DIR_NW;
+	else if ((dx ==  0) && (dy == -2)) dir = DIR_N;
+	if (dir >= 0)
+		unit->Body.Animation.summary.direction = dir;
+}
+
+// True if (dx, dy) is one of the 8 attack-adjacent tile offsets in Civ3's
+// staggered map coordinates (same set used by face_unit_toward).
+bool
+tiles_adjacent_for_attack (int dx, int dy)
+{
+	return ((dx ==  1) && (dy == -1)) ||
+	       ((dx ==  2) && (dy ==  0)) ||
+	       ((dx ==  1) && (dy ==  1)) ||
+	       ((dx ==  0) && (dy ==  2)) ||
+	       ((dx == -1) && (dy ==  1)) ||
+	       ((dx == -2) && (dy ==  0)) ||
+	       ((dx == -1) && (dy == -1)) ||
+	       ((dx ==  0) && (dy == -2));
+}
+
+Unit *
 combat_display_unit (Unit * unit)
 {
 	if (unit == NULL)
 		return NULL;
 
+	// During the combat animation the engine only draws the HP bar and the army
+	// indicator ("little army guy") for the tile's top/visible unit, and it
+	// suppresses them for a bare contained member. So we display the containing
+	// ARMY (to keep the HP bar + indicator) but point the army's top defender at
+	// the actual fighting member, so the army renders the correct unit's sprite
+	// (fixing the "top unit != combatant" mismatch).
 	Unit * army = Unit_get_containing_army (unit);
-	return (army != NULL) ? army : unit;
+	if (army != NULL) {
+		army->Body.army_top_defender_id = unit->Body.ID;
+		return army;
+	}
+
+	return unit;
 }
 
 void
 set_combat_unit_display_override (Unit * unit)
 {
 	Unit * display_unit = combat_display_unit (unit);
-	if (display_unit != NULL)
+	if (display_unit != NULL) {
 		is->unit_display_override = (struct unit_display_override) {
 			display_unit->Body.ID,
 			display_unit->Body.X,
 			display_unit->Body.Y
 		};
+	}
 }
 
 void __fastcall
@@ -26203,6 +26335,25 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 	if (is->combat_unit_display_override_active &&
 	    unit_has_valid_type_id (this->defender))
 		set_combat_unit_display_override (this->defender);
+
+	// If the attacker is an army, point its top defender at the counter-selected
+	// attacking member before any animation runs, so the unit shown on the map is
+	// the one that will actually lunge out. Otherwise the army keeps displaying its
+	// idle top defender and visibly swaps to a different member when the attack
+	// animation starts.
+	if (is->current_config.enable_unit_counters &&
+	    unit_has_valid_type_id (this->attacker) &&
+	    Unit_has_ability (this->attacker, __, UTA_Army) &&
+	    unit_has_valid_type_id (this->defender)) {
+		Unit * atk_member = counter_attacker_for_defender_selection (
+			this->attacker, this->defender);
+		if ((atk_member != NULL) &&
+		    unit_has_valid_type_id (atk_member) &&
+		    (atk_member->Body.Container_Unit == this->attacker->Body.ID)) {
+			this->attacker->Body.army_top_defender_id = atk_member->Body.ID;
+			face_unit_toward (atk_member, this->defender);
+		}
+	}
 
 	// Apply override of retreat eligibility
 	// Must use this->defender instead of the defender argument since the argument is often NULL, in which case Fighter_begin finds a defender on
@@ -29189,6 +29340,7 @@ find_counter_base_visible_defender_against (Main_Screen_Form * form,
 	    ! result->vtable->is_enemy_of_civ (result, __, attacker->Body.CivID, 0))
 		return NULL;
 
+	resolve_army_defending_member (result, attacker, true);
 	return result;
 }
 
@@ -29240,9 +29392,8 @@ patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int 
 			if (unit != NULL) {
 				if ((unit != excluded) &&
 				    (unit->Body.X == tile_x) &&
-				    (unit->Body.Y == tile_y)) {
+				    (unit->Body.Y == tile_y))
 					return unit;
-				}
 			}
 		}
 	}
@@ -29275,8 +29426,38 @@ patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int 
 	    (this->Mode_Action != UMA_Auto_Precision_Strike)) {
 		Unit * combat_best = find_counter_base_visible_defender_against (
 			this, this->Current_Unit, tile_x, tile_y, excluded);
-		if (combat_best != NULL)
+		if (combat_best != NULL) {
+			// Attacker aiming preview: if this tile is the enemy currently under
+			// the mouse cursor and is attack-adjacent to the player's active
+			// army, point the army's top defender at the member that would
+			// actually attack it. Otherwise a never-fought army keeps showing its
+			// formation-time top defender while aiming and only swaps to the real
+			// attacker once the attack begins. (Unit_has_ability is checked first
+			// so the mouse->tile lookup only runs for armies, which is rare.)
+			if (Unit_has_ability (this->Current_Unit, __, UTA_Army) &&
+			    tiles_adjacent_for_attack (
+				    tile_x - this->Current_Unit->Body.X,
+				    tile_y - this->Current_Unit->Body.Y)) {
+				int mx = -1, my = -1;
+				if ((Main_Screen_Form_get_tile_coords_under_mouse (
+					     this, __, this->mouse_x, this->mouse_y,
+					     &mx, &my) == 0) &&
+				    (mx == tile_x) && (my == tile_y)) {
+					Unit * atk_member =
+						counter_attacker_for_defender_selection (
+							this->Current_Unit, combat_best);
+					if ((atk_member != NULL) &&
+					    unit_has_valid_type_id (atk_member) &&
+					    (atk_member->Body.Container_Unit ==
+					     this->Current_Unit->Body.ID)) {
+						this->Current_Unit->Body.army_top_defender_id =
+							atk_member->Body.ID;
+						face_unit_toward (atk_member, combat_best);
+					}
+				}
+			}
 			return combat_best;
+		}
 	}
 
 	return Main_Screen_Form_find_visible_unit (
@@ -30010,6 +30191,7 @@ select_counter_best_attacking_army_member (Unit * army, Unit * defender,
 		army, __, army_hp_remaining, true);
 
 	is->counter_army_attacker_selection_ctx = saved_ctx;
+
 	return selected;
 }
 
@@ -30097,7 +30279,9 @@ patch_Fighter_prefer_first_defender_1 (Fighter * this, int edx, Unit * first, in
 		}
 	}
 
-	return Fighter_prefer_first_defender_1 (this, __, first, first_strength, second, second_strength, param_5);
+	return Fighter_prefer_first_defender_1 (
+		this, __, first, first_strength, second, second_strength,
+		param_5);
 }
 
 Unit *
@@ -30115,7 +30299,6 @@ find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x,
 		return NULL;
 
 	int attacker_civ = attacker->Body.CivID;
-
 	Unit * saved_fighter_attacker = p_bic_data->fighter.attacker;
 	Unit * saved_fighter_defender = p_bic_data->fighter.defender;
 	int    saved_fighter_atk_x    = p_bic_data->fighter.attacker_location_x;
@@ -30150,6 +30333,7 @@ find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x,
 		p_bic_data->fighter.defender_location_x = tile_x;
 		p_bic_data->fighter.defender_location_y = tile_y;
 
+		int base_defense_strength = Unit_get_defense_strength (unit);
 		if (! Fighter_unit_can_defend (&p_bic_data->fighter, __, unit, tile_x, tile_y))
 			continue;
 
@@ -30169,12 +30353,16 @@ find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x,
 				*out_any_counter_effect = true;
 		}
 
-		if ((best == NULL) ||
-		    patch_Fighter_prefer_first_defender_1 (
-			&p_bic_data->fighter, __,
-			unit, Unit_get_defense_strength (unit),
-			best, Unit_get_defense_strength (best),
-			true))
+		int best_defense_strength =
+			(best != NULL) ? Unit_get_defense_strength (best) : -1;
+		bool prefer_unit =
+			(best == NULL) ||
+			patch_Fighter_prefer_first_defender_1 (
+				&p_bic_data->fighter, __,
+				unit, base_defense_strength,
+				best, best_defense_strength,
+				true);
+		if (prefer_unit)
 			best = unit;
 	}
 
@@ -39338,20 +39526,24 @@ patch_Unit_select_army_member_for_combat (Unit * this, int edx, int param_1, cha
 	// Defensive selection stays entirely in the base function below. Its calls
 	// to prefer_first_defender already receive counter-adjusted comparisons and
 	// the base function preserves the army's HP-band rotation.
+	Unit * result = NULL;
 	if ((param_2 != 0) &&
 	    is->current_config.enable_unit_counters &&
 	    Unit_has_ability (this, __, UTA_Army) &&
 	    unit_has_valid_type_id (p_bic_data->fighter.defender) &&
 	    (p_bic_data->fighter.defender->Body.CivID != this->Body.CivID) &&
 	    p_bic_data->fighter.defender->vtable->is_enemy_of_civ (
-		p_bic_data->fighter.defender, __, this->Body.CivID, 0)) {
+		    p_bic_data->fighter.defender, __, this->Body.CivID, 0)) {
 		Unit * best_attacker = select_counter_best_attacking_army_member (
 			this, p_bic_data->fighter.defender, param_1);
 		if (best_attacker != NULL)
-			return best_attacker;
+			result = best_attacker;
 	}
 
-	return Unit_select_army_member_for_combat (this, __, param_1, param_2);
+	if (result == NULL)
+		result = Unit_select_army_member_for_combat (this, __, param_1, param_2);
+
+	return result;
 }
 
 int __fastcall
