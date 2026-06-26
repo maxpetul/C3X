@@ -252,6 +252,7 @@ int count_neighborhoods_in_city_radius (City * city);
 int count_utilized_neighborhoods_in_city_radius (City * city);
 char * copy_trimmed_string_or_null (struct string_slice const * slice, int remove_quotes);
 bool city_has_resource_r (City * city, int resource_id, int max_generated_resource_id);
+int calc_max_visibility_range ();
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -1511,6 +1512,66 @@ read_unit_limit_groups (struct string_slice const * s,
 // END ToC-26
 
 enum recognizable_parse_result
+parse_unit_visibility_rule (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_unit_visibility_rule)
+{
+	char * cur = *p_cursor;
+	struct unit_visibility_rule * out = out_parsed_unit_visibility_rule;
+
+	struct string_slice name;
+	struct unit_visibility_rule rule = {0};
+	rule.base_visibility = 1;
+	rule.terrain_bonus_multiplier = 1;
+	rule.unit_id = -1;
+	rule.unit_class = -1;
+
+	if (skip_white_space (&cur) &&
+	    parse_string (&cur, &name) &&
+	    skip_punctuation (&cur, ':')) {
+
+		do {
+			int num;
+			if (! parse_int (&cur, &num))
+				return RPR_PARSE_ERROR;
+
+			struct string_slice ss;
+			if (parse_string (&cur, &ss)) {
+				if (slice_matches_str (&ss, "times_bonus"))
+					rule.terrain_bonus_multiplier = num;
+				else if (slice_matches_str (&ss, "when_fortified"))
+					rule.fortification_bonus = num;
+				else if (slice_matches_str (&ss, "when_fortified_same_continent")) {
+					rule.fortification_bonus = num;
+					rule.fortification_bonus_continent_lock = true;
+				} else
+					return RPR_PARSE_ERROR;
+			} else
+				rule.base_visibility = num;
+
+		} while (skip_punctuation (&cur, '+'));
+
+		int id;
+		if (find_unit_type_id_by_name (&name, 0, &id)) {
+			rule.unit_id = id;
+		} else if (slice_matches_str (&name, "UTC_Land")) {
+			rule.unit_class = UTC_Land;
+		} else if (slice_matches_str (&name, "UTC_Sea")) {
+			rule.unit_class = UTC_Sea;
+		} else if (slice_matches_str (&name, "UTC_Air")) {
+			rule.unit_class = UTC_Air;
+		} else {
+			add_unrecognized_line (p_unrecognized_lines, &name);
+			*p_cursor = cur;
+			return RPR_UNRECOGNIZED;
+		}
+		*out = rule;
+		*p_cursor = cur;
+		return RPR_OK;
+
+	} else
+		return RPR_PARSE_ERROR;
+}
+
+enum recognizable_parse_result
 parse_work_area_improvement (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_work_area_improvement)
 {
 	char * cur = *p_cursor;
@@ -1611,6 +1672,49 @@ read_recognizables (struct string_slice const * s,
 	free (new_items);
 	free (extracted_slice);
 	return success ? -1 : cursor - extracted_slice;
+}
+
+int
+read_fixed_int_array (struct string_slice const * s, int * array, int count)
+{
+	char * cur = s->str;
+	int ival = 0;
+	if(!skip_white_space (&cur))
+		return 0;
+	for(int i=0; i<count; i++) {
+		if (parse_int (&cur, &ival) && (i == count-1 || (skip_punctuation (&cur, ',') && skip_white_space (&cur))))
+			array[i] = ival;
+		else
+			return 0;
+	}
+	struct string_slice sink;
+	if(!skip_white_space (&cur) || cur != s->str + s->len)
+		return 0;
+	return 1;
+}
+
+int
+read_fixed_bool_array (struct string_slice const * s, bool * array, int count)
+{
+	char * cur = s->str;
+	int ival = 0;
+	if(!skip_white_space (&cur))
+		return 0;
+	for(int i=0; i<count; i++) {
+		if (parse_int (&cur, &ival) && (i == count-1 || (skip_punctuation (&cur, ',') && skip_white_space (&cur))))
+			if (ival == 0)
+				array[i] = false;
+			else if (ival == 1)
+				array[i] = true;
+			else
+				return 0;
+		else
+			return 0;
+	}
+	struct string_slice sink;
+	if(!skip_white_space (&cur) || cur != s->str + s->len)
+		return 0;
+	return 1;
 }
 
 // Reads a "sidtable" from text. A sidtable maps strings to IDs of scenario objects. The string keys are also expected to be a type of scenario
@@ -2820,10 +2924,34 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 
+ 				} else if (slice_matches_str (&p.key, "terrain_visibility_see_height")) {
+					if (read_fixed_int_array(&value, cfg->terrain_visibility_see_height, 14) == 0) {
+						handle_config_error (&p, CPE_GENERIC);
+					}
+				} else if (slice_matches_str (&p.key, "terrain_visibility_seen_height")) {
+					if (read_fixed_int_array(&value, cfg->terrain_visibility_seen_height, 14) == 0) {
+						handle_config_error (&p, CPE_GENERIC);
+					}
+				} else if (slice_matches_str (&p.key, "terrain_visibility_bonus")) {
+					if (read_fixed_int_array(&value, cfg->terrain_visibility_bonus, 14) == 0) {
+						handle_config_error (&p, CPE_GENERIC);
+					}
+				} else if (slice_matches_str (&p.key, "terrain_visibility_flat_bonus")) {
+					if (read_fixed_bool_array(&value, cfg->terrain_visibility_flat_bonus, 14) == 0) {
+						handle_config_error (&p, CPE_GENERIC);
+					}
+				} else if (slice_matches_str (&p.key, "unit_visibility_rules")) {
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct unit_visibility_rule),
+											 parse_unit_visibility_rule,
+											 (void **)&cfg->unit_visibility_rule_list,
+											 &cfg->c_unit_visibility_rules)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
 				}
-
 
 			} else { // Failed to parse value
 				handle_config_error (&p, CPE_BAD_VALUE);
@@ -17269,6 +17397,51 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	// replacing 0x75 (= jnz) with 0xEB (= uncond. jump)
 	WITH_MEM_PROTECTION (ADDR_AIR_UNIT_CHECK_TO_DRAW_PEDIA_STATS, 1, PAGE_EXECUTE_READWRITE)
 		*ADDR_AIR_UNIT_CHECK_TO_DRAW_PEDIA_STATS = is->current_config.expand_civilopedia_unit_stats ? 0xEB : 0x75;
+
+	int max_sight_range = calc_max_visibility_range();
+	int max_tile_iter = (2*max_sight_range+1)*(2*max_sight_range+1);
+	int max_tile_iter_2 = (2*max_sight_range-1)*(2*max_sight_range-1);
+	// Modify iterator limits for updating unit visibility
+	WITH_MEM_PROTECTION (ADDR_UNIT_VISIBILITY_RADIUS_1, 1, PAGE_EXECUTE_READWRITE) {
+		*ADDR_UNIT_VISIBILITY_RADIUS_1 = (byte)(max_tile_iter);
+	}
+	WITH_MEM_PROTECTION (ADDR_UNIT_VISIBILITY_RADIUS_2, 1, PAGE_EXECUTE_READWRITE) {
+		*ADDR_UNIT_VISIBILITY_RADIUS_2 = (byte)(max_tile_iter);
+	}
+	WITH_MEM_PROTECTION (ADDR_UNIT_VISIBILITY_RADIUS_3, 1, PAGE_EXECUTE_READWRITE) {
+		*ADDR_UNIT_VISIBILITY_RADIUS_3 = (byte)(max_tile_iter);
+	}
+	WITH_MEM_PROTECTION (ADDR_UNIT_TO_UNIT_VISIBILITY_RADIUS, 1, PAGE_EXECUTE_READWRITE) {
+		*ADDR_UNIT_TO_UNIT_VISIBILITY_RADIUS = (byte)(max_tile_iter);
+	}
+	WITH_MEM_PROTECTION (ADDR_CIV_UNIT_VISIBILITY_RADIUS, 1, PAGE_EXECUTE_READWRITE) {
+		*ADDR_CIV_UNIT_VISIBILITY_RADIUS = (byte)(max_tile_iter_2);
+	}
+
+	WITH_MEM_PROTECTION (ADDR_UTC_SEA_CMP_1, 8, PAGE_EXECUTE_READWRITE) {
+		byte normal[8] = {0x83, 0xBC, 0xCA, 0x9C, 0x00, 0x00, 0x00, 0x01}; // cmp
+		byte bypass[8] = {0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00, 0x39, 0xD2}; // nop, cmp
+		for (int n = 0; n < 8; n++)
+			((byte *)ADDR_UTC_SEA_CMP_1)[n] = cfg->enable_alternate_view_distance_logic ? bypass[n] : normal[n];
+	}
+	WITH_MEM_PROTECTION (ADDR_UTC_SEA_CMP_2, 8, PAGE_EXECUTE_READWRITE) {
+		byte normal[8] = {0x83, 0xBC, 0xCA, 0x9C, 0x00, 0x00, 0x00, 0x01}; // cmp
+		byte bypass[8] = {0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00, 0x39, 0xD2}; // nop, cmp
+		for (int n = 0; n < 8; n++)
+			((byte *)ADDR_UTC_SEA_CMP_2)[n] = cfg->enable_alternate_view_distance_logic ? bypass[n] : normal[n];
+	}
+	WITH_MEM_PROTECTION (ADDR_UTC_SEA_CMP_3, 8, PAGE_EXECUTE_READWRITE) {
+		byte normal[8] = {0x83, 0xBC, 0xCA, 0x9C, 0x00, 0x00, 0x00, 0x01}; // cmp
+		byte bypass[8] = {0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00, 0x39, 0xD2}; // nop, cmp
+		for (int n = 0; n < 8; n++)
+			((byte *)ADDR_UTC_SEA_CMP_3)[n] = cfg->enable_alternate_view_distance_logic ? bypass[n] : normal[n];
+	}
+	WITH_MEM_PROTECTION (ADDR_UTC_SEA_CMP_4, 8, PAGE_EXECUTE_READWRITE) {
+		byte normal[8] = {0x83, 0xBC, 0x08, 0x9C, 0x00, 0x00, 0x00, 0x01}; // cmp
+		byte bypass[8] = {0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00, 0x39, 0xD2}; // nop, cmp
+		for (int n = 0; n < 8; n++)
+			((byte *)ADDR_UTC_SEA_CMP_4)[n] = cfg->enable_alternate_view_distance_logic ? bypass[n] : normal[n];
+	}
 }
 
 void
@@ -18520,6 +18693,10 @@ patch_init_floating_point ()
 		{"allow_corruption_in_capital"                           , false, offsetof (struct c3x_config, allow_corruption_in_capital)},
 		{"allow_sale_of_small_wonders"                           , false, offsetof (struct c3x_config, allow_sale_of_small_wonders)},
 		{"initialize_preplaced_scenario_leaders_as_mgls"         , false, offsetof (struct c3x_config, initialize_preplaced_scenario_leaders_as_mgls)},
+		{"enable_alternate_view_distance_logic"                  , false, offsetof (struct c3x_config, enable_alternate_view_distance_logic)},
+		{"terrain_visibility_euclidean"                          , false, offsetof (struct c3x_config, terrain_visibility_euclidean)},
+		{"terrain_visibility_bonus_can_stack"                    , false, offsetof (struct c3x_config, terrain_visibility_bonus_can_stack)},
+		{"terrain_visibility_flat_bonus_can_stack"               , false, offsetof (struct c3x_config, terrain_visibility_flat_bonus_can_stack)},
 	};
 
 	struct integer_config_option {
@@ -18575,6 +18752,8 @@ patch_init_floating_point ()
 		{"ai_bridge_eval_lake_tile_threshold"                ,     6,  offsetof (struct c3x_config, ai_bridge_eval_lake_tile_threshold)},
 		{"ai_city_district_max_build_wait_turns"             ,    20,  offsetof (struct c3x_config, ai_city_district_max_build_wait_turns)},
 		{"per_extraterritorial_colony_relation_penalty"      ,     0,  offsetof (struct c3x_config, per_extraterritorial_colony_relation_penalty)},
+		{"base_visibility_range"                             ,     1,  offsetof (struct c3x_config, base_visibility_range)},
+		{"terrain_visibility_flat_bonus_limit"               ,     1,  offsetof (struct c3x_config, terrain_visibility_flat_bonus_limit)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -22627,6 +22806,299 @@ patch_Unit_can_load (Unit * this, int edx, Unit * passenger)
 
 	is->can_load_transport = is->can_load_passenger = NULL;
 	return tr;
+}
+
+bool check_tile_heights_less_than(int tx1, int ty1, int tx2, int ty2, int height)
+{
+	Tile * inter_tile = tile_at(tx1, ty1);
+	enum SquareTypes inter_type = inter_tile->vtable->m50_Get_Square_BaseType (inter_tile);
+	if (inter_type < 0 || inter_type >= 14)
+		return false;
+	int inter_height = is->current_config.terrain_visibility_seen_height[inter_type];
+	if (inter_height < height) {
+		return true;
+	}
+	if (tx1 != tx2 || ty1 != ty2) {
+		inter_tile = tile_at(tx2, ty2);
+		inter_type = inter_tile->vtable->m50_Get_Square_BaseType (inter_tile);
+		if (inter_type < 0 || inter_type >= 14)
+			return false;
+
+		inter_height = is->current_config.terrain_visibility_seen_height[inter_type];
+		if (inter_height < height) {
+			return true;
+		}
+	}
+	return false;
+}
+void add_tile_flat_bonus(int * flat_bonus, int tx, int dx, int tx1, int ty1, int tx2, int ty2)
+{
+	if (*flat_bonus >= is->current_config.terrain_visibility_flat_bonus_limit) {
+		return;
+	}
+	int total_diff = int_abs(dx) - int_abs(tx);
+	if (total_diff > is->current_config.terrain_visibility_flat_bonus_limit) {
+		return;
+	}
+	Tile * inter_tile = tile_at(tx1, ty1);
+	enum SquareTypes inter_type = inter_tile->vtable->m50_Get_Square_BaseType (inter_tile);
+	if (inter_type < 0 || inter_type >= 14)
+		return;
+	if (is->current_config.terrain_visibility_flat_bonus[inter_type]) {
+		*flat_bonus += 1;
+		return;
+	}
+	if (tx1 != tx2 || ty1 != ty2) {
+		inter_tile = tile_at(tx2, ty2);
+		inter_type = inter_tile->vtable->m50_Get_Square_BaseType (inter_tile);
+		if (inter_type < 0 || inter_type >= 14)
+			return;
+		if (is->current_config.terrain_visibility_flat_bonus[inter_type]) {
+			*flat_bonus += 1;
+			return;
+		}
+	}
+	return;
+}
+
+void map_abstract_coords_to_tile_coords(int * dx, int * dy, int reference_x, int reference_y)
+{
+	int tx = *dx-*dy + reference_x;
+	int ty = *dy+*dx + reference_y;
+	wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
+	*dx = tx;
+	*dy = ty;
+}
+void map_tile_coords_to_abstract_coords(int * dx, int * dy, int reference_x, int reference_y)
+{
+	int diffx = *dx-reference_x;
+	int diffy = *dy-reference_y;
+	Map * map = &p_bic_data->Map;
+	if (map->Flags & 1) {
+		if (diffx < -(map->Width/2)) {
+			diffx += map->Width;
+		} else if (diffx > (map->Width/2)) {
+			diffx -= map->Width;
+		}
+	}
+	if (map->Flags & 2) {
+		if (diffy < -(map->Height/2)) {
+			diffy += map->Height;
+		} else if (diffy > (map->Height/2)) {
+			diffy -= map->Height;
+		}
+	}
+	int ax = (diffx + diffy)/2;
+	int ay = (diffy - diffx)/2;
+	*dx = ax;
+	*dy = ay;
+}
+
+int calc_max_visibility_range ()
+{
+	if (!is->current_config.enable_alternate_view_distance_logic)
+		return 3;
+	//Technically this calculates vanilla at 4 rather than 3 as expected in the binary.
+	//This is because a boat on a mountain would theoretically achieve this.
+	int max_bonus = 0;
+	for (int i=0; i<14; i++) {
+		int bonus = is->current_config.terrain_visibility_bonus[i];
+		if (bonus > max_bonus) max_bonus = bonus;
+	}
+	if (is->current_config.terrain_visibility_bonus_can_stack)
+		max_bonus *= 2;
+
+	int max = is->current_config.base_visibility_range + max_bonus;
+	for (int i=0; i<is->current_config.c_unit_visibility_rules; i++) {
+		struct unit_visibility_rule rule = is->current_config.unit_visibility_rule_list[i];
+		int unitsight = rule.base_visibility + max_bonus * rule.terrain_bonus_multiplier + rule.fortification_bonus;
+		
+		if (is->current_config.terrain_visibility_flat_bonus_can_stack) {
+			unitsight += is->current_config.terrain_visibility_flat_bonus_limit;
+		} else {
+			int altmax = rule.base_visibility + is->current_config.terrain_visibility_flat_bonus_limit + rule.fortification_bonus;
+			if (altmax > unitsight)
+				unitsight = altmax;
+		}
+		if (unitsight > max) max = unitsight;
+	}
+
+	if (max < 0) max = 0;
+	if (max > 7) max = 7;
+	//Limited to 7. 7*2+1 = 15; 15*15 = 225; largest value in one byte.
+	//Maybe worth checkin in future if there is more than 1 byte space - some instructions can take it.
+	return max;
+}
+
+bool visibility_test_range(int dist, int sight)
+{
+	if (is->current_config.terrain_visibility_euclidean) {
+		if (dist > sight * sight * 2 + 3)
+			return false;
+	} else {
+		if (dist > sight)
+			return false;
+	}
+	return true;
+}
+bool __fastcall
+patch_Unit_can_see_tile (Unit * this, int edx, int x, int y)
+{
+	if (!is->current_config.enable_alternate_view_distance_logic)
+		return Unit_can_see_tile(this, edx, x, y);
+	int dist = Map_chebyshev_distance(&p_bic_data->Map, edx, this->Body.X, this->Body.Y, x, y);
+	if (dist >= 8) return false;
+	if (dist == 0) return true;
+
+	if (is->current_config.terrain_visibility_euclidean) {
+		int udx = Map_get_x_dist (&p_bic_data->Map, __, x, this->Body.X);
+		int udy = Map_get_y_dist (&p_bic_data->Map, __, y, this->Body.Y);
+		dist = udx * udx + udy * udy;
+	}
+
+	struct unit_visibility_rule current_rules;
+	current_rules.base_visibility = is->current_config.base_visibility_range;
+	current_rules.terrain_bonus_multiplier = 1;
+	current_rules.fortification_bonus = 0;
+	current_rules.fortification_bonus_continent_lock = false;
+
+	for (int i=0; i<is->current_config.c_unit_visibility_rules; i++) {
+		struct unit_visibility_rule rule = is->current_config.unit_visibility_rule_list[i];
+		if (rule.unit_id >= 0) {
+			if (rule.unit_id == this->Body.UnitTypeID) {
+				current_rules = rule;
+				break;
+			}
+		} else {
+			UnitType const * unit_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+			if (rule.unit_class == unit_type->Unit_Class) {
+				current_rules = rule;
+				break;
+			}
+		}
+	}
+
+	Tile * local_tile = tile_at(this->Body.X, this->Body.Y);
+	Tile * seen_tile = tile_at(x, y);
+
+	int fortification_bonus;
+	bool fortified;
+	if (this->Body.UnitState == UnitState_Fortifying || this->Body.UnitState == UnitState_Intercept) {
+		fortification_bonus = current_rules.fortification_bonus;
+		fortified = true;
+	} else {
+		fortification_bonus = 0;
+		fortified = false;
+	}
+	enum SquareTypes local_type = local_tile->vtable->m50_Get_Square_BaseType (local_tile);
+	if (local_type < 0 || local_type >= 14)
+		return false;
+	enum SquareTypes seen_type = seen_tile->vtable->m50_Get_Square_BaseType (seen_tile);
+	if (seen_type < 0 || seen_type >= 14)
+		return false;
+	int height_local = is->current_config.terrain_visibility_see_height[local_type];
+	int height_seen = is->current_config.terrain_visibility_see_height[seen_type];
+	int height_for_occlusion = height_local;
+	if (height_local >= height_seen) {
+		height_for_occlusion = height_local;
+	} else {
+		height_for_occlusion = height_seen;
+	}
+
+	int bonus_local = is->current_config.terrain_visibility_bonus[local_type];
+	int bonus_seen = is->current_config.terrain_visibility_bonus[seen_type];
+	int bonus_range;
+	if (is->current_config.terrain_visibility_bonus_can_stack) {
+		bonus_range = (bonus_seen+bonus_local) * current_rules.terrain_bonus_multiplier;
+	} else if (bonus_local >= bonus_seen) {
+		bonus_range = bonus_local * current_rules.terrain_bonus_multiplier;
+	} else {
+		bonus_range = bonus_seen * current_rules.terrain_bonus_multiplier;
+	}
+	int sightDistance = current_rules.base_visibility + bonus_range + fortification_bonus;
+	int sightMaxPossible = sightDistance + is->current_config.terrain_visibility_flat_bonus_limit;
+	if (!visibility_test_range(dist, sightMaxPossible))
+		return false;
+
+	if (Unit_has_ability(this, __, UTA_Radar)) {
+		if (visibility_test_range(dist, sightDistance))
+			return true;
+	}
+
+	if (fortified && current_rules.fortification_bonus_continent_lock) {
+		if (local_tile->vtable->m46_Get_ContinentID(local_tile) == seen_tile->vtable->m46_Get_ContinentID(seen_tile)) {
+			if (visibility_test_range(dist, sightDistance))
+				return true;
+		}
+		//if continental lock is active, fort bonus doesn't apply to diff-continent tiles
+		sightDistance -= current_rules.fortification_bonus;
+	}
+
+	int flat_bonus = 0;
+
+	int dx = x;
+	int dy = y;
+	map_tile_coords_to_abstract_coords(&dx, &dy, this->Body.X, this->Body.Y);
+	int absdx = int_abs(dx);
+	int absdy = int_abs(dy);
+	if (absdx >= absdy && dx != 0) {
+		int tx = 0;
+		while (tx != dx) {
+			if (tx < dx)	tx++; else tx--;
+			if (tx == dx) break;
+			int ty1;
+			int ty2;
+			if (dx * dy >= 0) {
+				ty1 = (2 * tx * dy + absdx)/(2 * dx);
+				ty2 = (2 * tx * dy + absdx - 1)/(2 * dx);
+			} else {
+				ty1 = -(-2 * tx * dy + absdx)/(2 * dx);
+				ty2 = -(-2 * tx * dy + absdx - 1)/(2 * dx);
+			}
+			int tx1 = tx;
+			int tx2 = tx;
+			map_abstract_coords_to_tile_coords(&tx1, &ty1, this->Body.X, this->Body.Y);
+			map_abstract_coords_to_tile_coords(&tx2, &ty2, this->Body.X, this->Body.Y);
+			if (!check_tile_heights_less_than(tx1, ty1, tx2, ty2, height_for_occlusion)) {
+				return false;
+			}
+			add_tile_flat_bonus(&flat_bonus, tx, dx, tx1, ty1, tx2, ty2);
+		}
+	} else if (absdy >= absdx && dy != 0) {
+		int ty = 0;
+		while (ty != dy) {
+			if (ty < dy)	ty++; else ty--;
+			if (ty == dy) break;
+			int tx1;
+			int tx2;
+			if (dx * dy >= 0) {
+				tx1 = (2 * ty * dx + absdy)/(2 * dy);
+				tx2 = (2 * ty * dx + absdy - 1)/(2 * dy);
+			} else {
+				tx1 = -(-2 * ty * dx + absdy)/(2 * dy);
+				tx2 = -(-2 * ty * dx + absdy - 1)/(2 * dy);
+			}
+			int ty1 = ty;
+			int ty2 = ty;
+			map_abstract_coords_to_tile_coords(&tx1, &ty1, this->Body.X, this->Body.Y);
+			map_abstract_coords_to_tile_coords(&tx2, &ty2, this->Body.X, this->Body.Y);
+			if (!check_tile_heights_less_than(tx1, ty1, tx2, ty2, height_for_occlusion)) {
+				return false;
+			}
+			add_tile_flat_bonus(&flat_bonus, ty, dy, tx1, ty1, tx2, ty2);
+			//we could exit check each tile but it's a bit much work
+		}
+	}
+	if (is->current_config.terrain_visibility_flat_bonus_can_stack) {
+		sightDistance += flat_bonus;
+	} else {
+		int flatsight = current_rules.base_visibility + fortification_bonus + flat_bonus;
+		if (flatsight > sightDistance)
+			sightDistance = flatsight;
+	}
+	if (!visibility_test_range(dist, sightDistance))
+		return false;
+	return true;
 }
 
 void __fastcall
