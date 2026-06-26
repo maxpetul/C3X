@@ -20,8 +20,8 @@ typedef unsigned char byte;
 #define USED_SPECIAL_DISTRICT_TYPES 11
 #define MAX_DYNAMIC_DISTRICT_TYPES 22
 #define COUNT_DISTRICT_TYPES (COUNT_SPECIAL_DISTRICT_TYPES + MAX_DYNAMIC_DISTRICT_TYPES)
-#define MAX_WONDER_DISTRICT_TYPES 32
-#define MAX_NATURAL_WONDER_DISTRICT_TYPES 32
+#define MAX_WONDER_DISTRICT_TYPES 64
+#define MAX_NATURAL_WONDER_DISTRICT_TYPES 64
 #define MAX_DISTRICT_VARIANT_COUNT 5
 #define MAX_DISTRICT_ERA_COUNT 4
 #define MAX_DISTRICT_COLUMN_COUNT 10
@@ -2081,8 +2081,6 @@ struct injected_state {
 		SpriteList LM_Terrain_Images[9];
 		Sprite City_Images[80];
 		Sprite Destroyed_City_Images[3];
-		Sprite Resources[36];
-		Sprite ResourcesShadows[36];
 		Sprite Terrain_Buldings_Barbarian_Camp;
 		Sprite Terrain_Buldings_Mines;
 		Sprite Victory_Image;
@@ -2148,6 +2146,8 @@ struct injected_state {
 		Sprite Abandoned_Maritime_District_Image;
 		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
 		struct natural_wonder_district_image_set Natural_Wonder_Images[MAX_NATURAL_WONDER_DISTRICT_TYPES];
+		Sprite * Resources;
+		int ResourceCount;
 	} * cycle_imgs;
 
 	// Districts
