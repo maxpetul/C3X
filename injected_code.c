@@ -25187,7 +25187,8 @@ draw_distribution_hub_menu_icons (PCX_Image * canvas, int image_x, int row_cente
 {
 	if ((canvas == NULL) ||
 	    (canvas->JGL.Image == NULL) ||
-	    ! is->distribution_hub_menu_active)
+	    ! is->distribution_hub_menu_active ||
+	    ! distribution_hub_city_select_ui_enabled ())
 		return;
 
 	struct distribution_hub_record * rec = get_active_distribution_hub_menu_record ();
@@ -25265,7 +25266,9 @@ int __fastcall
 patch_Sprite_draw (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
 	if (this == &is->distribution_hub_menu_icon_sentinel) {
-		draw_distribution_hub_menu_icons (canvas, pixel_x, pixel_y);
+		if (is->distribution_hub_menu_active &&
+		    distribution_hub_city_select_ui_enabled ())
+			draw_distribution_hub_menu_icons (canvas, pixel_x, pixel_y);
 		return 0;
 	}
 
@@ -30994,6 +30997,16 @@ patch_Leader_do_capture_city (Leader * this, int edx, City * city, bool involunt
 	}
 
 	on_gain_city (this, city, converted ? CGR_CONVERTED : (involuntary ? CGR_CONQUERED : CGR_TRADED));
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_distribution_hub_districts) {
+		int old_civ_id = previous_owner->ID;
+		int new_civ_id = city->Body.CivID;
+		is->distribution_hub_totals_dirty = true;
+		recompute_distribution_hub_totals ();
+		recompute_distribution_hub_cities_for_civ (old_civ_id);
+		if (new_civ_id != old_civ_id)
+			recompute_distribution_hub_cities_for_civ (new_civ_id);
+	}
 	is->currently_capturing_city = NULL;
 	return tr;
 }
@@ -31357,7 +31370,8 @@ patch_Context_Menu_get_selected_item_on_unit_rcm (Context_Menu * this)
 	// click unit items which have been disabled by the mod so they can interrupt the queued actions of units that have no moves left.
 	int index = this->Selected_Item;
 	if (index >= 0) {
-		if (is->distribution_hub_menu_active) {
+		if (is->distribution_hub_menu_active &&
+		    distribution_hub_city_select_ui_enabled ()) {
 			Context_Menu_Item * item = &this->Items[index];
 			if (handle_distribution_hub_menu_selection (item->Menu_Item_ID))
 				return -1;
@@ -33839,6 +33853,7 @@ patch_Context_Menu_draw_item (Context_Menu * this, int edx, int item_index, int 
 
 	if ((this == NULL) ||
 	    ! is->distribution_hub_menu_active ||
+	    ! distribution_hub_city_select_ui_enabled () ||
 	    (item_index < 0) ||
 	    (item_index >= this->Item_Count))
 		return;
