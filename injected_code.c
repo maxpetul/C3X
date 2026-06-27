@@ -6932,6 +6932,125 @@ recompute_distribution_hub_cities_for_civ (int civ_id)
 	}
 }
 
+int
+ai_score_distribution_hub_target_city (City * city)
+{
+	if (city == NULL)
+		return 0;
+
+	int score = 0;
+
+	int net_food = city->Body.FoodIncome;
+	if (net_food <= 0)
+		score += 1000;
+	else if (net_food <= 2)
+		score += 500;
+
+	int net_shields = city->Body.ProductionIncome + city->Body.ProductionLoss;
+	if (net_shields < 0)
+		net_shields = 0;
+	if (net_shields <= 3)
+		score += 700;
+	else if (net_shields <= 6)
+		score += 350;
+
+	return score;
+}
+
+bool
+ai_update_distribution_hub_city_selection (struct distribution_hub_record * rec)
+{
+	if ((rec == NULL) ||
+	    ! is->current_config.enable_districts ||
+	    ! is->current_config.enable_distribution_hub_districts ||
+	    (is->current_config.distribution_hub_yield_division_mode != DHYDM_SCALE_BY_CITY_COUNT))
+		return false;
+
+	int civ_id = rec->civ_id;
+	if ((civ_id < 0) || (civ_id >= 32))
+		return false;
+	if ((1u << civ_id) & *p_human_player_bits)
+		return false;
+
+	struct table selected = {0};
+	int accessible_count = 0;
+	int selected_count = 0;
+
+	FOR_CITIES_OF (coi, civ_id) {
+		City * city = coi.city;
+		if ((city == NULL) || ! distribution_hub_accessible_to_city (rec, city))
+			continue;
+
+		accessible_count++;
+		if (ai_score_distribution_hub_target_city (city) > 0) {
+			itable_insert (&selected, city->Body.ID, 1);
+			selected_count++;
+		}
+	}
+
+	if ((accessible_count <= 1) ||
+	    (selected_count <= 0) ||
+	    (selected_count >= accessible_count)) {
+		table_deinit (&selected);
+		if ((rec->city_selection_mode == DHCSM_ALL_CITIES) && (rec->selected_city_ids.len == 0))
+			return false;
+		rec->city_selection_mode = DHCSM_ALL_CITIES;
+		clear_distribution_hub_city_selection (rec);
+		return true;
+	}
+
+	bool changed = rec->city_selection_mode != DHCSM_SPECIFIC_CITIES;
+	if (rec->selected_city_ids.len != selected.len)
+		changed = true;
+	else {
+		FOR_TABLE_ENTRIES (tei, &selected) {
+			if (! itable_look_up_or (&rec->selected_city_ids, tei.key, 0)) {
+				changed = true;
+				break;
+			}
+		}
+	}
+
+	if (! changed) {
+		table_deinit (&selected);
+		return false;
+	}
+
+	clear_distribution_hub_city_selection (rec);
+	rec->selected_city_ids = selected;
+	rec->city_selection_mode = DHCSM_SPECIFIC_CITIES;
+	return true;
+}
+
+void
+ai_update_distribution_hub_city_selections_for_leader (Leader * leader)
+{
+	if ((leader == NULL) ||
+	    ! is->current_config.enable_districts ||
+	    ! is->current_config.enable_distribution_hub_districts ||
+	    (is->current_config.distribution_hub_yield_division_mode != DHYDM_SCALE_BY_CITY_COUNT))
+		return;
+
+	int civ_id = leader->ID;
+	if ((civ_id < 0) || (civ_id >= 32))
+		return;
+	if ((1u << civ_id) & *p_human_player_bits)
+		return;
+
+	bool changed = false;
+	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
+		struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
+		if ((rec != NULL) && (rec->civ_id == civ_id) && ai_update_distribution_hub_city_selection (rec))
+			changed = true;
+	}
+
+	if (changed) {
+		is->distribution_hub_totals_dirty = true;
+		recompute_distribution_hub_totals ();
+		recompute_distribution_hub_cities_for_civ (civ_id);
+	}
+}
+
 void
 get_distribution_hub_yields_for_city (City * city, int * out_food, int * out_shields)
 {
@@ -13934,7 +14053,7 @@ find_tile_for_neighborhood_district (City * city, int * out_x, int * out_y)
 
 		Tile * tile = tri.tile;
 		bool has_resource = false;
-		if (is->current_config.enable_distribution_hub_districts) {
+		if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
 			int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
 			if (covered > 0)
 				continue;
@@ -14002,7 +14121,7 @@ find_tile_for_port_district (City * city, int * out_x, int * out_y)
 
 		Tile * tile = tri.tile;
 		bool has_resource = false;
-		if (is->current_config.enable_distribution_hub_districts) {
+		if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
 			int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
 			if (covered > 0)
 				continue;
@@ -14594,7 +14713,7 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 
 		Tile * tile = tri.tile;
 		bool has_resource = false;
-		if (is->current_config.enable_distribution_hub_districts) {
+		if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
 			int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
 			if (covered > 0)
 				continue;
@@ -26415,7 +26534,7 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 			grant_nearby_wonders_to_city (city);
 		}
 
-		if (is->current_config.enable_distribution_hub_districts) {
+		if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
 			refresh_distribution_hubs_for_city (city);
 		}
 	}
@@ -26439,8 +26558,7 @@ on_lose_city (Leader * leader, City * city, enum city_loss_reason reason)
 
 		if (is->current_config.enable_wonder_districts)
 			release_wonder_district_reservation (city);
-	} else if (is->current_config.enable_distribution_hub_districts)
-		is->distribution_hub_totals_dirty = true;
+	}
 }
 
 // Returns -1 if the location is unusable, 0-9 if it's usable but doesn't satisfy all criteria, and 10 if it couldn't be better
@@ -28396,6 +28514,7 @@ patch_Leader_do_production_phase (Leader * this)
 		if (is->current_config.enable_distribution_hub_districts) {
 			if (leader_can_build_district (this, DISTRIBUTION_HUB_DISTRICT_ID))
 				ai_update_distribution_hub_goal_for_leader (this);
+			ai_update_distribution_hub_city_selections_for_leader (this);
 		}
 
 		FOR_CITIES_OF (coi, this->ID) {
@@ -35614,7 +35733,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
                 return;
             }
             case DISTRIBUTION_HUB_DISTRICT_ID:
-				if (! is->current_config.enable_distribution_hub_districts)
+				if (! is->current_config.enable_districts || ! is->current_config.enable_distribution_hub_districts)
 					return;
 
                 draw_district_on_map_or_canvas(&sprites[variant][era][buildings], map_renderer, draw_x, draw_y);
@@ -36473,7 +36592,7 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 
 	// Distribution hub contribution is tracked separately for icon rendering.
 	int distribution_hub_shields = 0;
-	if (is->current_config.enable_distribution_hub_districts)
+	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts)
 		get_distribution_hub_yields_for_city (city, NULL, &distribution_hub_shields);
 	if (distribution_hub_shields < 0)
 		distribution_hub_shields = 0;
