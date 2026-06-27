@@ -2403,6 +2403,7 @@ struct district_button_image_set {
 	Sprite distribution_hub_eaten_food_icon;
 	Sprite distribution_hub_shield_icon_small;
 	Sprite distribution_hub_food_icon_small;
+	Sprite distribution_hub_menu_icon_sentinel;
 	int non_district_shield_icons_remaining;
 	int corruption_shield_icons_remaining;
 	int district_shield_icons_remaining;

@@ -245,6 +245,7 @@ bool tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile
 void __fastcall patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups);
 int get_visible_non_subsumed_tile_resource (Tile * tile, struct district_instance * inst, int civ_id);
 void recompute_distribution_hub_totals ();
+void init_distribution_hub_icons ();
 void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y);
 void wrap_tile_coords (Map * map, int * x, int * y);
 int count_neighborhoods_in_city_radius (City * city);
@@ -7343,6 +7344,11 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec)
 		rec->food_yield   = food_sum / food_div;
 		rec->shield_yield = shield_sum / shield_div;
 	}
+
+	if ((food_sum > 0) && (rec->food_yield <= 0))
+		rec->food_yield = 1;
+	if ((shield_sum > 0) && (rec->shield_yield <= 0))
+		rec->shield_yield = 1;
 }
 
 void
@@ -24553,15 +24559,21 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 	return tr;
 }
 
+bool
+distribution_hub_city_select_ui_enabled (void)
+{
+	return is->current_config.enable_districts &&
+	       is->current_config.enable_distribution_hub_districts &&
+	       (is->current_config.distribution_hub_yield_division_mode == DHYDM_SCALE_BY_CITY_COUNT);
+}
+
 struct distribution_hub_record *
 get_active_distribution_hub_menu_record (void)
 {
 	if (! is->distribution_hub_menu_active)
 		return NULL;
 
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_distribution_hub_districts ||
-	    (is->current_config.distribution_hub_yield_division_mode != DHYDM_SCALE_BY_CITY_COUNT))
+	if (! distribution_hub_city_select_ui_enabled ())
 		return NULL;
 
 	Tile * tile = tile_at (is->distribution_hub_menu_tile_x, is->distribution_hub_menu_tile_y);
@@ -24592,9 +24604,7 @@ get_active_distribution_hub_menu_record (void)
 bool
 distribution_hub_menu_can_open_on_tile (Tile * tile, int tile_x, int tile_y)
 {
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_distribution_hub_districts ||
-	    (is->current_config.distribution_hub_yield_division_mode != DHYDM_SCALE_BY_CITY_COUNT) ||
+	if (! distribution_hub_city_select_ui_enabled () ||
 	    (tile == NULL) ||
 	    (tile == p_null_tile))
 		return false;
@@ -24619,8 +24629,12 @@ add_distribution_hub_menu_items (Context_Menu * menu, struct distribution_hub_re
 		Context_Menu_add_separator (menu, __, 0);
 
 	bool specific = rec->city_selection_mode == DHCSM_SPECIFIC_CITIES;
-	Context_Menu_add_item (menu, __, DISTRIBUTION_HUB_MENU_ALL_ID, "Distribute to All Cities", ! specific, (Sprite *)0x0);
-	Context_Menu_add_item (menu, __, DISTRIBUTION_HUB_MENU_SPECIFIC_ID, "Distribute to Specific Cities", specific, (Sprite *)0x0);
+	Context_Menu_add_item (menu, __, DISTRIBUTION_HUB_MENU_ALL_ID, "Distribute to All Cities", false, (Sprite *)0x0);
+	if (specific)
+		Context_Menu_disable_item (menu, __, DISTRIBUTION_HUB_MENU_ALL_ID);
+	Context_Menu_add_item (menu, __, DISTRIBUTION_HUB_MENU_SPECIFIC_ID, "Distribute to Specific Cities", false, (Sprite *)0x0);
+	if (! specific)
+		Context_Menu_disable_item (menu, __, DISTRIBUTION_HUB_MENU_SPECIFIC_ID);
 	Context_Menu_add_separator (menu, __, 0);
 
 	FOR_CITIES_OF (coi, rec->civ_id) {
@@ -24628,22 +24642,17 @@ add_distribution_hub_menu_items (Context_Menu * menu, struct distribution_hub_re
 		if ((city == NULL) || ! distribution_hub_accessible_to_city (rec, city))
 			continue;
 
-		int food_yield = 0;
-		int shield_yield = 0;
-		if (distribution_hub_distributes_to_city (rec, city)) {
-			food_yield = rec->food_yield;
-			shield_yield = rec->shield_yield;
-		}
-
 		char menu_text[160];
-		if ((food_yield > 0) || (shield_yield > 0))
-			snprintf (menu_text, sizeof menu_text, "%s  %d food  %d shields", city->Body.CityName, food_yield, shield_yield);
-		else
-			snprintf (menu_text, sizeof menu_text, "%s", city->Body.CityName);
+		snprintf (menu_text, sizeof menu_text, "%s", city->Body.CityName);
 		menu_text[sizeof menu_text - 1] = '\0';
 
-		bool selected = specific && distribution_hub_city_is_selected (rec, city);
-		Context_Menu_add_item (menu, __, DISTRIBUTION_HUB_MENU_CITY_ID_BASE + city->Body.ID, menu_text, selected, (Sprite *)0x0);
+		Sprite * icon_sentinel = NULL;
+		if (distribution_hub_distributes_to_city (rec, city) &&
+		    ((rec->food_yield > 0) || (rec->shield_yield > 0)))
+			icon_sentinel = &is->distribution_hub_menu_icon_sentinel;
+		Context_Menu_add_item (menu, __, DISTRIBUTION_HUB_MENU_CITY_ID_BASE + city->Body.ID, menu_text, false, icon_sentinel);
+		if (specific && ! distribution_hub_city_is_selected (rec, city))
+			Context_Menu_disable_item (menu, __, DISTRIBUTION_HUB_MENU_CITY_ID_BASE + city->Body.ID);
 	}
 }
 
@@ -25173,9 +25182,93 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, bool 
 	return tr;
 }
 
+void
+draw_distribution_hub_menu_icons (PCX_Image * canvas, int image_x, int row_center_y)
+{
+	if ((canvas == NULL) ||
+	    (canvas->JGL.Image == NULL) ||
+	    ! is->distribution_hub_menu_active)
+		return;
+
+	struct distribution_hub_record * rec = get_active_distribution_hub_menu_record ();
+	if (rec == NULL)
+		return;
+
+	int food_yield = rec->food_yield;
+	int shield_yield = rec->shield_yield;
+	int total_yield = food_yield + shield_yield;
+	if (total_yield <= 0)
+		return;
+
+	if (is->distribution_hub_icons_img_state == IS_UNINITED)
+		init_distribution_hub_icons ();
+	if (is->distribution_hub_icons_img_state != IS_OK)
+		return;
+
+	Sprite * food_sprite = &is->distribution_hub_food_icon_small;
+	Sprite * shield_sprite = &is->distribution_hub_shield_icon_small;
+
+	if (food_sprite->Width3 == 0)   food_sprite = &is->distribution_hub_food_icon;
+	if (shield_sprite->Width3 == 0) shield_sprite = &is->distribution_hub_shield_icon;
+
+	int food_width = food_sprite->Width3;
+	int shield_width = shield_sprite->Width3;
+	if ((food_width <= 0) && (shield_width > 0)) food_width = shield_width;
+	if ((shield_width <= 0) && (food_width > 0)) shield_width = food_width;
+
+	int sprite_width = food_width > shield_width ? food_width : shield_width;
+	int sprite_height = food_sprite->Height;
+	if (sprite_height == 0) sprite_height = shield_sprite->Height;
+	if ((sprite_width <= 0) || (sprite_height <= 0))
+		return;
+
+	RECT menu_rect = canvas->JGL.Image->Image_Rect;
+	int menu_width = menu_rect.right - menu_rect.left;
+	if (menu_width <= 0)
+		return;
+
+	int icon_left = menu_rect.left + (menu_width >> 1);
+	int icon_right_edge = menu_rect.right - 6;
+	int icon_band_width = icon_right_edge - icon_left;
+	if (icon_band_width < sprite_width)
+		return;
+
+	int spacing = sprite_width;
+	if ((total_yield > 1) && (sprite_width * total_yield > icon_band_width)) {
+		spacing = (icon_band_width - sprite_width) / (total_yield - 1);
+		if (spacing < 1)
+			spacing = 1;
+		else if (spacing > sprite_width)
+			spacing = sprite_width;
+	}
+
+	int used_width = sprite_width + spacing * (total_yield - 1);
+	int pixel_x = icon_right_edge - used_width;
+	if (pixel_x < icon_left)
+		pixel_x = icon_left;
+
+	int pixel_y = row_center_y - (sprite_height >> 1);
+	if (pixel_y < menu_rect.top)
+		pixel_y = menu_rect.top;
+
+	for (int i = 0; i < food_yield; i++) {
+		Sprite_draw (food_sprite, __, canvas, pixel_x + ((sprite_width - food_width) >> 1), pixel_y, NULL);
+		pixel_x += spacing;
+	}
+	for (int i = 0; i < shield_yield; i++) {
+		Sprite_draw (shield_sprite, __, canvas, pixel_x + ((sprite_width - shield_width) >> 1), pixel_y, NULL);
+		pixel_x += spacing;
+	}
+}
+
 int __fastcall
 patch_Sprite_draw (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
+	if (this == &is->distribution_hub_menu_icon_sentinel) {
+		draw_distribution_hub_menu_icons (canvas, pixel_x, pixel_y);
+		return 0;
+	}
+
 	Sprite * to_draw = get_cycle_sprite_proxy(this);
 	return Sprite_draw(to_draw ? to_draw : this, __, canvas, pixel_x, pixel_y, color_table);
 }
@@ -33740,6 +33833,126 @@ draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, in
 }
 
 void __fastcall
+patch_Context_Menu_draw_item (Context_Menu * this, int edx, int item_index, int redraw)
+{
+	Context_Menu_draw_item (this, __, item_index, redraw);
+
+	if ((this == NULL) ||
+	    ! is->distribution_hub_menu_active ||
+	    (item_index < 0) ||
+	    (item_index >= this->Item_Count))
+		return;
+
+	Context_Menu_Item * item = &this->Items[item_index];
+	if (((item->Status & 1) == 0) ||
+	    (item->Menu_Item_ID < DISTRIBUTION_HUB_MENU_CITY_ID_BASE))
+		return;
+	if (item->Image == &is->distribution_hub_menu_icon_sentinel)
+		return;
+
+	struct distribution_hub_record * rec = get_active_distribution_hub_menu_record ();
+	if (rec == NULL)
+		return;
+
+	City * city = get_city_ptr (item->Menu_Item_ID - DISTRIBUTION_HUB_MENU_CITY_ID_BASE);
+	if ((city == NULL) ||
+	    ! distribution_hub_distributes_to_city (rec, city))
+		return;
+
+	int food_yield = rec->food_yield;
+	int shield_yield = rec->shield_yield;
+	int total_yield = food_yield + shield_yield;
+	if (total_yield <= 0)
+		return;
+
+	if (is->distribution_hub_icons_img_state == IS_UNINITED)
+		init_distribution_hub_icons ();
+	if (is->distribution_hub_icons_img_state != IS_OK)
+		return;
+
+	Sprite * food_sprite = &is->distribution_hub_food_icon_small;
+	Sprite * shield_sprite = &is->distribution_hub_shield_icon_small;
+
+	if (food_sprite->Width3 == 0)   food_sprite = &is->distribution_hub_food_icon;
+	if (shield_sprite->Width3 == 0) shield_sprite = &is->distribution_hub_shield_icon;
+
+	int food_width = food_sprite->Width3;
+	int shield_width = shield_sprite->Width3;
+	if ((food_width <= 0) && (shield_width > 0)) food_width = shield_width;
+	if ((shield_width <= 0) && (food_width > 0)) shield_width = food_width;
+
+	int sprite_width = food_width > shield_width ? food_width : shield_width;
+	int sprite_height = food_sprite->Height;
+	if (sprite_height == 0) sprite_height = shield_sprite->Height;
+	if ((sprite_width <= 0) || (sprite_height <= 0))
+		return;
+
+	PCX_Image * canvas = &this->Base.Data.Canvas;
+	if (canvas->JGL.Image == NULL)
+		return;
+
+	RECT menu_rect = canvas->JGL.Image->Image_Rect;
+	int menu_width = menu_rect.right - menu_rect.left;
+	int menu_height = menu_rect.bottom - menu_rect.top;
+	int item_height = this->ItemHeight;
+	if ((menu_width <= 0) || (menu_height <= 0) || (item_height <= 0))
+		return;
+
+	int row_index = 0;
+	int row_count = 0;
+	for (int n = 0; n < this->Item_Count; n++)
+		if ((this->Items[n].Status & 1) != 0) {
+			if (n < item_index)
+				row_index++;
+			row_count++;
+		}
+	if (row_count <= 0)
+		return;
+
+	int vertical_pad = (menu_height - row_count * item_height) >> 1;
+	if (vertical_pad < 0)
+		vertical_pad = 0;
+
+	int row_top = menu_rect.top + vertical_pad + row_index * item_height;
+	int pixel_y = row_top + ((item_height - sprite_height) >> 1);
+	if (pixel_y < menu_rect.top)
+		pixel_y = menu_rect.top;
+
+	int right_pad = vertical_pad << 1;
+	if (right_pad < 6)
+		right_pad = 6;
+
+	int icon_left = menu_rect.left + (menu_width >> 1);
+	int icon_right_edge = menu_rect.right - right_pad;
+	int icon_band_width = icon_right_edge - icon_left;
+	if (icon_band_width < sprite_width)
+		return;
+
+	int spacing = sprite_width;
+	if ((total_yield > 1) && (sprite_width * total_yield > icon_band_width)) {
+		spacing = (icon_band_width - sprite_width) / (total_yield - 1);
+		if (spacing < 1)
+			spacing = 1;
+		else if (spacing > sprite_width)
+			spacing = sprite_width;
+	}
+
+	int used_width = sprite_width + spacing * (total_yield - 1);
+	int pixel_x = icon_right_edge - used_width;
+	if (pixel_x < icon_left)
+		pixel_x = icon_left;
+
+	for (int i = 0; i < food_yield; i++) {
+		Sprite_draw (food_sprite, __, canvas, pixel_x + ((sprite_width - food_width) >> 1), pixel_y, NULL);
+		pixel_x += spacing;
+	}
+	for (int i = 0; i < shield_yield; i++) {
+		Sprite_draw (shield_sprite, __, canvas, pixel_x + ((sprite_width - shield_width) >> 1), pixel_y, NULL);
+		pixel_x += spacing;
+	}
+}
+
+void __fastcall
 patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 {
 	Tile * district_tiles_hidden[256];
@@ -37065,7 +37278,6 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 	int city_center_base_shields = City_calc_tile_yield_at (city, __, YK_SHIELDS, city_x, city_y);
 	int total_district_shield_bonus = 0;
 	calculate_city_center_district_bonus (city, NULL, &total_district_shield_bonus, NULL);
-	int city_center_district_shields = total_district_shield_bonus;
 
 	FOR_DISTRICTS_AROUND (wai, city_x, city_y, true) {
 		int district_id = wai.district_inst->district_id;
@@ -37091,8 +37303,6 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 		get_distribution_hub_yields_for_city (city, NULL, &distribution_hub_shields);
 	if (distribution_hub_shields < 0)
 		distribution_hub_shields = 0;
-	if (distribution_hub_shields > city_center_district_shields)
-		distribution_hub_shields = city_center_district_shields;
 
 	int standard_district_shields = total_district_shield_bonus - distribution_hub_shields;
 	if (standard_district_shields < 0)
