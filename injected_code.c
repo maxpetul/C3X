@@ -7277,15 +7277,21 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec)
 			rec->shield_yield = 0;
 			return;
 		}
-		int city_root = 1;
-		while ((city_root + 1) * (city_root + 1) <= connected_city_count)
-			city_root++;
-		int city_food_divisor   = city_root * food_div;
-		int city_shield_divisor = city_root * shield_div;
+		int scaled_city_count = connected_city_count * 16; // quarter-step sqrt scale
+		int city_root_x4 = 4;
+		while ((city_root_x4 + 1) * (city_root_x4 + 1) <= scaled_city_count)
+			city_root_x4++;
+		int next_city_root_x4 = city_root_x4 + 1;
+		int lower_delta = scaled_city_count - city_root_x4 * city_root_x4;
+		int upper_delta = next_city_root_x4 * next_city_root_x4 - scaled_city_count;
+		if (upper_delta < lower_delta)
+			city_root_x4 = next_city_root_x4;
+		int city_food_divisor   = city_root_x4 * food_div;
+		int city_shield_divisor = city_root_x4 * shield_div;
 		if (city_food_divisor < 1) city_food_divisor = 1;
 		if (city_shield_divisor < 1) city_shield_divisor = 1;
-		rec->food_yield   = food_sum   / city_food_divisor;
-		rec->shield_yield = shield_sum / city_shield_divisor;
+		rec->food_yield   = (food_sum   * 4 + (city_food_divisor   >> 1)) / city_food_divisor;
+		rec->shield_yield = (shield_sum * 4 + (city_shield_divisor >> 1)) / city_shield_divisor;
 	} else {
 		rec->food_yield   = food_sum / food_div;
 		rec->shield_yield = shield_sum / shield_div;
