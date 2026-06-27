@@ -208,6 +208,18 @@ enum distribution_hub_yield_division_mode {
 	DHYDM_SCALE_BY_CITY_COUNT
 };
 
+enum distribution_hub_city_selection_mode {
+	DHCSM_ALL_CITIES = 0,
+	DHCSM_SPECIFIC_CITIES
+};
+
+enum right_click_menu_item_id {
+	NAMED_TILE_MENU_ID                  = 0x90,
+	DISTRIBUTION_HUB_MENU_ALL_ID       = 0x53000000,
+	DISTRIBUTION_HUB_MENU_SPECIFIC_ID  = 0x53000001,
+	DISTRIBUTION_HUB_MENU_CITY_ID_BASE = 0x53000010
+};
+
 enum ai_distribution_hub_build_strategy {
 	ADHBS_AUTO = 0,
 	ADHBS_BY_CITY_COUNT
@@ -1487,6 +1499,8 @@ struct distribution_hub_record {
 	int tile_x;
 	int tile_y;
 	int civ_id;
+	int city_selection_mode;
+	struct table selected_city_ids;
 	int food_yield;
 	int shield_yield;
 	int raw_food_yield;
@@ -1745,6 +1759,10 @@ struct injected_state {
 	bool named_tile_menu_active;
 	int named_tile_menu_tile_x;
 	int named_tile_menu_tile_y;
+	bool distribution_hub_menu_active;
+	int distribution_hub_menu_tile_x;
+	int distribution_hub_menu_tile_y;
+	bool distribution_hub_menu_reopen_requested;
 
 	// List of temporary ints. Initializes to NULL/0/0, used with functions "memoize" and "clear_memo"
 	int * memo;
