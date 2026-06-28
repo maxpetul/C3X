@@ -680,6 +680,10 @@ enum c3x_label {
 	CL_NAME_TILE,
 	CL_RENAME_TILE,
 
+	// Distribution hub right-click menu
+	CL_DISTRIBUTE_TO_ALL_CITIES,
+	CL_DISTRIBUTE_TO_SPECIFIC_CITIES,
+
 	// "Action" for passenger units
 	CL_TRANSPORTED,
 

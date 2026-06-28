@@ -24346,10 +24346,10 @@ add_distribution_hub_menu_items (Context_Menu * menu, struct distribution_hub_re
 		Context_Menu_add_separator (menu, __, 0);
 
 	bool specific = rec->city_selection_mode == DHCSM_SPECIFIC_CITIES;
-	Context_Menu_add_item (menu, __, DISTRIBUTION_HUB_MENU_ALL_ID, "Distribute to All Cities", false, (Sprite *)0x0);
+	Context_Menu_add_item (menu, __, DISTRIBUTION_HUB_MENU_ALL_ID, is->c3x_labels[CL_DISTRIBUTE_TO_ALL_CITIES], false, (Sprite *)0x0);
 	if (specific)
 		Context_Menu_disable_item (menu, __, DISTRIBUTION_HUB_MENU_ALL_ID);
-	Context_Menu_add_item (menu, __, DISTRIBUTION_HUB_MENU_SPECIFIC_ID, "Distribute to Specific Cities", false, (Sprite *)0x0);
+	Context_Menu_add_item (menu, __, DISTRIBUTION_HUB_MENU_SPECIFIC_ID, is->c3x_labels[CL_DISTRIBUTE_TO_SPECIFIC_CITIES], false, (Sprite *)0x0);
 	if (! specific)
 		Context_Menu_disable_item (menu, __, DISTRIBUTION_HUB_MENU_SPECIFIC_ID);
 	Context_Menu_add_separator (menu, __, 0);
