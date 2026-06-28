@@ -92,8 +92,6 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 // used to limit computational complexity
 #define AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES 10
 
-enum { NAMED_TILE_MENU_ID = 0x90 };
-
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
 
@@ -246,6 +244,7 @@ bool tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile
 void __fastcall patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups);
 int get_visible_non_subsumed_tile_resource (Tile * tile, struct district_instance * inst, int civ_id);
 void recompute_distribution_hub_totals ();
+void init_distribution_hub_icons ();
 void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y);
 void wrap_tile_coords (Map * map, int * x, int * y);
 int count_neighborhoods_in_city_radius (City * city);
@@ -6861,6 +6860,201 @@ distribution_hub_accessible_to_city (struct distribution_hub_record * rec, City 
 	return Trade_Net_have_trade_connection (is->trade_net, __, anchor_city, city, rec->civ_id);
 }
 
+bool
+distribution_hub_city_is_selected (struct distribution_hub_record * rec, City * city)
+{
+	if ((rec == NULL) || (city == NULL))
+		return false;
+
+	return itable_look_up_or (&rec->selected_city_ids, city->Body.ID, 0) != 0;
+}
+
+bool
+distribution_hub_distributes_to_city (struct distribution_hub_record * rec, City * city)
+{
+	if (! distribution_hub_accessible_to_city (rec, city))
+		return false;
+
+	if (is->current_config.enable_distribution_hub_city_selection &&
+	    (is->current_config.distribution_hub_yield_division_mode == DHYDM_SCALE_BY_CITY_COUNT) &&
+	    (rec->city_selection_mode == DHCSM_SPECIFIC_CITIES))
+		return distribution_hub_city_is_selected (rec, city);
+
+	return true;
+}
+
+void
+clear_distribution_hub_city_selection (struct distribution_hub_record * rec)
+{
+	if (rec == NULL)
+		return;
+
+	table_deinit (&rec->selected_city_ids);
+}
+
+void
+select_all_accessible_distribution_hub_cities (struct distribution_hub_record * rec)
+{
+	if (rec == NULL)
+		return;
+
+	clear_distribution_hub_city_selection (rec);
+	FOR_CITIES_OF (coi, rec->civ_id) {
+		City * city = coi.city;
+		if ((city != NULL) && distribution_hub_accessible_to_city (rec, city))
+			itable_insert (&rec->selected_city_ids, city->Body.ID, 1);
+	}
+}
+
+int
+count_distribution_hub_target_cities (struct distribution_hub_record * rec)
+{
+	if (rec == NULL)
+		return 0;
+
+	int count = 0;
+	FOR_CITIES_OF (coi, rec->civ_id) {
+		City * city = coi.city;
+		if ((city != NULL) && distribution_hub_distributes_to_city (rec, city))
+			count++;
+	}
+	return count;
+}
+
+void
+recompute_distribution_hub_cities_for_civ (int civ_id)
+{
+	if ((civ_id < 0) || (civ_id >= 32) || (p_cities->Cities == NULL))
+		return;
+
+	for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+		City * city = get_city_ptr (city_index);
+		if ((city != NULL) && (city->Body.CivID == civ_id))
+			recompute_city_yields_with_districts (city);
+	}
+}
+
+int
+ai_score_distribution_hub_target_city (City * city)
+{
+	if (city == NULL)
+		return 0;
+
+	int score = 0;
+
+	int net_food = city->Body.FoodIncome;
+	if (net_food <= 0)
+		score += 1000;
+	else if (net_food <= 2)
+		score += 500;
+
+	int net_shields = city->Body.ProductionIncome + city->Body.ProductionLoss;
+	if (net_shields < 0)
+		net_shields = 0;
+	if (net_shields <= 3)
+		score += 700;
+	else if (net_shields <= 6)
+		score += 350;
+
+	return score;
+}
+
+bool
+ai_update_distribution_hub_city_selection (struct distribution_hub_record * rec)
+{
+	if ((rec == NULL) ||
+	    ! is->current_config.enable_districts ||
+	    ! is->current_config.enable_distribution_hub_districts ||
+	    ! is->current_config.enable_distribution_hub_city_selection ||
+	    (is->current_config.distribution_hub_yield_division_mode != DHYDM_SCALE_BY_CITY_COUNT))
+		return false;
+
+	int civ_id = rec->civ_id;
+	if ((civ_id < 0) || (civ_id >= 32))
+		return false;
+	if ((1u << civ_id) & *p_human_player_bits)
+		return false;
+
+	struct table selected = {0};
+	int accessible_count = 0;
+	int selected_count = 0;
+
+	FOR_CITIES_OF (coi, civ_id) {
+		City * city = coi.city;
+		if ((city == NULL) || ! distribution_hub_accessible_to_city (rec, city))
+			continue;
+
+		accessible_count++;
+		if (ai_score_distribution_hub_target_city (city) > 0) {
+			itable_insert (&selected, city->Body.ID, 1);
+			selected_count++;
+		}
+	}
+
+	if ((accessible_count <= 1) ||
+	    (selected_count <= 0) ||
+	    (selected_count >= accessible_count)) {
+		table_deinit (&selected);
+		if ((rec->city_selection_mode == DHCSM_ALL_CITIES) && (rec->selected_city_ids.len == 0))
+			return false;
+		rec->city_selection_mode = DHCSM_ALL_CITIES;
+		clear_distribution_hub_city_selection (rec);
+		return true;
+	}
+
+	bool changed = rec->city_selection_mode != DHCSM_SPECIFIC_CITIES;
+	if (rec->selected_city_ids.len != selected.len)
+		changed = true;
+	else {
+		FOR_TABLE_ENTRIES (tei, &selected) {
+			if (! itable_look_up_or (&rec->selected_city_ids, tei.key, 0)) {
+				changed = true;
+				break;
+			}
+		}
+	}
+
+	if (! changed) {
+		table_deinit (&selected);
+		return false;
+	}
+
+	clear_distribution_hub_city_selection (rec);
+	rec->selected_city_ids = selected;
+	rec->city_selection_mode = DHCSM_SPECIFIC_CITIES;
+	return true;
+}
+
+void
+ai_update_distribution_hub_city_selections_for_leader (Leader * leader)
+{
+	if ((leader == NULL) ||
+	    ! is->current_config.enable_districts ||
+	    ! is->current_config.enable_distribution_hub_districts ||
+	    ! is->current_config.enable_distribution_hub_city_selection ||
+	    (is->current_config.distribution_hub_yield_division_mode != DHYDM_SCALE_BY_CITY_COUNT))
+		return;
+
+	int civ_id = leader->ID;
+	if ((civ_id < 0) || (civ_id >= 32))
+		return;
+	if ((1u << civ_id) & *p_human_player_bits)
+		return;
+
+	bool changed = false;
+	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
+		struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
+		if ((rec != NULL) && (rec->civ_id == civ_id) && ai_update_distribution_hub_city_selection (rec))
+			changed = true;
+	}
+
+	if (changed) {
+		is->distribution_hub_totals_dirty = true;
+		recompute_distribution_hub_totals ();
+		recompute_distribution_hub_cities_for_civ (civ_id);
+	}
+}
+
 void
 get_distribution_hub_yields_for_city (City * city, int * out_food, int * out_shields)
 {
@@ -6876,7 +7070,7 @@ get_distribution_hub_yields_for_city (City * city, int * out_food, int * out_shi
 
 		FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
 			struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
-			if (distribution_hub_accessible_to_city (rec, city)) {
+			if (distribution_hub_distributes_to_city (rec, city)) {
 				food += rec->food_yield;
 				shields += rec->shield_yield;
 			}
@@ -6957,6 +7151,7 @@ clear_distribution_hub_tables (void)
 {
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
 		struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
+		clear_distribution_hub_city_selection (rec);
 		free (rec);
 	}
 	table_deinit (&is->distribution_hub_records);
@@ -7077,31 +7272,38 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec)
 	if (shield_div <= 0)
 		shield_div = 1;
 
-	int connected_city_count = 0;
-	if (anchor_city != NULL) {
-		FOR_CITIES_OF (coi, rec->civ_id) {
-			City * other_city = coi.city;
-			if ((other_city != NULL) && distribution_hub_accessible_to_city (rec, other_city))
-				connected_city_count++;
-		}
-	}
-	if (connected_city_count <= 0)
-		connected_city_count = 1;
+	int connected_city_count = count_distribution_hub_target_cities (rec);
 
 	if (is->current_config.distribution_hub_yield_division_mode == DHYDM_SCALE_BY_CITY_COUNT) {
-		int city_root = 1;
-		while ((city_root + 1) * (city_root + 1) <= connected_city_count)
-			city_root++;
-		int city_food_divisor   = city_root * food_div;
-		int city_shield_divisor = city_root * shield_div;
+		if (connected_city_count <= 0) {
+			rec->food_yield = 0;
+			rec->shield_yield = 0;
+			return;
+		}
+		int scaled_city_count = connected_city_count * 16; // quarter-step sqrt scale
+		int city_root_x4 = 4;
+		while ((city_root_x4 + 1) * (city_root_x4 + 1) <= scaled_city_count)
+			city_root_x4++;
+		int next_city_root_x4 = city_root_x4 + 1;
+		int lower_delta = scaled_city_count - city_root_x4 * city_root_x4;
+		int upper_delta = next_city_root_x4 * next_city_root_x4 - scaled_city_count;
+		if (upper_delta < lower_delta)
+			city_root_x4 = next_city_root_x4;
+		int city_food_divisor   = city_root_x4 * food_div;
+		int city_shield_divisor = city_root_x4 * shield_div;
 		if (city_food_divisor < 1) city_food_divisor = 1;
 		if (city_shield_divisor < 1) city_shield_divisor = 1;
-		rec->food_yield   = food_sum   / city_food_divisor;
-		rec->shield_yield = shield_sum / city_shield_divisor;
+		rec->food_yield   = (food_sum   * 4 + (city_food_divisor   >> 1)) / city_food_divisor;
+		rec->shield_yield = (shield_sum * 4 + (city_shield_divisor >> 1)) / city_shield_divisor;
 	} else {
 		rec->food_yield   = food_sum / food_div;
 		rec->shield_yield = shield_sum / shield_div;
 	}
+
+	if ((food_sum > 0) && (rec->food_yield <= 0))
+		rec->food_yield = 1;
+	if ((shield_sum > 0) && (rec->shield_yield <= 0))
+		rec->shield_yield = 1;
 }
 
 void
@@ -7114,18 +7316,12 @@ remove_distribution_hub_record (Tile * tile)
 	int affected_civ_id = rec->civ_id;
 	release_distribution_hub_coverage (rec);
 	itable_remove (&is->distribution_hub_records, (int)tile);
+	clear_distribution_hub_city_selection (rec);
 	free (rec);
 	is->distribution_hub_totals_dirty = true;
 	recompute_distribution_hub_totals ();
 
-	// Recalculate yields for all cities of this civ
-	if ((affected_civ_id >= 0) && (p_cities->Cities != NULL)) {
-			for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
-				City * target_city = get_city_ptr (city_index);
-				if ((target_city != NULL) && (target_city->Body.CivID == affected_civ_id))
-					recompute_city_yields_with_districts (target_city);
-			}
-	}
+	recompute_distribution_hub_cities_for_civ (affected_civ_id);
 }
 
 void
@@ -7166,9 +7362,14 @@ recompute_distribution_hub_totals ()
 		int old_civ_id = rec->civ_id;
 		rec->civ_id = current_tile->vtable->m38_Get_Territory_OwnerID (current_tile);
 
-		if (old_civ_id != rec->civ_id)
+		if ((old_civ_id != rec->civ_id) && (old_civ_id >= 0) && (old_civ_id < 32))
 			civs_needing_recalc[old_civ_id] = 1;
-		civs_needing_recalc[rec->civ_id] = 1;
+		if ((rec->civ_id >= 0) && (rec->civ_id < 32))
+			civs_needing_recalc[rec->civ_id] = 1;
+		if (old_civ_id != rec->civ_id) {
+			rec->city_selection_mode = DHCSM_ALL_CITIES;
+			clear_distribution_hub_city_selection (rec);
+		}
 
 		City * anchor = get_connected_city_for_distribution_hub (rec);
 
@@ -7249,13 +7450,8 @@ recompute_distribution_hub_totals ()
 
 	// Recalculate yields for cities of civs whose distribution hub ownership changed
 	for (int civ_id = 0; civ_id < 32; civ_id++) {
-		if (civs_needing_recalc[civ_id] && (p_cities->Cities != NULL)) {
-			for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
-				City * city = get_city_ptr (city_index);
-				if ((city != NULL) && (city->Body.CivID == civ_id))
-					recompute_city_yields_with_districts (city);
-			}
-		}
+		if (civs_needing_recalc[civ_id])
+			recompute_distribution_hub_cities_for_civ (civ_id);
 	}
 
 	is->distribution_hub_totals_dirty = false;
@@ -7280,17 +7476,16 @@ on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y)
 
 		release_distribution_hub_coverage (rec);
 		rec->civ_id = tile_owner;
+		if (old_civ_id != tile_owner) {
+			rec->city_selection_mode = DHCSM_ALL_CITIES;
+			clear_distribution_hub_city_selection (rec);
+		}
 		is->distribution_hub_totals_dirty = true;
 		recompute_distribution_hub_totals ();
 
-		if (old_civ_id != tile_owner) {
-			// Recompute for old civ
-			for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
-				City * target_city = get_city_ptr (city_index);
-				if ((target_city != NULL) && (target_city->Body.CivID == old_civ_id))
-					recompute_city_yields_with_districts (target_city);
-			}
-		}
+		recompute_distribution_hub_cities_for_civ (old_civ_id);
+		recompute_distribution_hub_cities_for_civ (tile_owner);
+		return;
 	}
 
 	rec = malloc (sizeof *rec);
@@ -7300,6 +7495,8 @@ on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y)
 	rec->tile_x = tile_x;
 	rec->tile_y = tile_y;
 	rec->civ_id = tile_owner;
+	rec->city_selection_mode = DHCSM_ALL_CITIES;
+	memset (&rec->selected_city_ids, 0, sizeof rec->selected_city_ids);
 	rec->food_yield = 0;
 	rec->shield_yield = 0;
 	rec->raw_food_yield = 0;
@@ -7310,15 +7507,8 @@ on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y)
 	is->distribution_hub_totals_dirty = true;
 	recompute_distribution_hub_totals ();
 
-	// Recalculate yields for all cities of this civ
 	int affected_civ_id = rec->civ_id;
-	if ((affected_civ_id >= 0) && (p_cities->Cities != NULL)) {
-		for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
-			City * target_city = get_city_ptr (city_index);
-			if ((target_city != NULL) && (target_city->Body.CivID == affected_civ_id))
-				recompute_city_yields_with_districts (target_city);
-		}
-	}
+	recompute_distribution_hub_cities_for_civ (affected_civ_id);
 }
 
 void
@@ -13878,7 +14068,7 @@ find_tile_for_neighborhood_district (City * city, int * out_x, int * out_y)
 
 		Tile * tile = tri.tile;
 		bool has_resource = false;
-		if (is->current_config.enable_distribution_hub_districts) {
+		if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
 			int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
 			if (covered > 0)
 				continue;
@@ -13946,7 +14136,7 @@ find_tile_for_port_district (City * city, int * out_x, int * out_y)
 
 		Tile * tile = tri.tile;
 		bool has_resource = false;
-		if (is->current_config.enable_distribution_hub_districts) {
+		if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
 			int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
 			if (covered > 0)
 				continue;
@@ -14538,7 +14728,7 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 
 		Tile * tile = tri.tile;
 		bool has_resource = false;
-		if (is->current_config.enable_distribution_hub_districts) {
+		if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
 			int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
 			if (covered > 0)
 				continue;
@@ -18485,6 +18675,7 @@ patch_init_floating_point ()
 		{"add_natural_wonders_to_scenarios_if_none"              , false, offsetof (struct c3x_config, add_natural_wonders_to_scenarios_if_none)},
 		{"enable_named_tiles"                                    , false, offsetof (struct c3x_config, enable_named_tiles)},
 		{"enable_distribution_hub_districts"                     , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
+		{"enable_distribution_hub_city_selection"                , true , offsetof (struct c3x_config, enable_distribution_hub_city_selection)},
 		{"enable_aerodrome_districts"                            , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
 		{"enable_port_districts"                                 , false, offsetof (struct c3x_config, enable_port_districts)},
 		{"enable_bridge_districts"                               , false, offsetof (struct c3x_config, enable_bridge_districts)},
@@ -24089,6 +24280,146 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 	return tr;
 }
 
+bool
+distribution_hub_city_select_ui_enabled (void)
+{
+	return is->current_config.enable_districts &&
+	       is->current_config.enable_distribution_hub_districts &&
+	       is->current_config.enable_distribution_hub_city_selection &&
+	       (is->current_config.distribution_hub_yield_division_mode == DHYDM_SCALE_BY_CITY_COUNT);
+}
+
+struct distribution_hub_record *
+get_active_distribution_hub_menu_record (void)
+{
+	if (! is->distribution_hub_menu_active)
+		return NULL;
+
+	if (! distribution_hub_city_select_ui_enabled ())
+		return NULL;
+
+	Tile * tile = tile_at (is->distribution_hub_menu_tile_x, is->distribution_hub_menu_tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return NULL;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if ((inst == NULL) ||
+	    (inst->district_id != DISTRIBUTION_HUB_DISTRICT_ID) ||
+	    ! district_is_complete (tile, DISTRIBUTION_HUB_DISTRICT_ID))
+		return NULL;
+
+	if (is->distribution_hub_totals_dirty &&
+	    ! is->distribution_hub_refresh_in_progress)
+		recompute_distribution_hub_totals ();
+
+	struct distribution_hub_record * rec = get_distribution_hub_record (tile);
+	if (rec == NULL) {
+		on_distribution_hub_completed (tile, is->distribution_hub_menu_tile_x, is->distribution_hub_menu_tile_y);
+		rec = get_distribution_hub_record (tile);
+	}
+	if ((rec == NULL) || (rec->civ_id != p_main_screen_form->Player_CivID))
+		return NULL;
+
+	return rec;
+}
+
+bool
+distribution_hub_menu_can_open_on_tile (Tile * tile, int tile_x, int tile_y)
+{
+	if (! distribution_hub_city_select_ui_enabled () ||
+	    (tile == NULL) ||
+	    (tile == p_null_tile))
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if ((inst == NULL) ||
+	    (inst->district_id != DISTRIBUTION_HUB_DISTRICT_ID) ||
+	    ! district_is_complete (tile, DISTRIBUTION_HUB_DISTRICT_ID))
+		return false;
+
+	int owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	return owner == p_main_screen_form->Player_CivID;
+}
+
+void
+add_distribution_hub_menu_items (Context_Menu * menu, struct distribution_hub_record * rec)
+{
+	if ((menu == NULL) || (rec == NULL))
+		return;
+
+	if (menu->Item_Count > 0)
+		Context_Menu_add_separator (menu, __, 0);
+
+	bool specific = rec->city_selection_mode == DHCSM_SPECIFIC_CITIES;
+	Context_Menu_add_item (menu, __, DISTRIBUTION_HUB_MENU_ALL_ID, is->c3x_labels[CL_DISTRIBUTE_TO_ALL_CITIES], false, (Sprite *)0x0);
+	if (specific)
+		Context_Menu_disable_item (menu, __, DISTRIBUTION_HUB_MENU_ALL_ID);
+	Context_Menu_add_item (menu, __, DISTRIBUTION_HUB_MENU_SPECIFIC_ID, is->c3x_labels[CL_DISTRIBUTE_TO_SPECIFIC_CITIES], false, (Sprite *)0x0);
+	if (! specific)
+		Context_Menu_disable_item (menu, __, DISTRIBUTION_HUB_MENU_SPECIFIC_ID);
+	Context_Menu_add_separator (menu, __, 0);
+
+	FOR_CITIES_OF (coi, rec->civ_id) {
+		City * city = coi.city;
+		if ((city == NULL) || ! distribution_hub_accessible_to_city (rec, city))
+			continue;
+
+		char menu_text[160];
+		snprintf (menu_text, sizeof menu_text, "%s", city->Body.CityName);
+		menu_text[sizeof menu_text - 1] = '\0';
+
+		Sprite * icon_sentinel = NULL;
+		if (distribution_hub_distributes_to_city (rec, city) &&
+		    ((rec->food_yield > 0) || (rec->shield_yield > 0)))
+			icon_sentinel = &is->distribution_hub_menu_icon_sentinel;
+		Context_Menu_add_item (menu, __, DISTRIBUTION_HUB_MENU_CITY_ID_BASE + city->Body.ID, menu_text, false, icon_sentinel);
+		if (specific && ! distribution_hub_city_is_selected (rec, city))
+			Context_Menu_disable_item (menu, __, DISTRIBUTION_HUB_MENU_CITY_ID_BASE + city->Body.ID);
+	}
+}
+
+bool
+handle_distribution_hub_menu_selection (int item_id)
+{
+	struct distribution_hub_record * rec = get_active_distribution_hub_menu_record ();
+	if (rec == NULL)
+		return false;
+
+	int affected_civ_id = rec->civ_id;
+
+	if (item_id == DISTRIBUTION_HUB_MENU_ALL_ID) {
+		rec->city_selection_mode = DHCSM_ALL_CITIES;
+		clear_distribution_hub_city_selection (rec);
+	} else if (item_id == DISTRIBUTION_HUB_MENU_SPECIFIC_ID) {
+		if (rec->city_selection_mode != DHCSM_SPECIFIC_CITIES)
+			select_all_accessible_distribution_hub_cities (rec);
+		rec->city_selection_mode = DHCSM_SPECIFIC_CITIES;
+	} else if (item_id >= DISTRIBUTION_HUB_MENU_CITY_ID_BASE) {
+		int city_id = item_id - DISTRIBUTION_HUB_MENU_CITY_ID_BASE;
+		City * city = get_city_ptr (city_id);
+		if ((city == NULL) || ! distribution_hub_accessible_to_city (rec, city))
+			return false;
+
+		if (rec->city_selection_mode != DHCSM_SPECIFIC_CITIES) {
+			select_all_accessible_distribution_hub_cities (rec);
+			rec->city_selection_mode = DHCSM_SPECIFIC_CITIES;
+		}
+
+		if (distribution_hub_city_is_selected (rec, city))
+			itable_remove (&rec->selected_city_ids, city->Body.ID);
+		else
+			itable_insert (&rec->selected_city_ids, city->Body.ID, 1);
+	} else
+		return false;
+
+	is->distribution_hub_totals_dirty = true;
+	recompute_distribution_hub_totals ();
+	recompute_distribution_hub_cities_for_civ (affected_civ_id);
+	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+	is->distribution_hub_menu_reopen_requested = true;
+	return true;
+}
+
 int __fastcall
 patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3)
 {
@@ -24112,6 +24443,10 @@ patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3
 			Context_Menu_add_item (this, __, NAMED_TILE_MENU_ID, menu_text, false, (Sprite *)0x0);
 		}
 	}
+
+	struct distribution_hub_record * hub_rec = get_active_distribution_hub_menu_record ();
+	if (hub_rec != NULL)
+		add_distribution_hub_menu_items (this, hub_rec);
 
 	if (is->current_config.group_units_on_right_click_menu &&
 	    (ret_addr == ADDR_OPEN_UNIT_MENU_RETURN) &&
@@ -24569,9 +24904,96 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, bool 
 	return tr;
 }
 
+void
+draw_distribution_hub_menu_icons (PCX_Image * canvas, int image_x, int row_center_y)
+{
+	if ((canvas == NULL) ||
+	    (canvas->JGL.Image == NULL) ||
+	    ! is->distribution_hub_menu_active ||
+	    ! distribution_hub_city_select_ui_enabled ())
+		return;
+
+	struct distribution_hub_record * rec = get_active_distribution_hub_menu_record ();
+	if (rec == NULL)
+		return;
+
+	int food_yield = rec->food_yield;
+	int shield_yield = rec->shield_yield;
+	int total_yield = food_yield + shield_yield;
+	if (total_yield <= 0)
+		return;
+
+	if (is->distribution_hub_icons_img_state == IS_UNINITED)
+		init_distribution_hub_icons ();
+	if (is->distribution_hub_icons_img_state != IS_OK)
+		return;
+
+	Sprite * food_sprite = &is->distribution_hub_food_icon_small;
+	Sprite * shield_sprite = &is->distribution_hub_shield_icon_small;
+
+	if (food_sprite->Width3 == 0)   food_sprite = &is->distribution_hub_food_icon;
+	if (shield_sprite->Width3 == 0) shield_sprite = &is->distribution_hub_shield_icon;
+
+	int food_width = food_sprite->Width3;
+	int shield_width = shield_sprite->Width3;
+	if ((food_width <= 0) && (shield_width > 0)) food_width = shield_width;
+	if ((shield_width <= 0) && (food_width > 0)) shield_width = food_width;
+
+	int sprite_width = food_width > shield_width ? food_width : shield_width;
+	int sprite_height = food_sprite->Height;
+	if (sprite_height == 0) sprite_height = shield_sprite->Height;
+	if ((sprite_width <= 0) || (sprite_height <= 0))
+		return;
+
+	RECT menu_rect = canvas->JGL.Image->Image_Rect;
+	int menu_width = menu_rect.right - menu_rect.left;
+	if (menu_width <= 0)
+		return;
+
+	int icon_left = menu_rect.left + (menu_width >> 1);
+	int icon_right_edge = menu_rect.right - 6;
+	int icon_band_width = icon_right_edge - icon_left;
+	if (icon_band_width < sprite_width)
+		return;
+
+	int spacing = sprite_width;
+	if ((total_yield > 1) && (sprite_width * total_yield > icon_band_width)) {
+		spacing = (icon_band_width - sprite_width) / (total_yield - 1);
+		if (spacing < 1)
+			spacing = 1;
+		else if (spacing > sprite_width)
+			spacing = sprite_width;
+	}
+
+	int used_width = sprite_width + spacing * (total_yield - 1);
+	int pixel_x = icon_right_edge - used_width;
+	if (pixel_x < icon_left)
+		pixel_x = icon_left;
+
+	int pixel_y = row_center_y - (sprite_height >> 1);
+	if (pixel_y < menu_rect.top)
+		pixel_y = menu_rect.top;
+
+	for (int i = 0; i < food_yield; i++) {
+		Sprite_draw (food_sprite, __, canvas, pixel_x + ((sprite_width - food_width) >> 1), pixel_y, NULL);
+		pixel_x += spacing;
+	}
+	for (int i = 0; i < shield_yield; i++) {
+		Sprite_draw (shield_sprite, __, canvas, pixel_x + ((sprite_width - shield_width) >> 1), pixel_y, NULL);
+		pixel_x += spacing;
+	}
+}
+
 int __fastcall
 patch_Sprite_draw (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
+	if (this == &is->distribution_hub_menu_icon_sentinel) {
+		if (is->distribution_hub_menu_active &&
+		    distribution_hub_city_select_ui_enabled ())
+			draw_distribution_hub_menu_icons (canvas, pixel_x, pixel_y);
+		return 0;
+	}
+
 	Sprite * to_draw = get_cycle_sprite_proxy(this);
 	return Sprite_draw(to_draw ? to_draw : this, __, canvas, pixel_x, pixel_y, color_table);
 }
@@ -25874,16 +26296,26 @@ handle_named_tile_menu_selection (void)
 void __fastcall
 patch_Main_Screen_Form_handle_right_click_on_tile (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)
 {
-	if (is->current_config.enable_named_tiles) {
-		Tile * tile = tile_at (tile_x, tile_y);
-		if (tile_can_be_named (tile, tile_x, tile_y) && ! Tile_has_city (tile)) {
-			is->named_tile_menu_active = true;
-			is->named_tile_menu_tile_x = tile_x;
-			is->named_tile_menu_tile_y = tile_y;
+	Tile * tile = tile_at (tile_x, tile_y);
+	bool named_tile_active = is->current_config.enable_named_tiles && tile_can_be_named (tile, tile_x, tile_y) && ! Tile_has_city (tile);
+	bool hub_menu_active = distribution_hub_menu_can_open_on_tile (tile, tile_x, tile_y);
+
+	if (named_tile_active || hub_menu_active) {
+		is->named_tile_menu_active = named_tile_active;
+		is->named_tile_menu_tile_x = tile_x;
+		is->named_tile_menu_tile_y = tile_y;
+		is->distribution_hub_menu_active = hub_menu_active;
+		is->distribution_hub_menu_tile_x = tile_x;
+		is->distribution_hub_menu_tile_y = tile_y;
+		do {
+			is->distribution_hub_menu_reopen_requested = false;
 			Main_Screen_Form_open_right_click_menu (this, __, tile_x, tile_y, mouse_x, mouse_y);
-			is->named_tile_menu_active = false;
-			return;
-		}
+		} while (is->distribution_hub_menu_reopen_requested &&
+		         distribution_hub_menu_can_open_on_tile (tile_at (tile_x, tile_y), tile_x, tile_y));
+		is->named_tile_menu_active = false;
+		is->distribution_hub_menu_active = false;
+		is->distribution_hub_menu_reopen_requested = false;
+		return;
 	}
 
 	Main_Screen_Form_handle_right_click_on_tile (this, __, tile_x, tile_y, mouse_x, mouse_y);
@@ -25893,18 +26325,30 @@ void __fastcall
 patch_Main_Screen_Form_open_right_click_menu (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)
 {
 	bool set_active = false;
-	if (!is->named_tile_menu_active && is->current_config.enable_named_tiles) {
+	if (! is->named_tile_menu_active && ! is->distribution_hub_menu_active) {
 		Tile * tile = tile_at (tile_x, tile_y);
-		if (tile_can_be_named (tile, tile_x, tile_y)) {
-			is->named_tile_menu_active = true;
+		bool named_tile_active = is->current_config.enable_named_tiles && tile_can_be_named (tile, tile_x, tile_y);
+		bool hub_menu_active = distribution_hub_menu_can_open_on_tile (tile, tile_x, tile_y);
+		if (named_tile_active || hub_menu_active) {
+			is->named_tile_menu_active = named_tile_active;
 			is->named_tile_menu_tile_x = tile_x;
 			is->named_tile_menu_tile_y = tile_y;
+			is->distribution_hub_menu_active = hub_menu_active;
+			is->distribution_hub_menu_tile_x = tile_x;
+			is->distribution_hub_menu_tile_y = tile_y;
 			set_active = true;
 		}
 	}
-	Main_Screen_Form_open_right_click_menu (this, __, tile_x, tile_y, mouse_x, mouse_y);
-	if (set_active)
+	do {
+		is->distribution_hub_menu_reopen_requested = false;
+		Main_Screen_Form_open_right_click_menu (this, __, tile_x, tile_y, mouse_x, mouse_y);
+	} while (is->distribution_hub_menu_reopen_requested &&
+	         distribution_hub_menu_can_open_on_tile (tile_at (tile_x, tile_y), tile_x, tile_y));
+	if (set_active) {
 		is->named_tile_menu_active = false;
+		is->distribution_hub_menu_active = false;
+		is->distribution_hub_menu_reopen_requested = false;
+	}
 }
 
 void
@@ -26197,7 +26641,7 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 			grant_nearby_wonders_to_city (city);
 		}
 
-		if (is->current_config.enable_distribution_hub_districts) {
+		if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
 			refresh_distribution_hubs_for_city (city);
 		}
 	}
@@ -26221,8 +26665,7 @@ on_lose_city (Leader * leader, City * city, enum city_loss_reason reason)
 
 		if (is->current_config.enable_wonder_districts)
 			release_wonder_district_reservation (city);
-	} else if (is->current_config.enable_distribution_hub_districts)
-		is->distribution_hub_totals_dirty = true;
+	}
 }
 
 // Returns -1 if the location is unusable, 0-9 if it's usable but doesn't satisfy all criteria, and 10 if it couldn't be better
@@ -28178,6 +28621,7 @@ patch_Leader_do_production_phase (Leader * this)
 		if (is->current_config.enable_distribution_hub_districts) {
 			if (leader_can_build_district (this, DISTRIBUTION_HUB_DISTRICT_ID))
 				ai_update_distribution_hub_goal_for_leader (this);
+			ai_update_distribution_hub_city_selections_for_leader (this);
 		}
 
 		FOR_CITIES_OF (coi, this->ID) {
@@ -30214,6 +30658,16 @@ patch_Leader_do_capture_city (Leader * this, int edx, City * city, bool involunt
 	}
 
 	on_gain_city (this, city, converted ? CGR_CONVERTED : (involuntary ? CGR_CONQUERED : CGR_TRADED));
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_distribution_hub_districts) {
+		int old_civ_id = previous_owner->ID;
+		int new_civ_id = city->Body.CivID;
+		is->distribution_hub_totals_dirty = true;
+		recompute_distribution_hub_totals ();
+		recompute_distribution_hub_cities_for_civ (old_civ_id);
+		if (new_civ_id != old_civ_id)
+			recompute_distribution_hub_cities_for_civ (new_civ_id);
+	}
 	is->currently_capturing_city = NULL;
 	return tr;
 }
@@ -30560,9 +31014,12 @@ patch_Main_Screen_Form_open_quick_build_chooser (Main_Screen_Form * this, int ed
 {
 	recompute_resources_if_necessary ();
 	bool restore_named_tile_menu = is->named_tile_menu_active;
+	bool restore_distribution_hub_menu = is->distribution_hub_menu_active;
 	is->named_tile_menu_active = false;
+	is->distribution_hub_menu_active = false;
 	Main_Screen_Form_open_quick_build_chooser (this, __, city, mouse_x, mouse_y);
 	is->named_tile_menu_active = restore_named_tile_menu;
+	is->distribution_hub_menu_active = restore_distribution_hub_menu;
 }
 
 int __fastcall
@@ -30572,6 +31029,12 @@ patch_Context_Menu_get_selected_item_on_unit_rcm (Context_Menu * this)
 	// click unit items which have been disabled by the mod so they can interrupt the queued actions of units that have no moves left.
 	int index = this->Selected_Item;
 	if (index >= 0) {
+		if (is->distribution_hub_menu_active &&
+		    distribution_hub_city_select_ui_enabled ()) {
+			Context_Menu_Item * item = &this->Items[index];
+			if (handle_distribution_hub_menu_selection (item->Menu_Item_ID))
+				return -1;
+		}
 		if (is->current_config.enable_named_tiles && is->named_tile_menu_active) {
 			Context_Menu_Item * item = &this->Items[index];
 			if (item->Menu_Item_ID == NAMED_TILE_MENU_ID) {
@@ -30958,8 +31421,14 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		    is->current_config.enable_distribution_hub_districts &&
 		    (is->distribution_hub_records.len > 0)) {
 				serialize_aligned_text ("distribution_hub_records", &mod_data);
-				int entry_capacity = is->distribution_hub_records.len;
-				int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 3 * entry_capacity));
+				int int_count = 1;
+				FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
+					struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
+					if (rec == NULL)
+						continue;
+					int_count += 5 + (int)rec->selected_city_ids.len;
+				}
+				int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * int_count);
 				int * out = chunk + 1;
 				int written = 0;
 				FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
@@ -30969,15 +31438,15 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 					out[0] = rec->tile_x;
 					out[1] = rec->tile_y;
 					out[2] = rec->civ_id;
-					out += 3;
+					out[3] = rec->city_selection_mode;
+					out[4] = (int)rec->selected_city_ids.len;
+					out += 5;
+					FOR_TABLE_ENTRIES (selected_tei, &rec->selected_city_ids) {
+						*out++ = selected_tei.key;
+					}
 					written++;
 				}
-				chunk[0] = written;
-				int unused_entries = entry_capacity - written;
-				if (unused_entries > 0) {
-					int trimmed_bytes = unused_entries * 3 * (int)sizeof(int);
-					mod_data.length -= trimmed_bytes;
-				}
+				chunk[0] = -written;
 		}
 
 	if (is->current_config.enable_districts &&
@@ -31559,7 +32028,55 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 						int entry_count = *ints++;
 						cursor = (byte *)ints;
 						remaining_bytes -= (int)sizeof(int);
-						if ((entry_count >= 0) && (remaining_bytes >= entry_count * 3 * (int)sizeof(int))) {
+						if (entry_count < 0) {
+							entry_count = -entry_count;
+							clear_distribution_hub_tables ();
+							success = true;
+							for (int n = 0; n < entry_count; n++) {
+								if (remaining_bytes < 5 * (int)sizeof(int)) {
+									success = false;
+									break;
+								}
+								int x = *ints++;
+								int y = *ints++;
+								int civ_id = *ints++;
+								int selection_mode = *ints++;
+								int selected_count = *ints++;
+								cursor = (byte *)ints;
+								remaining_bytes -= 5 * (int)sizeof(int);
+								if ((selected_count < 0) ||
+								    (remaining_bytes < selected_count * (int)sizeof(int))) {
+									success = false;
+									break;
+								}
+
+								Tile * tile = tile_at (x, y);
+								if ((tile != NULL) && (tile != p_null_tile)) {
+									on_distribution_hub_completed (tile, x, y);
+									struct distribution_hub_record * rec = get_distribution_hub_record (tile);
+									if (rec != NULL) {
+										rec->civ_id = civ_id;
+										if (selection_mode == DHCSM_SPECIFIC_CITIES)
+											rec->city_selection_mode = DHCSM_SPECIFIC_CITIES;
+										else
+											rec->city_selection_mode = DHCSM_ALL_CITIES;
+										clear_distribution_hub_city_selection (rec);
+										for (int selected_index = 0; selected_index < selected_count; selected_index++) {
+											int city_id = ints[selected_index];
+											itable_insert (&rec->selected_city_ids, city_id, 1);
+										}
+									}
+								}
+								ints += selected_count;
+								cursor = (byte *)ints;
+								remaining_bytes -= selected_count * (int)sizeof(int);
+							}
+							if (success) {
+								is->distribution_hub_totals_dirty = true;
+								recompute_distribution_hub_totals ();
+							}
+						}
+						else if ((entry_count >= 0) && (remaining_bytes >= entry_count * 3 * (int)sizeof(int))) {
 							clear_distribution_hub_tables ();
 							success = true;
 							for (int n = 0; n < entry_count; n++) {
@@ -31579,6 +32096,10 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 								struct distribution_hub_record * rec = get_distribution_hub_record (tile);
 								if (rec != NULL)
 									rec->civ_id = civ_id;
+							}
+							if (success) {
+								is->distribution_hub_totals_dirty = true;
+								recompute_distribution_hub_totals ();
 							}
 						}
 					}
@@ -32866,8 +33387,7 @@ draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, in
 	if (rec == NULL)
 		return;
 
-	City * anchor_city = get_connected_city_for_distribution_hub (rec);
-	if (! distribution_hub_accessible_to_city (rec, city_form->CurrentCity))
+	if (! distribution_hub_distributes_to_city (rec, city_form->CurrentCity))
 		return;
 
 	int food_yield   = rec->food_yield;
@@ -32937,6 +33457,127 @@ draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, in
 	for (int i = 0; i < shield_yield; i++) {
 		Sprite_draw (shield_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing_shield;
+	}
+}
+
+void __fastcall
+patch_Context_Menu_draw_item (Context_Menu * this, int edx, int item_index, int redraw)
+{
+	Context_Menu_draw_item (this, __, item_index, redraw);
+
+	if ((this == NULL) ||
+	    ! is->distribution_hub_menu_active ||
+	    ! distribution_hub_city_select_ui_enabled () ||
+	    (item_index < 0) ||
+	    (item_index >= this->Item_Count))
+		return;
+
+	Context_Menu_Item * item = &this->Items[item_index];
+	if (((item->Status & 1) == 0) ||
+	    (item->Menu_Item_ID < DISTRIBUTION_HUB_MENU_CITY_ID_BASE))
+		return;
+	if (item->Image == &is->distribution_hub_menu_icon_sentinel)
+		return;
+
+	struct distribution_hub_record * rec = get_active_distribution_hub_menu_record ();
+	if (rec == NULL)
+		return;
+
+	City * city = get_city_ptr (item->Menu_Item_ID - DISTRIBUTION_HUB_MENU_CITY_ID_BASE);
+	if ((city == NULL) ||
+	    ! distribution_hub_distributes_to_city (rec, city))
+		return;
+
+	int food_yield = rec->food_yield;
+	int shield_yield = rec->shield_yield;
+	int total_yield = food_yield + shield_yield;
+	if (total_yield <= 0)
+		return;
+
+	if (is->distribution_hub_icons_img_state == IS_UNINITED)
+		init_distribution_hub_icons ();
+	if (is->distribution_hub_icons_img_state != IS_OK)
+		return;
+
+	Sprite * food_sprite = &is->distribution_hub_food_icon_small;
+	Sprite * shield_sprite = &is->distribution_hub_shield_icon_small;
+
+	if (food_sprite->Width3 == 0)   food_sprite = &is->distribution_hub_food_icon;
+	if (shield_sprite->Width3 == 0) shield_sprite = &is->distribution_hub_shield_icon;
+
+	int food_width = food_sprite->Width3;
+	int shield_width = shield_sprite->Width3;
+	if ((food_width <= 0) && (shield_width > 0)) food_width = shield_width;
+	if ((shield_width <= 0) && (food_width > 0)) shield_width = food_width;
+
+	int sprite_width = food_width > shield_width ? food_width : shield_width;
+	int sprite_height = food_sprite->Height;
+	if (sprite_height == 0) sprite_height = shield_sprite->Height;
+	if ((sprite_width <= 0) || (sprite_height <= 0))
+		return;
+
+	PCX_Image * canvas = &this->Base.Data.Canvas;
+	if (canvas->JGL.Image == NULL)
+		return;
+
+	RECT menu_rect = canvas->JGL.Image->Image_Rect;
+	int menu_width = menu_rect.right - menu_rect.left;
+	int menu_height = menu_rect.bottom - menu_rect.top;
+	int item_height = this->ItemHeight;
+	if ((menu_width <= 0) || (menu_height <= 0) || (item_height <= 0))
+		return;
+
+	int row_index = 0;
+	int row_count = 0;
+	for (int n = 0; n < this->Item_Count; n++)
+		if ((this->Items[n].Status & 1) != 0) {
+			if (n < item_index)
+				row_index++;
+			row_count++;
+		}
+	if (row_count <= 0)
+		return;
+
+	int vertical_pad = (menu_height - row_count * item_height) >> 1;
+	if (vertical_pad < 0)
+		vertical_pad = 0;
+
+	int row_top = menu_rect.top + vertical_pad + row_index * item_height;
+	int pixel_y = row_top + ((item_height - sprite_height) >> 1);
+	if (pixel_y < menu_rect.top)
+		pixel_y = menu_rect.top;
+
+	int right_pad = vertical_pad << 1;
+	if (right_pad < 6)
+		right_pad = 6;
+
+	int icon_left = menu_rect.left + (menu_width >> 1);
+	int icon_right_edge = menu_rect.right - right_pad;
+	int icon_band_width = icon_right_edge - icon_left;
+	if (icon_band_width < sprite_width)
+		return;
+
+	int spacing = sprite_width;
+	if ((total_yield > 1) && (sprite_width * total_yield > icon_band_width)) {
+		spacing = (icon_band_width - sprite_width) / (total_yield - 1);
+		if (spacing < 1)
+			spacing = 1;
+		else if (spacing > sprite_width)
+			spacing = sprite_width;
+	}
+
+	int used_width = sprite_width + spacing * (total_yield - 1);
+	int pixel_x = icon_right_edge - used_width;
+	if (pixel_x < icon_left)
+		pixel_x = icon_left;
+
+	for (int i = 0; i < food_yield; i++) {
+		Sprite_draw (food_sprite, __, canvas, pixel_x + ((sprite_width - food_width) >> 1), pixel_y, NULL);
+		pixel_x += spacing;
+	}
+	for (int i = 0; i < shield_yield; i++) {
+		Sprite_draw (shield_sprite, __, canvas, pixel_x + ((sprite_width - shield_width) >> 1), pixel_y, NULL);
+		pixel_x += spacing;
 	}
 }
 
@@ -35331,7 +35972,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
                 return;
             }
             case DISTRIBUTION_HUB_DISTRICT_ID:
-				if (! is->current_config.enable_distribution_hub_districts)
+				if (! is->current_config.enable_districts || ! is->current_config.enable_distribution_hub_districts)
 					return;
 
                 draw_district_on_map_or_canvas(&sprites[variant][era][buildings], map_renderer, draw_x, draw_y);
@@ -36168,7 +36809,6 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 	int city_center_base_shields = City_calc_tile_yield_at (city, __, YK_SHIELDS, city_x, city_y);
 	int total_district_shield_bonus = 0;
 	calculate_city_center_district_bonus (city, NULL, &total_district_shield_bonus, NULL);
-	int city_center_district_shields = total_district_shield_bonus;
 
 	FOR_DISTRICTS_AROUND (wai, city_x, city_y, true) {
 		int district_id = wai.district_inst->district_id;
@@ -36190,12 +36830,10 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 
 	// Distribution hub contribution is tracked separately for icon rendering.
 	int distribution_hub_shields = 0;
-	if (is->current_config.enable_distribution_hub_districts)
+	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts)
 		get_distribution_hub_yields_for_city (city, NULL, &distribution_hub_shields);
 	if (distribution_hub_shields < 0)
 		distribution_hub_shields = 0;
-	if (distribution_hub_shields > city_center_district_shields)
-		distribution_hub_shields = city_center_district_shields;
 
 	int standard_district_shields = total_district_shield_bonus - distribution_hub_shields;
 	if (standard_district_shields < 0)
