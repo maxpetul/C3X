@@ -6924,9 +6924,6 @@ count_distribution_hub_target_cities (struct distribution_hub_record * rec)
 void
 recompute_distribution_hub_cities_for_civ (int civ_id)
 {
-	if ((civ_id < 0) || (civ_id >= 32) || (p_cities->Cities == NULL))
-		return;
-
 	for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
 		City * city = get_city_ptr (city_index);
 		if ((city != NULL) && (city->Body.CivID == civ_id))
@@ -6970,8 +6967,6 @@ ai_update_distribution_hub_city_selection (struct distribution_hub_record * rec)
 		return false;
 
 	int civ_id = rec->civ_id;
-	if ((civ_id < 0) || (civ_id >= 32))
-		return false;
 	if ((1u << civ_id) & *p_human_player_bits)
 		return false;
 
@@ -7036,8 +7031,6 @@ ai_update_distribution_hub_city_selections_for_leader (Leader * leader)
 		return;
 
 	int civ_id = leader->ID;
-	if ((civ_id < 0) || (civ_id >= 32))
-		return;
 	if ((1u << civ_id) & *p_human_player_bits)
 		return;
 
