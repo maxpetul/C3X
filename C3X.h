@@ -508,6 +508,7 @@ struct c3x_config {
 	bool destroyed_wonders_can_be_built_again;
 
 	int distribution_hub_yield_division_mode;
+	bool enable_distribution_hub_city_selection;
 	int distribution_hub_food_yield_divisor;
 	int distribution_hub_shield_yield_divisor;
 	int ai_distribution_hub_build_strategy;
