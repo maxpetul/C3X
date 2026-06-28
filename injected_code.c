@@ -1618,7 +1618,11 @@ read_recognizables (struct string_slice const * s,
 	int new_items_capacity = 0;
 	void * temp_item = malloc (item_size);
 
-	while (1) {
+	skip_white_space (&cursor);
+	if (*cursor == '\0')
+		success = true;
+
+	while (! success) {
 		enum recognizable_parse_result result = parse_item (&cursor, p_unrecognized_lines, temp_item);
 		if (result != RPR_PARSE_ERROR) {
 			if (result == RPR_OK) {
@@ -1859,6 +1863,54 @@ read_ai_multi_start_extra_palaces (struct string_slice const * s,
 	return success;
 }
 
+struct parsable_field_bit {
+	char * name;
+	int bit_value;
+};
+
+bool
+read_bit_field (struct string_slice const * s, struct parsable_field_bit const * bits, int count_bits, int * out_field)
+{
+	struct string_slice trimmed = trim_string_slice (s, 0);
+	s = &trimmed;
+
+	int tr;
+	if (s->len <= 0)
+		tr = 0;
+	else if (slice_matches_str (s, "all"))
+		tr = ~0;
+	else {
+		tr = 0;
+		char * cursor = &s->str[0];
+		char * s_end = &s->str[s->len];
+		while (1) {
+			struct string_slice name;
+
+			if (cursor >= s_end)
+				break;
+			else if (! parse_string (&cursor, &name)) {
+				skip_white_space (&cursor);
+				if (cursor >= s_end)
+					break;
+				else
+					return false; // Invalid character in value
+			}
+
+			bool matched_any = false;
+			for (int n = 0; n < count_bits; n++)
+				if (slice_matches_str (&name, bits[n].name)) {
+					tr |= bits[n].bit_value;
+					matched_any = true;
+					break;
+				}
+			if (! matched_any)
+				return false;
+		}
+	}
+	*out_field = tr;
+	return true;
+}
+
 bool
 read_retreat_rules (struct string_slice const * s, int * out_val)
 {
@@ -1940,6 +1992,49 @@ read_day_night_cycle_mode (struct string_slice const * s, int * out_val)
 	else if (slice_matches_str (&trimmed, "specified" )) { *out_val = DNCM_SPECIFIED;  return true; }
 	else
 		return false;
+}
+
+bool
+read_seasonal_cycle_mode (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "off"              )) { *out_val = SCM_OFF;               return true; }
+	else if (slice_matches_str (&trimmed, "timer"            )) { *out_val = SCM_TIMER;             return true; }
+	else if (slice_matches_str (&trimmed, "user-season"      )) { *out_val = SCM_USER_SEASON;       return true; }
+	else if (slice_matches_str (&trimmed, "every-turn"       )) { *out_val = SCM_EVERY_TURN;        return true; }
+	else if (slice_matches_str (&trimmed, "on-day-night-hour")) { *out_val = SCM_ON_DAY_NIGHT_HOUR; return true; }
+	else if (slice_matches_str (&trimmed, "specified"        )) { *out_val = SCM_SPECIFIED;         return true; }
+	else
+		return false;
+}
+
+bool
+read_enabled_seasons_mask (struct string_slice const * s, int * out_val)
+{
+	struct parsable_field_bit bits[] = {
+		{"summer", 1 << CS_SUMMER},
+		{"fall"  , 1 << CS_FALL},
+		{"winter", 1 << CS_WINTER},
+		{"spring", 1 << CS_SPRING},
+	};
+	return read_bit_field (s, bits, ARRAY_LEN (bits), out_val);
+}
+
+bool
+read_pinned_season_for_seasonal_cycle (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "summer")) { *out_val = CS_SUMMER; return true; }
+	else if (slice_matches_str (&trimmed, "Summer")) { *out_val = CS_SUMMER; return true; }
+	else if (slice_matches_str (&trimmed, "fall"  )) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "Fall"  )) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "autumn")) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "autumn")) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "winter")) { *out_val = CS_WINTER; return true; }
+	else if (slice_matches_str (&trimmed, "Winter")) { *out_val = CS_WINTER; return true; }
+	else if (slice_matches_str (&trimmed, "spring")) { *out_val = CS_SPRING; return true; }
+	else if (slice_matches_str (&trimmed, "Spring")) { *out_val = CS_SPRING; return true; }
+	return false;
 }
 
 bool
@@ -2315,54 +2410,6 @@ read_barbarian_activity_override (struct string_slice const * s, enum barbarian_
 	return found;
 }
 
-struct parsable_field_bit {
-	char * name;
-	int bit_value;
-};
-
-bool
-read_bit_field (struct string_slice const * s, struct parsable_field_bit const * bits, int count_bits, int * out_field)
-{
-	struct string_slice trimmed = trim_string_slice (s, 0);
-	s = &trimmed;
-
-	int tr;
-	if (s->len <= 0)
-		tr = 0;
-	else if (slice_matches_str (s, "all"))
-		tr = ~0;
-	else {
-		tr = 0;
-		char * cursor = &s->str[0];
-		char * s_end = &s->str[s->len];
-		while (1) {
-			struct string_slice name;
-
-			if (cursor >= s_end)
-				break;
-			else if (! parse_string (&cursor, &name)) {
-				skip_white_space (&cursor);
-				if (cursor >= s_end)
-					break;
-				else
-					return false; // Invalid character in value
-			}
-
-			bool matched_any = false;
-			for (int n = 0; n < count_bits; n++)
-				if (slice_matches_str (&name, bits[n].name)) {
-					tr |= bits[n].bit_value;
-					matched_any = true;
-					break;
-				}
-			if (! matched_any)
-				return false;
-		}
-	}
-	*out_field = tr;
-	return true;
-}
-
 int
 read_units_per_tile_limit (struct string_slice const * s, int * out_limits)
 {
@@ -2658,6 +2705,15 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				} else if (slice_matches_str (&p.key, "day_night_cycle_mode")) {
 					if (! read_day_night_cycle_mode (&value, (int *)&cfg->day_night_cycle_mode))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "seasonal_cycle_mode")) {
+					if (! read_seasonal_cycle_mode (&value, (int *)&cfg->seasonal_cycle_mode))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "enabled_seasons")) {
+					if (! read_enabled_seasons_mask (&value, (int *)&cfg->enabled_seasons_mask))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "pinned_season_for_seasonal_cycle")) {
+					if (! read_pinned_season_for_seasonal_cycle (&value, (int *)&cfg->pinned_season_for_seasonal_cycle))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "distribution_hub_yield_division_mode")) {
 					if (! read_distribution_hub_yield_division_mode (&value, (int *)&cfg->distribution_hub_yield_division_mode))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -2836,6 +2892,18 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 			handle_config_error (&p, CPE_GENERIC);
 			skip_to_line_end (&p.cursor);
 		}
+	}
+
+	// If seasonal cycle mode is on "day_night_hour" but day/night cycle mode is off, disable seasonal cycle mode and show a warning
+	if (cfg->seasonal_cycle_mode == SCM_ON_DAY_NIGHT_HOUR && cfg->day_night_cycle_mode == DNCM_OFF) {
+		cfg->seasonal_cycle_mode = SCM_OFF;
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "\"seasonal_cycle_mode\" set to \"on_day_night_hour\", but \"day_night_cycle_mode\" is off. Disabling seasonal cycle mode.");
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, false);
+		patch_show_popup (popup, __, 0, 0);
 	}
 
 	if (cfg->warn_about_unrecognized_names && (unrecognized_lines != NULL)) {
@@ -17960,7 +18028,7 @@ read_in_dir(PCX_Image *img,
     PCX_Image_read_file(img, __, temp_path, NULL, 0, 0x100, 2);
 }
 
-bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char *art_dir, const char *hour)
+bool load_day_night_hour_and_season_images(struct day_night_cycle_img_set *this, const char *art_dir, const char *season, const char *hour)
 {
 	char ss[200];
     PCX_Image img; 
@@ -18255,7 +18323,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 	if (is->current_config.enable_districts) {
 		char art_dir[200];
 		char temp_path[2*MAX_PATH];
-		snprintf (art_dir, sizeof art_dir, "Districts/%s", hour);
+		snprintf (art_dir, sizeof art_dir, "Districts/%s/%s", season, hour);
 		get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 		for (int dc = 0; dc < is->district_count; dc++) {
 			struct district_config const * cfg = &is->district_configs[dc];
@@ -18364,7 +18432,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 	if (is->current_config.enable_natural_wonders && (is->natural_wonder_count > 0)) {
 		char art_dir[200];
 		char temp_path[2*MAX_PATH];
-		snprintf (art_dir, sizeof art_dir, "Districts/%s", hour);
+		snprintf (art_dir, sizeof art_dir, "Districts/%s/%s", season, hour);
 		get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 
 		char const * last_img_path = NULL;
@@ -18413,169 +18481,279 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 }
 
 Sprite *
-get_sprite_proxy_for_current_hour(Sprite *s) {
-    int v;
-    int hour = is->current_day_night_cycle;  // 0..23
-    if (itable_look_up(&is->day_night_sprite_proxy_by_hour[hour], (int)s, &v))
-        return (Sprite *)v;
-    return NULL;  // not proxied, fall back to s
+get_cycle_sprite_proxy(Sprite *s) {
+	if (is->current_config.day_night_cycle_mode == DNCM_OFF && is->current_config.seasonal_cycle_mode == SCM_OFF)
+		return NULL;
+	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
+		return NULL;
+
+	int season = (is->current_config.seasonal_cycle_mode != SCM_OFF)   ? clamp (0, 3, is->current_seasonal_cycle) : CS_SUMMER;
+	int hour   = (is->current_config.day_night_cycle_mode != DNCM_OFF) ? clamp (0, 23, is->current_day_night_cycle) : 12;
+	int cycle_idx = 24 * season + hour;
+	int v;
+	if (itable_look_up (&is->day_night_sprite_proxy_by_season_and_hour[cycle_idx], (int)s, &v))
+		return (Sprite *)v;
+	return NULL;
 }
 
 void
-insert_spritelist_proxies(SpriteList *ss, SpriteList *ps, int hour, int len1, int len2) {
+insert_spritelist_proxies(SpriteList *ss, SpriteList *ps, int season, int hour, int len1, int len2) {
+	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
+		return;
+	int cycle_idx = 24 * season + hour;
 	for (int i = 0; i < len1; i++) {
 		for (int j = 0; j < len2; j++) {
 			Sprite *s = &ss[i].field_0[j];
 			Sprite *p = &ps[i].field_0[j];
 			if (s && p) {
-				itable_insert(&is->day_night_sprite_proxy_by_hour[hour], (int)s, (int)p);
+				itable_insert(&is->day_night_sprite_proxy_by_season_and_hour[cycle_idx], (int)s, (int)p);
 			}
 		}
 	}
 }
 
 void
-insert_sprite_proxies(Sprite *ss, Sprite *ps, int hour, int len) {
+insert_sprite_proxies(Sprite *ss, Sprite *ps, int season, int hour, int len) {
+	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
+		return;
+	int cycle_idx = 24 * season + hour;
 	for (int i = 0; i < len; i++) {
 		Sprite *s = &ss[i];
 		Sprite *p = &ps[i];
 		if (s && p) {
-			itable_insert(&is->day_night_sprite_proxy_by_hour[hour], (int)s, (int)p);
+			itable_insert(&is->day_night_sprite_proxy_by_season_and_hour[cycle_idx], (int)s, (int)p);
 		}
 	}
 }
 
 void
-insert_sprite_proxy(Sprite *s, Sprite *p, int hour) {
+insert_sprite_proxy(Sprite *s, Sprite *p, int season, int hour) {
+	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
+		return;
+	int cycle_idx = 24 * season + hour;
 	if (s && p) {
-		itable_insert(&is->day_night_sprite_proxy_by_hour[hour], (int)s, (int)p);
+		itable_insert(&is->day_night_sprite_proxy_by_season_and_hour[cycle_idx], (int)s, (int)p);
 	}
 }
 
+bool
+allocate_day_night_cycle_runtime_storage ()
+{
+	int count = COUNT_CYCLE_SEASONS * 24;
+
+	if (is->cycle_imgs == NULL) {
+		is->cycle_imgs = malloc (count * sizeof is->cycle_imgs[0]);
+		if (is->cycle_imgs == NULL)
+			return false;
+		memset (is->cycle_imgs, 0, count * sizeof is->cycle_imgs[0]);
+	}
+
+	if (is->day_night_sprite_proxy_by_season_and_hour == NULL) {
+		is->day_night_sprite_proxy_by_season_and_hour = malloc (count * sizeof is->day_night_sprite_proxy_by_season_and_hour[0]);
+		if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
+			return false;
+		memset (is->day_night_sprite_proxy_by_season_and_hour, 0, count * sizeof is->day_night_sprite_proxy_by_season_and_hour[0]);
+	}
+
+	return true;
+}
+
+int
+normalize_enabled_season_mask (int mask)
+{
+	mask &= 0xF;
+	if (mask == 0)
+		mask = 1 << CS_SUMMER;
+	return mask;
+}
+
+int
+get_first_enabled_season (int mask)
+{
+	mask = normalize_enabled_season_mask (mask);
+	for (int season = 0; season < COUNT_CYCLE_SEASONS; season++)
+		if (mask & (1 << season))
+			return season;
+	return CS_SUMMER;
+}
+
+int
+get_next_enabled_season (int current_season, int mask)
+{
+	mask = normalize_enabled_season_mask (mask);
+	for (int offset = 1; offset <= COUNT_CYCLE_SEASONS; offset++) {
+		int season = (current_season + offset) % COUNT_CYCLE_SEASONS;
+		if (mask & (1 << season))
+			return season;
+	}
+	return CS_SUMMER;
+}
+
+int
+get_required_hour_mask_for_cycle_loading ()
+{
+	if (is->current_config.day_night_cycle_mode == DNCM_OFF)
+		return 1 << 12;
+
+	switch (is->current_config.day_night_cycle_mode) {
+		case DNCM_SPECIFIED:
+			return 1 << clamp (0, 23, is->current_config.pinned_hour_for_day_night_cycle);
+		default:
+			return (1 << 24) - 1;
+	}
+}
+
+int
+get_required_season_mask_for_cycle_loading ()
+{
+	if (is->current_config.seasonal_cycle_mode == SCM_OFF)
+		return 1 << CS_SUMMER;
+
+	int enabled_mask = normalize_enabled_season_mask (is->current_config.enabled_seasons_mask);
+	if (is->current_config.seasonal_cycle_mode == SCM_SPECIFIED) {
+		int pinned = clamp (CS_SUMMER, CS_SPRING, is->current_config.pinned_season_for_seasonal_cycle);
+		if ((enabled_mask & (1 << pinned)) != 0)
+			return 1 << pinned;
+		return 1 << get_first_enabled_season (enabled_mask);
+	}
+	return enabled_mask;
+}
+
+int
+get_current_local_season ()
+{
+	SYSTEMTIME st;
+	GetLocalTime (&st);
+	int month = st.wMonth;
+	if ((month == 12) || (month == 1) || (month == 2))
+		return CS_WINTER;
+	else if ((month >= 3) && (month <= 5))
+		return CS_SPRING;
+	else if ((month >= 6) && (month <= 8))
+		return CS_SUMMER;
+	else
+		return CS_FALL;
+}
+
 void 
-build_sprite_proxies_24(Map_Renderer *mr) {
-	for (int h = 0; h < 24; ++h) {
-		insert_sprite_proxies(city_sprites, is->day_night_cycle_imgs[h].City_Images, h, 80);
-		insert_sprite_proxies(destroyed_city_sprites, is->day_night_cycle_imgs[h].Destroyed_City_Images, h, 3);
-		insert_sprite_proxies(mr->Resources, is->day_night_cycle_imgs[h].Resources, h, 36);
-		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
-		insert_spritelist_proxies(mr->LM_Terrain_Images, is->day_night_cycle_imgs[h].LM_Terrain_Images, h, 9, 81);
-		insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &is->day_night_cycle_imgs[h].Terrain_Buldings_Barbarian_Camp, h);
-		insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &is->day_night_cycle_imgs[h].Terrain_Buldings_Mines, h);
-		insert_sprite_proxy(&mr->Victory_Image, &is->day_night_cycle_imgs[h].Victory_Image, h);
-		insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &is->day_night_cycle_imgs[h].Terrain_Buldings_Radar, h);
-		insert_sprite_proxies(mr->Flood_Plains_Images, is->day_night_cycle_imgs[h].Flood_Plains_Images, h, 16);
-		insert_sprite_proxies(mr->Polar_Icecaps_Images, is->day_night_cycle_imgs[h].Polar_Icecaps_Images, h, 32);
-		insert_sprite_proxies(mr->Roads_Images, is->day_night_cycle_imgs[h].Roads_Images, h, 256);
-		insert_sprite_proxies(mr->Railroads_Images, is->day_night_cycle_imgs[h].Railroads_Images, h, 272);
-		insert_sprite_proxies(mr->Terrain_Buldings_Airfields, is->day_night_cycle_imgs[h].Terrain_Buldings_Airfields, h, 2);
-		insert_sprite_proxies(mr->Terrain_Buldings_Camp, is->day_night_cycle_imgs[h].Terrain_Buldings_Camp, h, 4);
-		insert_sprite_proxies(mr->Terrain_Buldings_Fortress, is->day_night_cycle_imgs[h].Terrain_Buldings_Fortress, h, 4);
-		insert_sprite_proxies(mr->Terrain_Buldings_Barricade, is->day_night_cycle_imgs[h].Terrain_Buldings_Barricade, h, 4);
-		insert_sprite_proxies(mr->Goody_Huts_Images, is->day_night_cycle_imgs[h].Goody_Huts_Images, h, 8);
-		insert_sprite_proxies(mr->Terrain_Buldings_Outposts, is->day_night_cycle_imgs[h].Terrain_Buldings_Outposts, h, 3);
-		insert_sprite_proxies(mr->Pollution, is->day_night_cycle_imgs[h].Pollution, h, 25);
-		insert_sprite_proxies(mr->Craters, is->day_night_cycle_imgs[h].Craters, h, 25);
-		insert_sprite_proxies(mr->Tnt_Images, is->day_night_cycle_imgs[h].Tnt_Images, h, 18);
-		insert_sprite_proxies(mr->Waterfalls_Images, is->day_night_cycle_imgs[h].Waterfalls_Images, h, 4);
-		insert_sprite_proxies(mr->LM_Terrain, is->day_night_cycle_imgs[h].LM_Terrain, h, 7);
-		insert_sprite_proxies(mr->Marsh_Large, is->day_night_cycle_imgs[h].Marsh_Large, h, 8);
-		insert_sprite_proxies(mr->Marsh_Small, is->day_night_cycle_imgs[h].Marsh_Small, h, 10);
-		insert_sprite_proxies(mr->Volcanos_Images, is->day_night_cycle_imgs[h].Volcanos_Images, h, 16);
-		insert_sprite_proxies(mr->Volcanos_Forests_Images, is->day_night_cycle_imgs[h].Volcanos_Forests_Images, h, 16);
-		insert_sprite_proxies(mr->Volcanos_Jungles_Images, is->day_night_cycle_imgs[h].Volcanos_Jungles_Images, h, 16);
-		insert_sprite_proxies(mr->Volcanos_Snow_Images, is->day_night_cycle_imgs[h].Volcanos_Snow_Images, h, 16);
-		insert_sprite_proxies(mr->Grassland_Forests_Large, is->day_night_cycle_imgs[h].Grassland_Forests_Large, h, 8);
-		insert_sprite_proxies(mr->Plains_Forests_Large, is->day_night_cycle_imgs[h].Plains_Forests_Large, h, 8);
-		insert_sprite_proxies(mr->Tundra_Forests_Large, is->day_night_cycle_imgs[h].Tundra_Forests_Large, h, 8);
-		insert_sprite_proxies(mr->Grassland_Forests_Small, is->day_night_cycle_imgs[h].Grassland_Forests_Small, h, 10);
-		insert_sprite_proxies(mr->Plains_Forests_Small, is->day_night_cycle_imgs[h].Plains_Forests_Small, h, 10);
-		insert_sprite_proxies(mr->Tundra_Forests_Small, is->day_night_cycle_imgs[h].Tundra_Forests_Small, h, 10);
-		insert_sprite_proxies(mr->Grassland_Forests_Pines, is->day_night_cycle_imgs[h].Grassland_Forests_Pines, h, 12);
-		insert_sprite_proxies(mr->Plains_Forests_Pines, is->day_night_cycle_imgs[h].Plains_Forests_Pines, h, 12);
-		insert_sprite_proxies(mr->Tundra_Forests_Pines, is->day_night_cycle_imgs[h].Tundra_Forests_Pines, h, 12);
-		insert_sprite_proxies(mr->Irrigation_Desert_Images, is->day_night_cycle_imgs[h].Irrigation_Desert_Images, h, 16);
-		insert_sprite_proxies(mr->Irrigation_Plains_Images, is->day_night_cycle_imgs[h].Irrigation_Plains_Images, h, 16);
-		insert_sprite_proxies(mr->Irrigation_Images, is->day_night_cycle_imgs[h].Irrigation_Images, h, 16);
-		insert_sprite_proxies(mr->Irrigation_Tundra_Images, is->day_night_cycle_imgs[h].Irrigation_Tundra_Images, h, 16);
-		insert_sprite_proxies(mr->Grassland_Jungles_Large, is->day_night_cycle_imgs[h].Grassland_Jungles_Large, h, 8);
-		insert_sprite_proxies(mr->Grassland_Jungles_Small, is->day_night_cycle_imgs[h].Grassland_Jungles_Small, h, 12);
-		insert_sprite_proxies(mr->Mountains_Images, is->day_night_cycle_imgs[h].Mountains_Images, h, 16);
-		insert_sprite_proxies(mr->Mountains_Forests_Images, is->day_night_cycle_imgs[h].Mountains_Forests_Images, h, 16);
-		insert_sprite_proxies(mr->Mountains_Jungles_Images, is->day_night_cycle_imgs[h].Mountains_Jungles_Images, h, 16);
-		insert_sprite_proxies(mr->Mountains_Snow_Images, is->day_night_cycle_imgs[h].Mountains_Snow_Images, h, 16);
-		insert_sprite_proxies(mr->Hills_Images, is->day_night_cycle_imgs[h].Hills_Images, h, 16);
-		insert_sprite_proxies(mr->Hills_Forests_Images, is->day_night_cycle_imgs[h].Hills_Forests_Images, h, 16);
-		insert_sprite_proxies(mr->Hills_Jungle_Images, is->day_night_cycle_imgs[h].Hills_Jungle_Images, h, 16);
-		insert_sprite_proxies(mr->Delta_Rivers_Images, is->day_night_cycle_imgs[h].Delta_Rivers_Images, h, 16);
-		insert_sprite_proxies(mr->Mountain_Rivers_Images, is->day_night_cycle_imgs[h].Mountain_Rivers_Images, h, 16);
-		insert_sprite_proxies(mr->LM_Mountains_Images, is->day_night_cycle_imgs[h].LM_Mountains_Images, h, 16);
-		insert_sprite_proxies(mr->LM_Forests_Large_Images, is->day_night_cycle_imgs[h].LM_Forests_Large_Images, h, 8);
-		insert_sprite_proxies(mr->LM_Forests_Small_Images, is->day_night_cycle_imgs[h].LM_Forests_Small_Images, h, 10);
-		insert_sprite_proxies(mr->LM_Forests_Pines_Images, is->day_night_cycle_imgs[h].LM_Forests_Pines_Images, h, 12);
-		insert_sprite_proxies(mr->LM_Hills_Images, is->day_night_cycle_imgs[h].LM_Hills_Images, h, 16);
-		
-		if (is->current_config.enable_districts) {
-			for (int dc = 0; dc < is->district_count; dc++) {
-				struct district_config const * cfg = &is->district_configs[dc];
-				int variant_capacity = ARRAY_LEN (is->district_img_sets[dc].imgs);
-				int variant_count = cfg->img_path_count;
-				if (variant_count <= 0)
-					continue;
-				if (variant_count > variant_capacity)
-					variant_count = variant_capacity;
+build_sprite_proxies(Map_Renderer *mr) {
+	if (is->cycle_imgs == NULL || is->day_night_sprite_proxy_by_season_and_hour == NULL)
+		return;
 
-				int era_count    = cfg->vary_img_by_era ? 4 : 1;
-				int column_count = cfg->img_column_count;
-
-				for (int variant_i = 0; variant_i < variant_count; variant_i++) {
-					if ((cfg->img_paths[variant_i] == NULL) || (cfg->img_paths[variant_i][0] == '\0'))
+	int required_season_mask = get_required_season_mask_for_cycle_loading ();
+	int required_hour_mask = get_required_hour_mask_for_cycle_loading ();
+	for (int season = 0; season < COUNT_CYCLE_SEASONS; season++) {
+		if ((required_season_mask & (1 << season)) == 0)
+			continue;
+		for (int h = 0; h < 24; ++h) {
+			if ((required_hour_mask & (1 << h)) == 0)
+				continue;
+			struct day_night_cycle_img_set * set = &is->cycle_imgs[24 * season + h];
+			insert_sprite_proxies(city_sprites, set->City_Images, season, h, 80);
+			insert_sprite_proxies(destroyed_city_sprites, set->Destroyed_City_Images, season, h, 3);
+			insert_sprite_proxies(mr->Resources, set->Resources, season, h, 36);
+			insert_spritelist_proxies(mr->Std_Terrain_Images, set->Std_Terrain_Images, season, h, 9, 81);
+			insert_spritelist_proxies(mr->LM_Terrain_Images, set->LM_Terrain_Images, season, h, 9, 81);
+			insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &set->Terrain_Buldings_Barbarian_Camp, season, h);
+			insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &set->Terrain_Buldings_Mines, season, h);
+			insert_sprite_proxy(&mr->Victory_Image, &set->Victory_Image, season, h);
+			insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &set->Terrain_Buldings_Radar, season, h);
+			insert_sprite_proxies(mr->Flood_Plains_Images, set->Flood_Plains_Images, season, h, 16);
+			insert_sprite_proxies(mr->Polar_Icecaps_Images, set->Polar_Icecaps_Images, season, h, 32);
+			insert_sprite_proxies(mr->Roads_Images, set->Roads_Images, season, h, 256);
+			insert_sprite_proxies(mr->Railroads_Images, set->Railroads_Images, season, h, 272);
+			insert_sprite_proxies(mr->Terrain_Buldings_Airfields, set->Terrain_Buldings_Airfields, season, h, 2);
+			insert_sprite_proxies(mr->Terrain_Buldings_Camp, set->Terrain_Buldings_Camp, season, h, 4);
+			insert_sprite_proxies(mr->Terrain_Buldings_Fortress, set->Terrain_Buldings_Fortress, season, h, 4);
+			insert_sprite_proxies(mr->Terrain_Buldings_Barricade, set->Terrain_Buldings_Barricade, season, h, 4);
+			insert_sprite_proxies(mr->Goody_Huts_Images, set->Goody_Huts_Images, season, h, 8);
+			insert_sprite_proxies(mr->Terrain_Buldings_Outposts, set->Terrain_Buldings_Outposts, season, h, 3);
+			insert_sprite_proxies(mr->Pollution, set->Pollution, season, h, 25);
+			insert_sprite_proxies(mr->Craters, set->Craters, season, h, 25);
+			insert_sprite_proxies(mr->Tnt_Images, set->Tnt_Images, season, h, 18);
+			insert_sprite_proxies(mr->Waterfalls_Images, set->Waterfalls_Images, season, h, 4);
+			insert_sprite_proxies(mr->LM_Terrain, set->LM_Terrain, season, h, 7);
+			insert_sprite_proxies(mr->Marsh_Large, set->Marsh_Large, season, h, 8);
+			insert_sprite_proxies(mr->Marsh_Small, set->Marsh_Small, season, h, 10);
+			insert_sprite_proxies(mr->Volcanos_Images, set->Volcanos_Images, season, h, 16);
+			insert_sprite_proxies(mr->Volcanos_Forests_Images, set->Volcanos_Forests_Images, season, h, 16);
+			insert_sprite_proxies(mr->Volcanos_Jungles_Images, set->Volcanos_Jungles_Images, season, h, 16);
+			insert_sprite_proxies(mr->Volcanos_Snow_Images, set->Volcanos_Snow_Images, season, h, 16);
+			insert_sprite_proxies(mr->Grassland_Forests_Large, set->Grassland_Forests_Large, season, h, 8);
+			insert_sprite_proxies(mr->Plains_Forests_Large, set->Plains_Forests_Large, season, h, 8);
+			insert_sprite_proxies(mr->Tundra_Forests_Large, set->Tundra_Forests_Large, season, h, 8);
+			insert_sprite_proxies(mr->Grassland_Forests_Small, set->Grassland_Forests_Small, season, h, 10);
+			insert_sprite_proxies(mr->Plains_Forests_Small, set->Plains_Forests_Small, season, h, 10);
+			insert_sprite_proxies(mr->Tundra_Forests_Small, set->Tundra_Forests_Small, season, h, 10);
+			insert_sprite_proxies(mr->Grassland_Forests_Pines, set->Grassland_Forests_Pines, season, h, 12);
+			insert_sprite_proxies(mr->Plains_Forests_Pines, set->Plains_Forests_Pines, season, h, 12);
+			insert_sprite_proxies(mr->Tundra_Forests_Pines, set->Tundra_Forests_Pines, season, h, 12);
+			insert_sprite_proxies(mr->Irrigation_Desert_Images, set->Irrigation_Desert_Images, season, h, 16);
+			insert_sprite_proxies(mr->Irrigation_Plains_Images, set->Irrigation_Plains_Images, season, h, 16);
+			insert_sprite_proxies(mr->Irrigation_Images, set->Irrigation_Images, season, h, 16);
+			insert_sprite_proxies(mr->Irrigation_Tundra_Images, set->Irrigation_Tundra_Images, season, h, 16);
+			insert_sprite_proxies(mr->Grassland_Jungles_Large, set->Grassland_Jungles_Large, season, h, 8);
+			insert_sprite_proxies(mr->Grassland_Jungles_Small, set->Grassland_Jungles_Small, season, h, 12);
+			insert_sprite_proxies(mr->Mountains_Images, set->Mountains_Images, season, h, 16);
+			insert_sprite_proxies(mr->Mountains_Forests_Images, set->Mountains_Forests_Images, season, h, 16);
+			insert_sprite_proxies(mr->Mountains_Jungles_Images, set->Mountains_Jungles_Images, season, h, 16);
+			insert_sprite_proxies(mr->Mountains_Snow_Images, set->Mountains_Snow_Images, season, h, 16);
+			insert_sprite_proxies(mr->Hills_Images, set->Hills_Images, season, h, 16);
+			insert_sprite_proxies(mr->Hills_Forests_Images, set->Hills_Forests_Images, season, h, 16);
+			insert_sprite_proxies(mr->Hills_Jungle_Images, set->Hills_Jungle_Images, season, h, 16);
+			insert_sprite_proxies(mr->Delta_Rivers_Images, set->Delta_Rivers_Images, season, h, 16);
+			insert_sprite_proxies(mr->Mountain_Rivers_Images, set->Mountain_Rivers_Images, season, h, 16);
+			insert_sprite_proxies(mr->LM_Mountains_Images, set->LM_Mountains_Images, season, h, 16);
+			insert_sprite_proxies(mr->LM_Forests_Large_Images, set->LM_Forests_Large_Images, season, h, 8);
+			insert_sprite_proxies(mr->LM_Forests_Small_Images, set->LM_Forests_Small_Images, season, h, 10);
+			insert_sprite_proxies(mr->LM_Forests_Pines_Images, set->LM_Forests_Pines_Images, season, h, 12);
+			insert_sprite_proxies(mr->LM_Hills_Images, set->LM_Hills_Images, season, h, 16);
+			
+			if (is->current_config.enable_districts) {
+				for (int dc = 0; dc < is->district_count; dc++) {
+					struct district_config const * cfg = &is->district_configs[dc];
+					int variant_capacity = ARRAY_LEN (is->district_img_sets[dc].imgs);
+					int variant_count = cfg->img_path_count;
+					if (variant_count <= 0)
 						continue;
-					for (int era = 0; era < era_count; era++) {
-						for (int col = 0; col < column_count; col++) {
-							Sprite * base = &is->district_img_sets[dc].imgs[variant_i][era][col];
-							Sprite * proxy = &is->day_night_cycle_imgs[h].District_Images[dc][variant_i][era][col];
-							insert_sprite_proxy (base, proxy, h);
+					if (variant_count > variant_capacity)
+						variant_count = variant_capacity;
+
+					int era_count    = cfg->vary_img_by_era ? 4 : 1;
+					int column_count = cfg->img_column_count;
+
+					for (int variant_i = 0; variant_i < variant_count; variant_i++) {
+						if ((cfg->img_paths[variant_i] == NULL) || (cfg->img_paths[variant_i][0] == '\0'))
+							continue;
+						for (int era = 0; era < era_count; era++) {
+							for (int col = 0; col < column_count; col++) {
+								Sprite * base = &is->district_img_sets[dc].imgs[variant_i][era][col];
+								Sprite * proxy = &set->District_Images[dc][variant_i][era][col];
+								insert_sprite_proxy (base, proxy, season, h);
+							}
 						}
 					}
 				}
-			}
 
-			insert_sprite_proxy (&is->abandoned_district_img, &is->day_night_cycle_imgs[h].Abandoned_District_Image, h);
-			insert_sprite_proxy (&is->abandoned_maritime_district_img, &is->day_night_cycle_imgs[h].Abandoned_Maritime_District_Image, h);
+				insert_sprite_proxy (&is->abandoned_district_img, &set->Abandoned_District_Image, season, h);
+				insert_sprite_proxy (&is->abandoned_maritime_district_img, &set->Abandoned_Maritime_District_Image, season, h);
 
-			// Wonder districts
-			if (is->current_config.enable_wonder_districts) {
-				for (int wi = 0; wi < is->wonder_district_count; wi++) {
-					Sprite * base_img = &is->wonder_district_img_sets[wi].img;
-					Sprite * proxy_img = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].img;
-					insert_sprite_proxy (base_img, proxy_img, h);
+				if (is->current_config.enable_wonder_districts) {
+					for (int wi = 0; wi < is->wonder_district_count; wi++) {
+						insert_sprite_proxy (&is->wonder_district_img_sets[wi].img, &set->Wonder_District_Images[wi].img, season, h);
+						insert_sprite_proxy (&is->wonder_district_img_sets[wi].construct_img, &set->Wonder_District_Images[wi].construct_img, season, h);
 
-					Sprite * base_construct = &is->wonder_district_img_sets[wi].construct_img;
-					Sprite * proxy_construct = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].construct_img;
-					insert_sprite_proxy (base_construct, proxy_construct, h);
-
-					if (is->wonder_district_img_sets[wi].alt_dir_img.vtable != NULL) {
-						Sprite * base_alt = &is->wonder_district_img_sets[wi].alt_dir_img;
-						Sprite * proxy_alt = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].alt_dir_img;
-						insert_sprite_proxy (base_alt, proxy_alt, h);
-					}
-
-					if (is->wonder_district_img_sets[wi].alt_dir_construct_img.vtable != NULL) {
-						Sprite * base_alt_construct = &is->wonder_district_img_sets[wi].alt_dir_construct_img;
-						Sprite * proxy_alt_construct = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].alt_dir_construct_img;
-						insert_sprite_proxy (base_alt_construct, proxy_alt_construct, h);
+						if (is->wonder_district_img_sets[wi].alt_dir_img.vtable != NULL)
+							insert_sprite_proxy (&is->wonder_district_img_sets[wi].alt_dir_img, &set->Wonder_District_Images[wi].alt_dir_img, season, h);
+						if (is->wonder_district_img_sets[wi].alt_dir_construct_img.vtable != NULL)
+							insert_sprite_proxy (&is->wonder_district_img_sets[wi].alt_dir_construct_img, &set->Wonder_District_Images[wi].alt_dir_construct_img, season, h);
 					}
 				}
 			}
-		}
 
-		// Natural wonders
-		if (is->current_config.enable_natural_wonders && (is->natural_wonder_count > 0)) {
-			for (int ni = 0; ni < is->natural_wonder_count; ni++) {
-				Sprite * base_nw = &is->natural_wonder_img_sets[ni].img;
-				Sprite * proxy_nw = &is->day_night_cycle_imgs[h].Natural_Wonder_Images[ni].img;
-				insert_sprite_proxy (base_nw, proxy_nw, h);
+			if (is->current_config.enable_natural_wonders && (is->natural_wonder_count > 0)) {
+				for (int ni = 0; ni < is->natural_wonder_count; ni++)
+					insert_sprite_proxy (&is->natural_wonder_img_sets[ni].img, &set->Natural_Wonder_Images[ni].img, season, h);
 			}
 		}
 	}
@@ -18583,9 +18761,11 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 }
 
 void
-init_day_night_images()
+init_day_night_and_seasonal_images()
 {
 	if (is->day_night_cycle_img_state != IS_UNINITED)
+		return;
+	if (is->cycle_imgs == NULL)
 		return;
 
 	const char *hour_strs[24] = {
@@ -18594,26 +18774,34 @@ init_day_night_images()
 		"1600", "1700", "1800", "1900", "2000", "2100", "2200", "2300"
 	};
 
-	for (int i = 0; i < 24; i++) {
+	int required_season_mask = get_required_season_mask_for_cycle_loading ();
+	int required_hour_mask = get_required_hour_mask_for_cycle_loading ();
+	for (int season = 0; season < COUNT_CYCLE_SEASONS; season++) {
+		if ((required_season_mask & (1 << season)) == 0)
+			continue;
+		for (int i = 0; i < 24; i++) {
+			if ((required_hour_mask & (1 << i)) == 0)
+				continue;
 
-		char art_dir[200];
-		char temp_path[2*MAX_PATH];
-		snprintf (art_dir, sizeof art_dir, "DayNight/%s", hour_strs[i]);
-		get_mod_art_path (art_dir, temp_path, sizeof temp_path);
-		bool success = load_day_night_hour_images (&is->day_night_cycle_imgs[i], temp_path, hour_strs[i]);
+			char art_dir[200];
+			char temp_path[2*MAX_PATH];
+			snprintf (art_dir, sizeof art_dir, "DayNight/%s/%s", cycle_season_names[season], hour_strs[i]);
+			get_mod_art_path (art_dir, temp_path, sizeof temp_path);
+			bool success = load_day_night_hour_and_season_images (&is->cycle_imgs[24 * season + i], temp_path, cycle_season_names[season], hour_strs[i]);
 
-		if (!success) {
-			char ss[200];
-			snprintf(ss, sizeof ss, "Failed to load day/night cycle images for hour %s, reverting to base game art.", hour_strs[i]);
-			pop_up_in_game_error (ss);
+			if (!success) {
+				char ss[300];
+				snprintf (ss, sizeof ss, "Failed to load day/night cycle images for season %s at hour %s, reverting to base game art.", cycle_season_names[season], hour_strs[i]);
+				pop_up_in_game_error (ss);
 
-			is->day_night_cycle_img_state = IS_INIT_FAILED;
-			return;
+				is->day_night_cycle_img_state = IS_INIT_FAILED;
+				return;
+			}
 		}
 	}
 
 	Map_Renderer * mr = &p_bic_data->Map.Renderer;
-	build_sprite_proxies_24(mr);
+	build_sprite_proxies(mr);
 
 	is->day_night_cycle_img_state = IS_OK;
 }
@@ -18621,13 +18809,102 @@ init_day_night_images()
 void
 deindex_day_night_image_proxies()
 {
-	if (!is->day_night_cycle_img_proxies_indexed)
+	if (!is->day_night_cycle_img_proxies_indexed || is->day_night_sprite_proxy_by_season_and_hour == NULL)
 		return;
 
-	for (int i = 0; i < 24; i++) {
-		table_deinit (&is->day_night_sprite_proxy_by_hour[i]);
-	}
+	for (int season = 0; season < COUNT_CYCLE_SEASONS; season++)
+		for (int i = 0; i < 24; i++)
+			table_deinit (&is->day_night_sprite_proxy_by_season_and_hour[24 * season + i]);
 	is->day_night_cycle_img_proxies_indexed = false;
+}
+
+int
+calculate_current_seasonal_cycle (bool transition_on_day_night_hour_hit)
+{
+	int output = CS_SUMMER;
+	int enabled_mask = normalize_enabled_season_mask (is->current_config.enabled_seasons_mask);
+	switch (is->current_config.seasonal_cycle_mode) {
+		case SCM_OFF:
+			return CS_SUMMER;
+
+		case SCM_TIMER: {
+			output = get_first_enabled_season (enabled_mask);
+			if (is->seasonal_cycle_unstarted) {
+				is->current_seasonal_cycle = output;
+				QueryPerformanceCounter (&is->last_seasonal_cycle_update_time);
+			}
+
+			LARGE_INTEGER perf_freq, time_now;
+			QueryPerformanceFrequency (&perf_freq);
+			QueryPerformanceCounter (&time_now);
+
+			double elapsed_seconds =
+				(double)(time_now.QuadPart - is->last_seasonal_cycle_update_time.QuadPart) /
+				(double)perf_freq.QuadPart;
+			if (elapsed_seconds > (double)is->current_config.elapsed_minutes_per_season_transition * 60.0) {
+				output = get_next_enabled_season (is->current_seasonal_cycle, enabled_mask);
+				is->last_seasonal_cycle_update_time = time_now;
+			} else
+				output = is->current_seasonal_cycle;
+			break;
+		}
+
+		case SCM_USER_SEASON: {
+			output = get_current_local_season ();
+			if ((enabled_mask & (1 << output)) == 0)
+				output = get_first_enabled_season (enabled_mask);
+			break;
+		}
+
+		case SCM_EVERY_TURN: {
+			output = get_first_enabled_season (enabled_mask);
+			if (is->seasonal_cycle_unstarted) {
+				is->current_seasonal_cycle = output;
+				is->turns_in_current_season = 0;
+				break;
+			}
+			if ((enabled_mask & (1 << is->current_seasonal_cycle)) == 0) {
+				is->current_seasonal_cycle = output;
+				is->turns_in_current_season = 0;
+				break;
+			}
+			int turns_per_season = not_below (1, is->current_config.fixed_turns_per_season);
+			is->turns_in_current_season += 1;
+			if (is->turns_in_current_season >= turns_per_season) {
+				is->turns_in_current_season = 0;
+				output = get_next_enabled_season (is->current_seasonal_cycle, enabled_mask);
+			} else
+				output = is->current_seasonal_cycle;
+			break;
+		}
+
+		case SCM_ON_DAY_NIGHT_HOUR: {
+			output = get_first_enabled_season (enabled_mask);
+			if (is->seasonal_cycle_unstarted) {
+				is->current_seasonal_cycle = output;
+				break;
+			}
+			if ((enabled_mask & (1 << is->current_seasonal_cycle)) == 0) {
+				is->current_seasonal_cycle = output;
+				break;
+			}
+			if (transition_on_day_night_hour_hit)
+				output = get_next_enabled_season (is->current_seasonal_cycle, enabled_mask);
+			else
+				output = is->current_seasonal_cycle;
+			break;
+		}
+
+		case SCM_SPECIFIED: {
+			int pinned = clamp (CS_SUMMER, CS_SPRING, is->current_config.pinned_season_for_seasonal_cycle);
+			output = ((enabled_mask & (1 << pinned)) != 0) ? pinned : get_first_enabled_season (enabled_mask);
+			break;
+		}
+	}
+
+	output = clamp (CS_SUMMER, CS_SPRING, output);
+	is->seasonal_cycle_unstarted = false;
+	return output;
 }
 
 int
@@ -18709,19 +18986,29 @@ patch_Map_Renderer_load_images (Map_Renderer *this, int edx)
 {
 	Map_Renderer_load_images(this, __);
 
-	// Initialize day/night cycle and re-calculate hour, if applicable
-	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
-		is->current_day_night_cycle = calculate_current_day_night_cycle_hour ();
+	if (is->current_config.day_night_cycle_mode != DNCM_OFF || is->current_config.seasonal_cycle_mode != SCM_OFF) {
+		if (! allocate_day_night_cycle_runtime_storage ()) {
+			is->day_night_cycle_img_state = IS_INIT_FAILED;
+			return;
+		}
+
+		if (is->current_config.day_night_cycle_mode != DNCM_OFF)
+			is->current_day_night_cycle = calculate_current_day_night_cycle_hour ();
+		if ((is->current_config.seasonal_cycle_mode != SCM_OFF) &&
+		    (is->seasonal_cycle_unstarted ||
+		     ((is->current_config.seasonal_cycle_mode != SCM_EVERY_TURN) &&
+		      (is->current_config.seasonal_cycle_mode != SCM_ON_DAY_NIGHT_HOUR))))
+			is->current_seasonal_cycle = calculate_current_seasonal_cycle (false);
 
 		if (is->day_night_cycle_img_state == IS_UNINITED) {
-			init_day_night_images ();
+			init_day_night_and_seasonal_images ();
 		}
 
 		if (is->day_night_cycle_img_state == IS_OK) {
 			
 			// Sprite proxies are deindexed during each load event as sprite instances (really only Resources, which are reloaded) may change.
 			if (!is->day_night_cycle_img_proxies_indexed) {
-				build_sprite_proxies_24(this);
+				build_sprite_proxies(this);
 			}
 		}
 	}
@@ -18931,6 +19218,7 @@ patch_init_floating_point ()
 		{"limit_railroad_movement"                           ,     0,  offsetof (struct c3x_config, limit_railroad_movement)},
 		{"minimum_city_separation"                           ,     1,  offsetof (struct c3x_config, minimum_city_separation)},
 		{"anarchy_length_percent"                            ,   100,  offsetof (struct c3x_config, anarchy_length_percent)},
+		{"steal_plans_duration"                              ,     1,  offsetof (struct c3x_config, steal_plans_duration)},
 		{"ai_multi_city_start"                               ,     0,  offsetof (struct c3x_config, ai_multi_city_start)},
 		{"max_tries_to_place_fp_city"                        , 10000,  offsetof (struct c3x_config, max_tries_to_place_fp_city)},
 		{"ai_research_multiplier"                            ,   100,  offsetof (struct c3x_config, ai_research_multiplier)},
@@ -18942,10 +19230,15 @@ patch_init_floating_point ()
 		{"max_ai_naval_escorts"                              ,     3,  offsetof (struct c3x_config, max_ai_naval_escorts)},
 		{"ai_worker_requirement_percent"                     ,   150,  offsetof (struct c3x_config, ai_worker_requirement_percent)},
 		{"chance_for_nukes_to_destroy_max_one_hp_units"      ,   100,  offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
+		{"radar_tower_detection_distance"                    ,     0,  offsetof (struct c3x_config, radar_tower_detection_distance)},
+		{"outpost_detection_distance"                        ,     0,  offsetof (struct c3x_config, outpost_detection_distance)},
 		{"rebase_range_multiplier"                           ,     6,  offsetof (struct c3x_config, rebase_range_multiplier)},
 		{"elapsed_minutes_per_day_night_hour_transition"     ,     3,  offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
 		{"fixed_hours_per_turn_for_day_night_cycle"          ,     1,  offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
 		{"pinned_hour_for_day_night_cycle"                   ,     0,  offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
+		{"elapsed_minutes_per_season_transition"             ,     3,  offsetof (struct c3x_config, elapsed_minutes_per_season_transition)},
+		{"fixed_turns_per_season"                            ,     3,  offsetof (struct c3x_config, fixed_turns_per_season)},
+		{"transition_season_on_day_night_hour"               ,     0,  offsetof (struct c3x_config, transition_season_on_day_night_hour)},
 		{"years_to_double_building_culture"                  ,  1000,  offsetof (struct c3x_config, years_to_double_building_culture)},
 		{"tourism_time_scale_percent"                        ,   100,  offsetof (struct c3x_config, tourism_time_scale_percent)},
 		{"luxury_randomized_appearance_rate_percent"    ,       100,   offsetof (struct c3x_config, luxury_randomized_appearance_rate_percent)},
@@ -19035,6 +19328,9 @@ patch_init_floating_point ()
 	base_config.unit_cycle_search_criteria = UCSC_STANDARD;
 	base_config.city_work_radius = 2;
 	base_config.day_night_cycle_mode = DNCM_OFF;
+	base_config.seasonal_cycle_mode = SCM_OFF;
+	base_config.enabled_seasons_mask = 0xF;
+	base_config.pinned_season_for_seasonal_cycle = CS_SUMMER;
 	base_config.distribution_hub_yield_division_mode = DHYDM_FLAT;
 	base_config.ai_distribution_hub_build_strategy = ADHBS_BY_CITY_COUNT;
 	base_config.ai_auto_build_great_wall_strategy = AAGWS_ALL_BORDERS;
@@ -19234,6 +19530,8 @@ patch_init_floating_point ()
 
 	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
 	memset (&is->unit_type_duplicates    , 0, sizeof is->unit_type_duplicates);
+	memset (&is->steal_plans_expiration_turns, 0, sizeof is->steal_plans_expiration_turns);
+	is->steal_plans_success_roll = 0;
 	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
 	memset (&is->airdrops_this_turn      , 0, sizeof is->airdrops_this_turn);
 	memset (&is->unit_transport_ties     , 0, sizeof is->unit_transport_ties);
@@ -19250,6 +19548,14 @@ patch_init_floating_point ()
 	is->accessing_save_file = NULL;
 
 	is->drawn_strat_resource_count = 0;
+	is->current_day_night_cycle = 12;
+	is->day_night_cycle_unstarted = true;
+	is->current_seasonal_cycle = CS_SUMMER;
+	is->seasonal_cycle_unstarted = true;
+	is->turns_in_current_season = 0;
+	is->day_night_cycle_img_proxies_indexed = false;
+	is->day_night_sprite_proxy_by_season_and_hour = NULL;
+	is->cycle_imgs = NULL;
 
 	is->charmed_types_converted_to_ptw_arty = NULL;
 	is->count_charmed_types_converted_to_ptw_arty = 0;
@@ -19837,6 +20143,69 @@ can_damage_bombarding (UnitType * attacker_type, Unit * defender, Tile * defende
 		return false;
 }
 
+bool
+tile_improvements_detect_unit_for_civ (Unit * unit, int civ_id)
+{
+	int radar_dist = is->current_config.radar_tower_detection_distance;
+	int outpost_dist = is->current_config.outpost_detection_distance;
+	int max_dist = (radar_dist > outpost_dist) ? radar_dist : outpost_dist;
+	if ((max_dist <= 0) || (civ_id < 0) || (civ_id >= 32))
+		return false;
+
+	unsigned detector_owner_bits = 1u << civ_id;
+	if (is->current_config.share_visibility_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) &&
+	    ((detector_owner_bits & *p_human_player_bits) != 0))
+		detector_owner_bits = *p_human_player_bits;
+
+	bool unit_is_sea = p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Sea;
+
+	// Larger distances cannot cover any new tiles, but would make this ring scan unnecessarily expensive.
+	int largest_useful_dist = (p_bic_data->Map.Width + p_bic_data->Map.Height) / 2;
+	if (max_dist > largest_useful_dist)
+		max_dist = largest_useful_dist;
+	for (int dist = 0; dist <= max_dist; dist++) {
+		struct vertex {
+			int x, y;
+		} vertices[4] = {
+			{unit->Body.X         , unit->Body.Y - 2*dist},
+			{unit->Body.X + 2*dist, unit->Body.Y         },
+			{unit->Body.X         , unit->Body.Y + 2*dist},
+			{unit->Body.X - 2*dist, unit->Body.Y         }
+		};
+
+		int edge_dirs[4] = {3, 5, 7, 1};
+		int edge_len = (dist == 0) ? 1 : 2 * dist;
+		for (int vert = 0; vert < 4; vert++) {
+			wrap_tile_coords (&p_bic_data->Map, &vertices[vert].x, &vertices[vert].y);
+			int dx, dy;
+			neighbor_index_to_diff (edge_dirs[vert], &dx, &dy);
+			for (int j = 0; j < edge_len; j++) {
+				int x = vertices[vert].x + j * dx;
+				int y = vertices[vert].y + j * dy;
+				wrap_tile_coords (&p_bic_data->Map, &x, &y);
+
+				Tile * tile = tile_at (x, y);
+				if ((tile == NULL) || (tile == p_null_tile))
+					continue;
+
+				unsigned overlays = tile->vtable->m42_Get_Overlays (tile, __, 0);
+				bool has_detector = ((dist <= radar_dist) && ((overlays & 0x40000000) != 0)) ||
+						    ((dist <= outpost_dist) && ((overlays & 0x80000000) != 0));
+				if (has_detector &&
+				    (! is->current_config.no_cross_shore_detection ||
+				     ((tile->vtable->m35_Check_Is_Water (tile) != 0) == unit_is_sea))) {
+					int owner_id = tile->vtable->m70_Get_Tile_Building_OwnerID (tile);
+					if ((owner_id >= 0) && (owner_id < 32) && ((detector_owner_bits & (1u << owner_id)) != 0))
+						return true;
+				}
+			}
+		}
+	}
+
+	return false;
+}
+
 char __fastcall
 patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2)
 {
@@ -19845,6 +20214,8 @@ patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2)
 	is->checking_visibility_for_unit = this;
 
 	char base_vis = Unit_is_visible_to_civ (this, __, civ_id, param_2);
+	if ((! base_vis) && tile_improvements_detect_unit_for_civ (this, civ_id))
+		base_vis = true;
 	if ((! base_vis) && // if unit is not visible to civ_id AND
 	    is->current_config.share_visibility_in_hotseat && // shared hotseat vis is enabled AND
 	    ((1 << civ_id) & *p_human_player_bits) && // civ_id is a human player AND
@@ -21204,7 +21575,16 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 
 	clear_memo ();
 
-	if (command == UCV_Fortify) {
+	if (command == UCV_Skip_Turn) {
+		FOR_UNITS_ON (uti, tile)
+			if ((uti.unit->Body.UnitTypeID == unit_type_id) &&
+			    (uti.unit->Body.Container_Unit < 0) &&
+			    (uti.unit->Body.UnitState == 0) &&
+			    (uti.unit->Body.CivID == unit->Body.CivID) &&
+			    (uti.unit->Body.Moves < patch_Unit_get_max_move_points (uti.unit)))
+				Main_Screen_Form_issue_command (p_main_screen_form, __, UCV_Skip_Turn, uti.unit);
+
+	} else if (command == UCV_Fortify) {
 		// This probably won't work for online games since "fortify all" does additional work in that case. See Main_Screen_Form::fortify_all.
 		// I don't like how this method doesn't place units in the fortified pose. One workaround is so use
 		// Main_Screen_Form::issue_fortify_command, but that plays the entire fortify animation for each unit which is a major annoyance for
@@ -22574,6 +22954,7 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 	table_deinit (&is->extra_defensive_bombards);
 	table_deinit (&is->airdrops_this_turn);
 	table_deinit (&is->unit_transport_ties);
+	table_deinit (&is->steal_plans_expiration_turns);
 	is->last_selected_unit.initial_x = is->last_selected_unit.initial_y = -1;
 	is->last_selected_unit.last_x = is->last_selected_unit.last_y = is->last_selected_unit.type_id = -1;
 	is->last_selected_unit.ptr = NULL;
@@ -22732,13 +23113,30 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 	else if (is->current_config.override_no_ai_patrol == NAPO_NONE)
 		*p_allow_ai_patrol = 0 == get_int_from_conquests_ini ("NoAIPatrol", 1, 0);
 
-	// Clear day/night cycle vars and deindex sprite proxies, if necessary.
-	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
-		is->day_night_cycle_unstarted = true;
-		is->current_day_night_cycle = 12;
-		if (is->day_night_cycle_img_proxies_indexed) {
-			deindex_day_night_image_proxies ();
+	// Reset cycle vars and clear any indexed sprite proxies.
+	is->day_night_cycle_unstarted = true;
+	is->current_day_night_cycle = 12;
+	is->seasonal_cycle_unstarted = true;
+	is->current_seasonal_cycle = CS_SUMMER;
+	is->turns_in_current_season = 0;
+	if (is->day_night_cycle_img_proxies_indexed)
+		deindex_day_night_image_proxies ();
+	if ((is->current_config.day_night_cycle_mode != DNCM_OFF) ||
+	    (is->current_config.seasonal_cycle_mode != SCM_OFF)) {
+		if (! allocate_day_night_cycle_runtime_storage ()) {
+			is->day_night_cycle_img_state = IS_INIT_FAILED;
+			pop_up_in_game_error ("Could not allocate memory for day/night cycle sprite proxies.");
 		}
+	} else {
+		if (is->day_night_sprite_proxy_by_season_and_hour != NULL) {
+			free (is->day_night_sprite_proxy_by_season_and_hour);
+			is->day_night_sprite_proxy_by_season_and_hour = NULL;
+		}
+		if ((is->cycle_imgs != NULL) && (is->day_night_cycle_img_state != IS_OK)) {
+			free (is->cycle_imgs);
+			is->cycle_imgs = NULL;
+		}
+		is->day_night_cycle_img_state = IS_UNINITED;
 	}
 
 	return tr;
@@ -24916,14 +25314,14 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, bool 
 int __fastcall
 patch_Sprite_draw (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
-	Sprite * to_draw = get_sprite_proxy_for_current_hour(this);
+	Sprite * to_draw = get_cycle_sprite_proxy(this);
 	return Sprite_draw(to_draw ? to_draw : this, __, canvas, pixel_x, pixel_y, color_table);
 }
 
 int __fastcall
 patch_Sprite_draw_on_map (Sprite * this, int edx, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7)
 {
-	Sprite * to_draw = get_sprite_proxy_for_current_hour(this);
+	Sprite * to_draw = get_cycle_sprite_proxy(this);
 	return Sprite_draw_on_map(to_draw ? to_draw : this, __, map_renderer, pixel_x, pixel_y, param_4, param_5, param_6, param_7);
 }
 
@@ -27840,6 +28238,32 @@ patch_Leader_begin_turn (Leader * this)
 	Leader_begin_turn (this);
 }
 
+int __fastcall
+patch_rand_int_for_steal_plans (void * this, int edx, int lim)
+{
+	int tr = rand_int (this, __, lim);
+	is->steal_plans_success_roll = tr;
+	return tr;
+}
+
+void __fastcall
+patch_Espionage_do_steal_plans (Espionage * this)
+{
+	Espionage_do_steal_plans (this);
+
+	City * target_city = get_city_ptr (this->city_id);
+	int spying_civ_id = this->civ_id;
+	if ((is->current_config.steal_plans_duration > 1) &&
+	    ((is->steal_plans_success_roll & 0xFFFF) < (byte)this->base_success_chance) &&
+	    (target_city != NULL) &&
+	    (spying_civ_id >= 0) && (spying_civ_id < 32) &&
+	    (target_city->Body.CivID >= 0) && (target_city->Body.CivID < 32)) {
+		int key = (spying_civ_id << 5) | target_city->Body.CivID;
+		int duration = not_below (1, is->current_config.steal_plans_duration);
+		itable_insert (&is->steal_plans_expiration_turns, key, *p_current_turn_no + duration);
+	}
+}
+
 void __fastcall
 patch_Leader_begin_unit_turns (Leader * this)
 {
@@ -28346,14 +28770,33 @@ patch_perform_interturn_in_main_loop ()
 
 	perform_interturn ();
 
-	if (is->current_config.day_night_cycle_mode) {
-		if (is->day_night_cycle_img_state == IS_OK) {
-			int new_hour = calculate_current_day_night_cycle_hour ();
+	if (is->day_night_cycle_img_state == IS_OK) {
+		bool redraw = false;
+		int old_hour = is->current_day_night_cycle;
+		int new_hour = old_hour;
+		if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
+			new_hour = calculate_current_day_night_cycle_hour ();
 			if (new_hour != is->current_day_night_cycle) {
 				is->current_day_night_cycle = new_hour;
-				p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+				redraw = true;
 			}
 		}
+		if (is->current_config.seasonal_cycle_mode != SCM_OFF) {
+			bool transition_on_day_night_hour_hit = false;
+			if (is->current_config.seasonal_cycle_mode == SCM_ON_DAY_NIGHT_HOUR) {
+				int transition_hour = clamp (0, 23, is->current_config.transition_season_on_day_night_hour);
+				transition_on_day_night_hour_hit = (is->current_config.day_night_cycle_mode != DNCM_OFF) &&
+					(new_hour != old_hour) && (new_hour == transition_hour);
+			}
+			int old_season = is->current_seasonal_cycle;
+			int new_season = calculate_current_seasonal_cycle (transition_on_day_night_hour_hit);
+			if (new_season != old_season) {
+				is->current_seasonal_cycle = new_season;
+				redraw = true;
+			}
+		}
+		if (redraw)
+			p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 	}
 
 	if (is->current_config.enable_city_work_radii_highlights && is->highlight_city_radii) {
@@ -29176,6 +29619,18 @@ patch_Leader_do_production_phase (Leader * this)
 		*p_barb_activity = 1;
 
 	Leader_do_production_phase (this);
+
+	// The base game clears stolen-plans visibility during every production phase. Restore it until the configured duration expires.
+	for (int target_civ_id = 0; target_civ_id < 32; target_civ_id++) {
+		int key = (this->ID << 5) | target_civ_id;
+		int expiration_turn;
+		if (itable_look_up (&is->steal_plans_expiration_turns, key, &expiration_turn)) {
+			if (*p_current_turn_no + 1 < expiration_turn)
+				this->Contacts[target_civ_id] |= LCF_HAVE_MILITARY_MAP;
+			else
+				itable_remove (&is->steal_plans_expiration_turns, key);
+		}
+	}
 
 	if (is->force_barb_activity_for_cities) {
 		*p_barb_activity = saved_barb_activity;
@@ -32313,6 +32768,10 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			serialize_aligned_text ("unit_transport_ties", &mod_data);
 			itable_serialize (&is->unit_transport_ties, &mod_data);
 		}
+		if (is->steal_plans_expiration_turns.len > 0) {
+			serialize_aligned_text ("steal_plans_expiration_turns", &mod_data);
+			itable_serialize (&is->steal_plans_expiration_turns, &mod_data);
+		}
 		if (is->current_config.unit_cycle_search_criteria != UCSC_STANDARD && is->waiting_units.len > 0) {
 			serialize_aligned_text ("waiting_units", &mod_data);
 			itable_serialize (&is->waiting_units, &mod_data);
@@ -32364,6 +32823,12 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
 		serialize_aligned_text ("current_day_night_cycle", &mod_data);
 		int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_day_night_cycle), is->current_day_night_cycle);
+	}
+	if (is->current_config.seasonal_cycle_mode != SCM_OFF) {
+		serialize_aligned_text ("current_seasonal_cycle", &mod_data);
+		int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_seasonal_cycle), is->current_seasonal_cycle);
+		serialize_aligned_text ("turns_in_current_season", &mod_data);
+		int_to_bytes (buffer_allocate (&mod_data, sizeof is->turns_in_current_season), is->turns_in_current_season);
 	}
 	if (is->current_config.enable_districts && (is->district_count > 0)) {
 		serialize_aligned_text ("district_config_names", &mod_data);
@@ -32777,6 +33242,15 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					break;
 				}
 
+			} else if (match_save_chunk_name (&cursor, "steal_plans_expiration_turns")) {
+				int bytes_read = itable_deserialize (cursor, seg + seg_size, &is->steal_plans_expiration_turns);
+				if (bytes_read > 0)
+					cursor += bytes_read;
+				else {
+					error_chunk_name = "steal_plans_expiration_turns";
+					break;
+				}
+
 			} else if (match_save_chunk_name (&cursor, "waiting_units")) {
 				int bytes_read = itable_deserialize (cursor, seg + seg_size, &is->waiting_units);
 				if (bytes_read > 0) {
@@ -32856,11 +33330,21 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				// only the standard graphics; I didn't test). If day/night cycle mode is active, restore the proxies now if they
 				// haven't already been.
 				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
-					build_sprite_proxies_24 (&p_bic_data->Map.Renderer);
+					build_sprite_proxies (&p_bic_data->Map.Renderer);
 
 				// Because we've restored current_day_night_cycle from the save, set that is is not the first turn so the cycle
 				// doesn't get restarted.
 				is->day_night_cycle_unstarted = false;
+			
+			} else if (match_save_chunk_name (&cursor, "current_seasonal_cycle")) {
+				is->current_seasonal_cycle = clamp (CS_SUMMER, CS_SPRING, *((int *)cursor)++);
+				QueryPerformanceCounter (&is->last_seasonal_cycle_update_time);
+				is->seasonal_cycle_unstarted = false;
+				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
+					build_sprite_proxies (&p_bic_data->Map.Renderer);
+			
+			} else if (match_save_chunk_name (&cursor, "turns_in_current_season")) {
+				is->turns_in_current_season = not_below (0, *((int *)cursor)++);
 			
 				// ToC-3
 			} else if (match_save_chunk_name (&cursor, "great_wall_auto_build_state")) {
@@ -35594,6 +36078,21 @@ init_district_images ()
 
 	char art_dir[200];
 	char temp_path[2*MAX_PATH];
+	int base_season = CS_SUMMER;
+	if (is->current_config.seasonal_cycle_mode != SCM_OFF) {
+		int enabled_mask = normalize_enabled_season_mask (is->current_config.enabled_seasons_mask);
+		base_season = get_first_enabled_season (enabled_mask);
+		if (is->current_config.seasonal_cycle_mode == SCM_USER_SEASON) {
+			int user_season = get_current_local_season ();
+			if (enabled_mask & (1 << user_season))
+				base_season = user_season;
+		} else if (! is->seasonal_cycle_unstarted) {
+			int current_season = clamp (CS_SUMMER, CS_SPRING, is->current_seasonal_cycle);
+			if (enabled_mask & (1 << current_season))
+				base_season = current_season;
+		}
+	}
+	char const * base_season_name = cycle_season_names[base_season];
 
 	is->dc_img_state = IS_INIT_FAILED;
 
@@ -35618,7 +36117,7 @@ init_district_images ()
 				continue;
 
 			// Read PCX file
-			snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", cfg->img_paths[variant_i]);
+			snprintf (art_dir, sizeof art_dir, "Districts/%s/1200/%s", base_season_name, cfg->img_paths[variant_i]);
 			get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 			PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 
@@ -35659,7 +36158,8 @@ init_district_images ()
 		}
 	}
 	// Load abandoned district images (land + maritime)
-	get_mod_art_path ("Districts/1200/Abandoned.pcx", temp_path, sizeof temp_path);
+	snprintf (art_dir, sizeof art_dir, "Districts/%s/1200/Abandoned.pcx", base_season_name);
+	get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 
 	if (pcx.JGL.Image == NULL) {
@@ -35706,7 +36206,7 @@ init_district_images ()
 				if (pcx_loaded)
 					wpcx.vtable->clear_JGL (&wpcx);
 
-				snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", img_path);
+				snprintf (art_dir, sizeof art_dir, "Districts/%s/1200/%s", base_season_name, img_path);
 				get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 				PCX_Image_read_file (&wpcx, __, temp_path, NULL, 0, 0x100, 2);
 
@@ -35771,7 +36271,7 @@ init_district_images ()
 				if (pcx_loaded)
 					nwpcx.vtable->clear_JGL (&nwpcx);
 
-				snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", img_path);
+				snprintf (art_dir, sizeof art_dir, "Districts/%s/1200/%s", base_season_name, img_path);
 				get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 				PCX_Image_read_file (&nwpcx, __, temp_path, NULL, 0, 0x100, 2);
 
@@ -35802,6 +36302,14 @@ init_district_images ()
 	}
 
 	is->dc_img_state = IS_OK;
+
+	if (((is->current_config.day_night_cycle_mode != DNCM_OFF) || (is->current_config.seasonal_cycle_mode != SCM_OFF)) &&
+	    (is->day_night_cycle_img_state == IS_OK)) {
+		if (is->day_night_cycle_img_proxies_indexed)
+			deindex_day_night_image_proxies ();
+		build_sprite_proxies (&p_bic_data->Map.Renderer);
+	}
+
 	pcx.vtable->destruct (&pcx, __, 0);
 }
 
@@ -38998,7 +39506,7 @@ patch_Leader_get_attitude_toward (Leader * this, int edx, int civ_id, int param_
 					continue;
 				if (colony_body->OwnerID != civ_id)
 					continue;
-				score -= penalty;
+				score += penalty;
 			}
 		}
 	}

@@ -183,6 +183,25 @@ enum day_night_cycle_mode {
 	DNCM_SPECIFIED
 };
 
+enum seasonal_cycle_mode {
+	SCM_OFF = 0,
+	SCM_TIMER,
+	SCM_USER_SEASON,
+	SCM_EVERY_TURN,
+	SCM_ON_DAY_NIGHT_HOUR,
+	SCM_SPECIFIED
+};
+
+enum cycle_season {
+	CS_SUMMER = 0,
+	CS_FALL,
+	CS_WINTER,
+	CS_SPRING,
+	COUNT_CYCLE_SEASONS
+};
+
+char const * const cycle_season_names[COUNT_CYCLE_SEASONS] = {"Summer", "Fall", "Winter", "Spring"};
+
 enum distribution_hub_yield_division_mode {
 	DHYDM_FLAT = 0,
 	DHYDM_SCALE_BY_CITY_COUNT
@@ -321,6 +340,7 @@ struct c3x_config {
 	bool include_stealth_attack_cancel_option;
 	bool intercept_recon_missions;
 	bool charge_one_move_for_recon_and_interception;
+	int steal_plans_duration;
 	bool polish_precision_striking;
 	bool enable_stealth_attack_via_bombardment;
 	bool immunize_aircraft_against_bombardment;
@@ -383,6 +403,8 @@ struct c3x_config {
 	int chance_for_nukes_to_destroy_max_one_hp_units;
 	bool allow_sale_of_aqueducts_and_hospitals;
 	bool no_cross_shore_detection;
+	int radar_tower_detection_distance;
+	int outpost_detection_distance;
 	int city_work_radius;
 	bool auto_zoom_city_screen_for_large_work_areas;
 	enum work_area_limit work_area_limit;
@@ -475,6 +497,12 @@ struct c3x_config {
 	int elapsed_minutes_per_day_night_hour_transition;
 	int fixed_hours_per_turn_for_day_night_cycle;
 	int pinned_hour_for_day_night_cycle;
+	int seasonal_cycle_mode;
+	int enabled_seasons_mask;
+	int pinned_season_for_seasonal_cycle;
+	int elapsed_minutes_per_season_transition;
+	int fixed_turns_per_season;
+	int transition_season_on_day_night_hour;
 
 	bool enable_natural_wonders;
 	bool add_natural_wonders_to_scenarios_if_none;
@@ -554,6 +582,7 @@ enum stackable_command {
 	SC_CLEAN_POLLUTION,
 	SC_ROAD,
 	SC_RAILROAD,
+	SC_SKIP_TURN,
 	SC_FORTIFY,
 	SC_UPGRADE,
 	SC_DISBAND,
@@ -584,6 +613,7 @@ struct sc_button_info {
 	/* Clean Pol. */ { .command = UCV_Clear_Pollution, .kind = SCK_TERRAFORM, .tile_sheet_column = 6, .tile_sheet_row = 3 },
 	/* Road */       { .command = UCV_Build_Road     , .kind = SCK_TERRAFORM, .tile_sheet_column = 6, .tile_sheet_row = 2 },
 	/* Railroad */   { .command = UCV_Build_Railroad , .kind = SCK_TERRAFORM, .tile_sheet_column = 7, .tile_sheet_row = 2 },
+	/* Skip Turn */  { .command = UCV_Skip_Turn      , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 0, .tile_sheet_row = 0 },
 	/* Fortify */    { .command = UCV_Fortify        , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 2, .tile_sheet_row = 0 },
 	/* Upgrade */    { .command = UCV_Upgrade_Unit   , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 7, .tile_sheet_row = 1 },
 	/* Disband */    { .command = UCV_Disband        , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 3, .tile_sheet_row = 0 },
@@ -1661,6 +1691,10 @@ struct injected_state {
 	// after founding feature so it may not be set if that feature is not activated or applicable. Defaults to -1.
 	int turn_no_of_last_founding_for_settler_perfume[32];
 
+	// Maps pairs of spying and target civ IDs to the turn on which their stolen plans visibility expires. Keys are (spying ID << 5) | target ID.
+	struct table steal_plans_expiration_turns;
+	int steal_plans_success_roll;
+
 	// Stores the byte offsets into the c3x_config struct of all boolean/integer config options, accessible using the options' names as
 	// strings. Used when reading in a config INI file.
 	struct table boolean_config_offsets;
@@ -2090,10 +2124,14 @@ struct injected_state {
 	// Day-Night cycle data
 	int current_day_night_cycle;
 	bool day_night_cycle_unstarted; // If current_day_night_cycle has not been set, f.e. because it's the first turn of a new game.
+	int current_seasonal_cycle;
+	bool seasonal_cycle_unstarted;
+	int turns_in_current_season;
 	bool day_night_cycle_img_proxies_indexed;
 	LARGE_INTEGER last_day_night_cycle_update_time;
+	LARGE_INTEGER last_seasonal_cycle_update_time;
 
-	struct table day_night_sprite_proxy_by_hour[24];
+	struct table * day_night_sprite_proxy_by_season_and_hour;
 
 	struct wonder_district_image_set {
 		Sprite img;
@@ -2186,7 +2224,7 @@ struct injected_state {
 		Sprite Abandoned_Maritime_District_Image;
 		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
 		struct natural_wonder_district_image_set Natural_Wonder_Images[MAX_NATURAL_WONDER_DISTRICT_TYPES];
-	} day_night_cycle_imgs[24];
+	} * cycle_imgs;
 
 	// Districts
 	enum init_state dc_img_state;
