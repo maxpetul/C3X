@@ -38076,6 +38076,8 @@ tile_animation_rule_matches_tile_base (struct tile_animation_config const * cfg,
 		if (! tile_matches_terrain_types (tile, cfg->terrain_types_mask, cfg->terrain_types_include_land))
 			return false;
 	} else if (cfg->type == TAT_COASTAL_WAVE) {
+		if (get_district_instance (tile) != NULL)
+			return false;
 		if (! tile_matches_square_type (tile, SQ_Coast))
 			return false;
 	} else {
