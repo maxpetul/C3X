@@ -85,7 +85,7 @@ struct work_area_improvement {
 };
 
 struct unit_visibility_rule {
-	int unit_id;
+	struct table unit_ids; // Table mapping unit type IDs to 1's; used as a hash set
 	enum UnitTypeClasses unit_class;
 
 	int base_visibility;

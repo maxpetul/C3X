@@ -248,6 +248,7 @@ int count_utilized_neighborhoods_in_city_radius (City * city);
 char * copy_trimmed_string_or_null (struct string_slice const * slice, int remove_quotes);
 bool city_has_resource_r (City * city, int resource_id, int max_generated_resource_id);
 int calc_max_visibility_range ();
+bool read_unit_type_list (struct string_slice const * s, struct error_line ** p_unrecognized_lines, struct table * unit_types);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -775,6 +776,9 @@ reset_to_base_config ()
 
 	// Free list of unit visibility rules
 	if (cc->unit_visibility_rule_list != NULL) {
+		for (int i=0; i<cc->c_unit_visibility_rules; i++) {
+			table_deinit (&cc->unit_visibility_rule_list[i].unit_ids);
+		}
 		free (cc->unit_visibility_rule_list);
 		cc->unit_visibility_rule_list = NULL;
 		cc-> c_unit_visibility_rules = 0;
@@ -1415,11 +1419,11 @@ parse_unit_visibility_rule (char ** p_cursor, struct error_line ** p_unrecognize
 	struct unit_visibility_rule rule = {0};
 	rule.base_visibility = 1;
 	rule.terrain_bonus_multiplier = 1;
-	rule.unit_id = -1;
 	rule.unit_class = -1;
+	rule.unit_ids.len = 0;
 
 	if (skip_white_space (&cur) &&
-	    parse_string (&cur, &name) &&
+	    (parse_string (&cur, &name) || parse_until_punctuation(&cur, &name, ':')) &&
 	    skip_punctuation (&cur, ':')) {
 
 		do {
@@ -1443,18 +1447,19 @@ parse_unit_visibility_rule (char ** p_cursor, struct error_line ** p_unrecognize
 
 		} while (skip_punctuation (&cur, '+'));
 
-		int id;
-		if (find_unit_type_id_by_name (&name, 0, &id)) {
-			rule.unit_id = id;
-		} else if (slice_matches_str (&name, "Land") || slice_matches_str (&name, "land")) {
+		if (slice_matches_str (&name, "Land") || slice_matches_str (&name, "land")) {
 			rule.unit_class = UTC_Land;
 		} else if (slice_matches_str (&name, "Sea") || slice_matches_str (&name, "sea")) {
 			rule.unit_class = UTC_Sea;
 		} else if (slice_matches_str (&name, "Air") || slice_matches_str (&name, "air")) {
 			rule.unit_class = UTC_Air;
-		} else {
+		} else if (!read_unit_type_list (&name, p_unrecognized_lines, &rule.unit_ids)) {
 			add_unrecognized_line (p_unrecognized_lines, &name);
 			*p_cursor = cur;
+			return RPR_UNRECOGNIZED;
+		}
+		if ((int)(rule.unit_class) < 0 && rule.unit_ids.len == 0) {
+			add_unrecognized_line (p_unrecognized_lines, &name);
 			return RPR_UNRECOGNIZED;
 		}
 		*out = rule;
@@ -22116,11 +22121,13 @@ patch_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 
 	for (int i=is->current_config.c_unit_visibility_rules-1; i>=0; i--) {
 		struct unit_visibility_rule rule = is->current_config.unit_visibility_rule_list[i];
-		if (rule.unit_id >= 0) {
-			if (rule.unit_id == this->Body.UnitTypeID) {
+		if ((int)rule.unit_class < 0) {
+			int unused = 0;
+			if (itable_look_up(&rule.unit_ids, this->Body.UnitTypeID, &unused)) {
 				current_rules = rule;
 				break;
 			}
+			
 		} else {
 			UnitType const * unit_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
 			if (rule.unit_class == unit_type->Unit_Class) {
