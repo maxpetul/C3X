@@ -773,6 +773,13 @@ reset_to_base_config ()
 		}
 	}
 
+	// Free list of unit visibility rules
+	if (cc->unit_visibility_rule_list != NULL) {
+		free (cc->unit_visibility_rule_list);
+		cc->unit_visibility_rule_list = NULL;
+		cc-> c_unit_visibility_rules = 0;
+	}
+
 	// Overwrite the current config with the base config
 	memcpy (&is->current_config, &is->base_config, sizeof is->current_config);
 
@@ -1422,11 +1429,11 @@ parse_unit_visibility_rule (char ** p_cursor, struct error_line ** p_unrecognize
 
 			struct string_slice ss;
 			if (parse_string (&cur, &ss)) {
-				if (slice_matches_str (&ss, "times_bonus"))
+				if (slice_matches_str (&ss, "times-bonus"))
 					rule.terrain_bonus_multiplier = num;
-				else if (slice_matches_str (&ss, "when_fortified"))
+				else if (slice_matches_str (&ss, "when-fortified"))
 					rule.fortification_bonus = num;
-				else if (slice_matches_str (&ss, "when_fortified_same_continent")) {
+				else if (slice_matches_str (&ss, "when-fortified-same-continent")) {
 					rule.fortification_bonus = num;
 					rule.fortification_bonus_continent_lock = true;
 				} else
@@ -1439,11 +1446,11 @@ parse_unit_visibility_rule (char ** p_cursor, struct error_line ** p_unrecognize
 		int id;
 		if (find_unit_type_id_by_name (&name, 0, &id)) {
 			rule.unit_id = id;
-		} else if (slice_matches_str (&name, "UTC_Land")) {
+		} else if (slice_matches_str (&name, "Land") || slice_matches_str (&name, "land")) {
 			rule.unit_class = UTC_Land;
-		} else if (slice_matches_str (&name, "UTC_Sea")) {
+		} else if (slice_matches_str (&name, "Sea") || slice_matches_str (&name, "sea")) {
 			rule.unit_class = UTC_Sea;
-		} else if (slice_matches_str (&name, "UTC_Air")) {
+		} else if (slice_matches_str (&name, "Air") || slice_matches_str (&name, "air")) {
 			rule.unit_class = UTC_Air;
 		} else {
 			add_unrecognized_line (p_unrecognized_lines, &name);
@@ -1570,7 +1577,6 @@ read_fixed_int_array (struct string_slice const * s, int * array, int count)
 		else
 			return 0;
 	}
-	struct string_slice sink;
 	if(!skip_white_space (&cur) || cur != s->str + s->len)
 		return 0;
 	return 1;
@@ -1594,7 +1600,6 @@ read_fixed_bool_array (struct string_slice const * s, bool * array, int count)
 		else
 			return 0;
 	}
-	struct string_slice sink;
 	if(!skip_white_space (&cur) || cur != s->str + s->len)
 		return 0;
 	return 1;
@@ -22109,7 +22114,7 @@ patch_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 	current_rules.fortification_bonus = 0;
 	current_rules.fortification_bonus_continent_lock = false;
 
-	for (int i=0; i<is->current_config.c_unit_visibility_rules; i++) {
+	for (int i=is->current_config.c_unit_visibility_rules-1; i>=0; i--) {
 		struct unit_visibility_rule rule = is->current_config.unit_visibility_rule_list[i];
 		if (rule.unit_id >= 0) {
 			if (rule.unit_id == this->Body.UnitTypeID) {
