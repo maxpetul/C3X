@@ -1420,10 +1420,12 @@ parse_unit_visibility_rule (char ** p_cursor, struct error_line ** p_unrecognize
 	rule.base_visibility = 1;
 	rule.terrain_bonus_multiplier = 1;
 	rule.unit_class = -1;
+	rule.unit_ids.block = NULL;
+	rule.unit_ids.capacity_exponent = 0;
 	rule.unit_ids.len = 0;
 
 	if (skip_white_space (&cur) &&
-	    (parse_string (&cur, &name) || parse_until_punctuation(&cur, &name, ':')) &&
+	    parse_until_punctuation(&cur, &name, ':') &&
 	    skip_punctuation (&cur, ':')) {
 
 		do {
@@ -1447,11 +1449,14 @@ parse_unit_visibility_rule (char ** p_cursor, struct error_line ** p_unrecognize
 
 		} while (skip_punctuation (&cur, '+'));
 
-		if (slice_matches_str (&name, "Land") || slice_matches_str (&name, "land")) {
+		if (slice_matches_str (&name, "Land") || slice_matches_str (&name, "land") ||
+			slice_matches_str (&name, "\"Land\"") || slice_matches_str (&name, "\"land\"")) {
 			rule.unit_class = UTC_Land;
-		} else if (slice_matches_str (&name, "Sea") || slice_matches_str (&name, "sea")) {
+		} else if (slice_matches_str (&name, "Sea") || slice_matches_str (&name, "sea") ||
+			slice_matches_str (&name, "\"Sea\"") || slice_matches_str (&name, "\"sea\"")) {
 			rule.unit_class = UTC_Sea;
-		} else if (slice_matches_str (&name, "Air") || slice_matches_str (&name, "air")) {
+		} else if (slice_matches_str (&name, "Air") || slice_matches_str (&name, "air") ||
+			slice_matches_str (&name, "\"Air\"") || slice_matches_str (&name, "\"air\"")) {
 			rule.unit_class = UTC_Air;
 		} else if (!read_unit_type_list (&name, p_unrecognized_lines, &rule.unit_ids)) {
 			add_unrecognized_line (p_unrecognized_lines, &name);
