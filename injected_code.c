@@ -29434,7 +29434,8 @@ patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int 
 			// formation-time top defender while aiming and only swaps to the real
 			// attacker once the attack begins. (Unit_has_ability is checked first
 			// so the mouse->tile lookup only runs for armies, which is rare.)
-			if (Unit_has_ability (this->Current_Unit, __, UTA_Army) &&
+			if (! is->combat_unit_display_override_active &&
+			    Unit_has_ability (this->Current_Unit, __, UTA_Army) &&
 			    tiles_adjacent_for_attack (
 				    tile_x - this->Current_Unit->Body.X,
 				    tile_y - this->Current_Unit->Body.Y)) {
@@ -30202,8 +30203,7 @@ counter_attacker_for_defender_selection (Unit * attacker, Unit * defender)
 	    unit_has_valid_type_id (defender) &&
 	    Unit_has_ability (attacker, __, UTA_Army)) {
 		int hp_remaining = clamp (
-			Unit_get_max_hp (attacker) - attacker->Body.Damage,
-			0, 9999);
+			0, 9999, Unit_get_max_hp (attacker) - attacker->Body.Damage);
 		Unit * member = select_counter_best_attacking_army_member (
 			attacker, defender, hp_remaining);
 		if (member != NULL)
