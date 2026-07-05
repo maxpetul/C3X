@@ -3,7 +3,12 @@
   - See the 'type' and 'ai_build_strategy' options in the districts config
 - Districts may consume a worker on completion, option consumes_worker in districts config
 - Allow districts to suppress resources on their tiles, option subsumes_tile_resource in districts config
+- Options to allow radar towers and outposts to detect invisible units within given distances, named radar_tower_detection_distance and outpost_detection_distance
+- Option to configure the duration of the "Steal Plans" espionage mission, named steal_plans_duration
+- Enable stack skip turn
 - Fix crash related to resource generation
+- Fix extraterritorial colony relations penalty improving instead of harming relations
+- Ignore new lines and other space characters at the start of config lists such as buildings_generating_resources
 
 * RELEASE 27
 - Add ability to apply perfume to resources under option named resource_perfume

@@ -884,6 +884,8 @@ define,	   0x5F2C25,	0x602AF6,	0x5F2B55,	"ADDR_RESOURCE_GEN_TILE_COUNT_DIV",		"b
 repl call, 0x5BFA0C,	0x5CE59E,	0x5BF71C,	"rand_int_to_enslave",				""
 repl call, 0x52A165,	0x53452B,	0x52A205,	"Sprite_draw_espionage_screen_target_civ_bkg",	""
 repl call, 0x52A1C1,	0x534587,	0x52A261,	"Civilopedia_Article_get_name_for_esp_screen",	""
+repl call, 0x527CA1,	0x531F3F,	0x527D41,	"rand_int_for_steal_plans",			""
+inlead,	   0x527BB0,	0x531E50,	0x527C50,	"Espionage_do_steal_plans",			"void (__fastcall *) (Espionage * this)"
 define,	   0xA422F8,	0xA64AF8,	0xA422B8,	"p_espionage_form",				"Espionage_Form *"
 define,	   0x680758,	0x69D768,	0x680758,	"animation_names",				"char **"
 define,	   0x5BF2FB,	0x5CDE95,	0x5BF00B,	"ADDR_SKIP_VICTORY_ANIM_IF_AIR",		"byte *"
