@@ -14522,7 +14522,7 @@ leader_can_natively_build_district (Leader * leader, int district_id)
 		int max_per_100 = is->current_config.max_distribution_hub_count_per_100_cities;
 		if (max_per_100 > 0) {
 			int city_count = leader->Cities_Count;
-			int max_allowed = (city_count * max_per_100 + 99) / 100;
+			int max_allowed = (city_count * max_per_100) / 100;
 			if (max_allowed <= 0)
 				return false;
 
@@ -28390,13 +28390,13 @@ compute_auto_distribution_hub_goal (Leader * leader, int city_count)
 	int max_reasonable = (city_count + 1) / 2;
 	int max_per_100 = is->current_config.max_distribution_hub_count_per_100_cities;
 	if (max_per_100 > 0) {
-		int capped = (city_count * max_per_100 + 99) / 100;
+		int capped = (city_count * max_per_100) / 100;
 		if (capped >= 0)
 			max_reasonable = capped;
 	}
 	if (desired > max_reasonable)
 		desired = max_reasonable;
-	if (desired < 1)
+	if ((desired < 1) && (max_reasonable > 0))
 		desired = 1;
 
 	return desired;
