@@ -217,7 +217,6 @@ enum recognizable_parse_result parse_counter_rule (char ** p_cursor, struct erro
 Unit * find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded, bool require_visible, bool * out_any_counter_effect);
 Unit * find_counter_base_visible_defender_against (Main_Screen_Form * form, Unit * attacker, int tile_x, int tile_y, Unit * excluded);
 Unit * resolve_army_defending_member (Unit * army, Unit * attacker, bool sync_top_defender_id);
-void face_unit_toward (Unit * unit, Unit * target);
 Unit * counter_attacker_for_defender_selection (Unit * attacker, Unit * defender);
 bool unit_has_valid_type_id (Unit * unit);
 int __cdecl patch_get_building_defense_bonus_at (int x, int y, int param_3);
@@ -2795,7 +2794,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					}
 					if (! value_ok)
 						handle_config_error (&p, CPE_BAD_VALUE);
-				} else if (slice_matches_str (&p.key, "unit_group")) {
+				} else if (slice_matches_str (&p.key, "unit_groups") ||
+					   slice_matches_str (&p.key, "unit_group")) { // singular accepted for backward compatibility
 					if (0 <= (recog_err_offset = read_recognizables (&value,
 											 &unrecognized_lines,
 											 sizeof (struct unit_counter_group),
@@ -2803,7 +2803,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 (void **)&cfg->unit_counter_groups,
 											 &cfg->count_unit_counter_groups)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
-				} else if (slice_matches_str (&p.key, "counter_rule")) {
+				} else if (slice_matches_str (&p.key, "counter_rules") ||
+					   slice_matches_str (&p.key, "counter_rule")) { // singular accepted for backward compatibility
 					if (0 <= (recog_err_offset = read_recognizables (&value,
 											 &unrecognized_lines,
 											 sizeof (struct counter_rule),
@@ -26613,60 +26614,13 @@ resolve_army_defending_member (Unit * army, Unit * attacker,
 
 	if (unit_has_valid_type_id (member) &&
 	    (member->Body.Container_Unit == army->Body.ID)) {
-		if (sync_top_defender_id) {
+		if (sync_top_defender_id)
 			army->Body.army_top_defender_id = member->Body.ID;
-			// Orient the newly displayed member toward the attacker so it
-			// doesn't briefly face the wrong way when the displayed defender
-			// switches (e.g. between consecutive attacks on the army).
-			face_unit_toward (member, attacker);
-		}
 
 		return member;
 	}
 
 	return army;
-}
-
-// Orient `unit` to face `target` when they are on adjacent tiles. The engine
-// orients the real combatant during an active fight, but when the displayed
-// army member switches (e.g. the game auto-selects a different defender), the
-// newly shown member would otherwise keep its old/idle facing for a moment.
-// Setting it here toward the opponent removes that "facing the wrong way"
-// flicker. If the tiles aren't adjacent we leave the facing unchanged.
-void
-face_unit_toward (Unit * unit, Unit * target)
-{
-	if ((unit == NULL) || (target == NULL))
-		return;
-
-	int dx = target->Body.X - unit->Body.X,
-	    dy = target->Body.Y - unit->Body.Y;
-	int dir = -1;
-	if      ((dx ==  1) && (dy == -1)) dir = DIR_NE;
-	else if ((dx ==  2) && (dy ==  0)) dir = DIR_E;
-	else if ((dx ==  1) && (dy ==  1)) dir = DIR_SE;
-	else if ((dx ==  0) && (dy ==  2)) dir = DIR_S;
-	else if ((dx == -1) && (dy ==  1)) dir = DIR_SW;
-	else if ((dx == -2) && (dy ==  0)) dir = DIR_W;
-	else if ((dx == -1) && (dy == -1)) dir = DIR_NW;
-	else if ((dx ==  0) && (dy == -2)) dir = DIR_N;
-	if (dir >= 0)
-		unit->Body.Animation.summary.direction = dir;
-}
-
-// True if (dx, dy) is one of the 8 attack-adjacent tile offsets in Civ3's
-// staggered map coordinates (same set used by face_unit_toward).
-bool
-tiles_adjacent_for_attack (int dx, int dy)
-{
-	return ((dx ==  1) && (dy == -1)) ||
-	       ((dx ==  2) && (dy ==  0)) ||
-	       ((dx ==  1) && (dy ==  1)) ||
-	       ((dx ==  0) && (dy ==  2)) ||
-	       ((dx == -1) && (dy ==  1)) ||
-	       ((dx == -2) && (dy ==  0)) ||
-	       ((dx == -1) && (dy == -1)) ||
-	       ((dx ==  0) && (dy == -2));
 }
 
 Unit *
@@ -26747,10 +26701,8 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 			this->attacker, this->defender);
 		if ((atk_member != NULL) &&
 		    unit_has_valid_type_id (atk_member) &&
-		    (atk_member->Body.Container_Unit == this->attacker->Body.ID)) {
+		    (atk_member->Body.Container_Unit == this->attacker->Body.ID))
 			this->attacker->Body.army_top_defender_id = atk_member->Body.ID;
-			face_unit_toward (atk_member, this->defender);
-		}
 	}
 
 	// Apply override of retreat eligibility
@@ -29805,11 +29757,24 @@ main_screen_form_is_bombard_display_mode (Main_Screen_Form * form)
 	if (form == NULL)
 		return false;
 
+	// If the player has explicitly entered a bombard mode, always show the
+	// bombard defender.
 	if ((form->Mode_Action == UMA_Bombard) ||
 	    (form->Mode_Action == UMA_Air_Bombard) ||
 	    (form->Mode_Action == UMA_Auto_Bombard) ||
 	    (form->Mode_Action == UMA_Auto_Air_Bombard))
 		return true;
+
+	// Otherwise the bombard button being merely available shouldn't switch the
+	// hover display for units that would normally attack directly (e.g.
+	// battleships). Only treat "button available" as bombard display mode for
+	// units that can't direct-attack: zero attack strength or air units.
+	Unit * unit = form->Current_Unit;
+	if (! unit_has_valid_type_id (unit))
+		return false;
+	if ((Unit_get_attack_strength (unit) != 0) &&
+	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class != UTC_Air))
+		return false;
 
 	Command_Button * buttons = form->GUI.Unit_Command_Buttons;
 	for (int n = 0; n < ARRAY_LEN (form->GUI.Unit_Command_Buttons); n++) {
@@ -29891,9 +29856,9 @@ patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int 
 			// so the mouse->tile lookup only runs for armies, which is rare.)
 			if (! is->combat_unit_display_override_active &&
 			    Unit_has_ability (this->Current_Unit, __, UTA_Army) &&
-			    tiles_adjacent_for_attack (
-				    tile_x - this->Current_Unit->Body.X,
-				    tile_y - this->Current_Unit->Body.Y)) {
+			    are_tiles_adjacent (this->Current_Unit->Body.X,
+						this->Current_Unit->Body.Y,
+						tile_x, tile_y)) {
 				int mx = -1, my = -1;
 				if ((Main_Screen_Form_get_tile_coords_under_mouse (
 					     this, __, this->mouse_x, this->mouse_y,
@@ -29905,11 +29870,9 @@ patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int 
 					if ((atk_member != NULL) &&
 					    unit_has_valid_type_id (atk_member) &&
 					    (atk_member->Body.Container_Unit ==
-					     this->Current_Unit->Body.ID)) {
+					     this->Current_Unit->Body.ID))
 						this->Current_Unit->Body.army_top_defender_id =
 							atk_member->Body.ID;
-						face_unit_toward (atk_member, combat_best);
-					}
 				}
 			}
 			return combat_best;
@@ -30457,27 +30420,16 @@ counter_attack_crosses_river (Unit * attacker, Unit * defender, Tile * def_tile)
 	       unit_has_valid_type_id (defender)))
 		return false;
 
-	Tile * atk_tile = tile_at (attacker->Body.X, attacker->Body.Y);
-	if ((atk_tile == NULL) || (atk_tile == p_null_tile))
-		return false;
-
+	// Match the base game: only the defender tile's river edge toward the
+	// attacker counts for the river defense bonus.
 	int def_to_atk = Map_compute_neighbor_index (
 		&p_bic_data->Map, __,
 		defender->Body.X, defender->Body.Y,
 		attacker->Body.X, attacker->Body.Y,
 		8);
-	int atk_to_def = Map_compute_neighbor_index (
-		&p_bic_data->Map, __,
-		attacker->Body.X, attacker->Body.Y,
-		defender->Body.X, defender->Body.Y,
-		8);
 
-	return ((def_to_atk > 0) && (def_to_atk <= 8) &&
-	        counter_tile_has_river_edge (def_tile,
-	                                     (enum direction)def_to_atk)) ||
-	       ((atk_to_def > 0) && (atk_to_def <= 8) &&
-	        counter_tile_has_river_edge (atk_tile,
-	                                     (enum direction)atk_to_def));
+	return (def_to_atk > 0) && (def_to_atk <= 8) &&
+	       counter_tile_has_river_edge (def_tile, (enum direction)def_to_atk);
 }
 
 int
