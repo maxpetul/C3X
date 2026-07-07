@@ -18381,6 +18381,7 @@ patch_init_floating_point ()
 		{"dont_end_units_turn_after_airdrop"                     , false, offsetof (struct c3x_config, dont_end_units_turn_after_airdrop)},
 		{"allow_airdrop_without_airport"                         , false, offsetof (struct c3x_config, allow_airdrop_without_airport)},
 		{"enable_negative_pop_pollution"                         , true , offsetof (struct c3x_config, enable_negative_pop_pollution)},
+		{"pollution_spawns_reduce_population"                    , false, offsetof (struct c3x_config, pollution_spawns_reduce_population)},
 		{"allow_defensive_retreat_on_water"                      , false, offsetof (struct c3x_config, allow_defensive_retreat_on_water)},
 		{"promote_wonder_decorruption_effect"                    , false, offsetof (struct c3x_config, promote_wonder_decorruption_effect)},
 		{"allow_military_leaders_to_hurry_wonders"               , false, offsetof (struct c3x_config, allow_military_leaders_to_hurry_wonders)},
@@ -25016,6 +25017,19 @@ int __fastcall
 patch_City_get_total_pollution (City * this)
 {
     return City_get_pollution_from_buildings (this) + patch_City_get_pollution_from_pop (this);
+}
+
+void __fastcall
+patch_City_update_spawn_pollution (City * this)
+{
+	if (! is->current_config.pollution_spawns_reduce_population) {
+		City_update_spawn_pollution (this);
+		return;
+	}
+
+	int pollution = patch_City_get_total_pollution (this);
+	if ((pollution > 0) && (rand_int (p_rand_object, __, 100) < pollution) && (this->Body.Population.Size > 1))
+		City_remove_population (this, __, 1, -1, '\0');
 }
 
 void remove_extra_palaces (City * city, City * excluded_destination);
