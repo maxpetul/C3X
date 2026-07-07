@@ -25028,8 +25028,16 @@ patch_City_update_spawn_pollution (City * this)
 	}
 
 	int pollution = patch_City_get_total_pollution (this);
-	if ((pollution > 0) && (rand_int (p_rand_object, __, 100) < pollution) && (this->Body.Population.Size > 1))
+	if ((pollution > 0) && (rand_int (p_rand_object, __, 100) < pollution) && (this->Body.Population.Size > 1)) {
 		City_remove_population (this, __, 1, -1, '\0');
+
+		if (this->Body.CivID == p_main_screen_form->Player_CivID) {
+			char msg[160];
+			snprintf (msg, sizeof msg, "%s %s", is->c3x_labels[CL_POLLUTION_REDUCES_POP], this->Body.CityName);
+			msg[(sizeof msg) - 1] = '\0';
+			show_map_specific_text (this->Body.X, this->Body.Y, msg, true);
+		}
+	}
 }
 
 void remove_extra_palaces (City * city, City * excluded_destination);
