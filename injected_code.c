@@ -1449,14 +1449,11 @@ parse_unit_visibility_rule (char ** p_cursor, struct error_line ** p_unrecognize
 
 		} while (skip_punctuation (&cur, '+'));
 
-		if (slice_matches_str (&name, "Land") || slice_matches_str (&name, "land") ||
-			slice_matches_str (&name, "\"Land\"") || slice_matches_str (&name, "\"land\"")) {
+		if (slice_matches_str (&name, "Land") || slice_matches_str (&name, "land")) {
 			rule.unit_class = UTC_Land;
-		} else if (slice_matches_str (&name, "Sea") || slice_matches_str (&name, "sea") ||
-			slice_matches_str (&name, "\"Sea\"") || slice_matches_str (&name, "\"sea\"")) {
+		} else if (slice_matches_str (&name, "Sea") || slice_matches_str (&name, "sea")) {
 			rule.unit_class = UTC_Sea;
-		} else if (slice_matches_str (&name, "Air") || slice_matches_str (&name, "air") ||
-			slice_matches_str (&name, "\"Air\"") || slice_matches_str (&name, "\"air\"")) {
+		} else if (slice_matches_str (&name, "Air") || slice_matches_str (&name, "air")) {
 			rule.unit_class = UTC_Air;
 		} else if (!read_unit_type_list (&name, p_unrecognized_lines, &rule.unit_ids)) {
 			add_unrecognized_line (p_unrecognized_lines, &name);
@@ -22195,7 +22192,8 @@ patch_Unit_can_see_tile (Unit * this, int edx, int x, int y)
 				return true;
 		}
 		//if continental lock is active, fort bonus doesn't apply to diff-continent tiles
-		sightDistance -= current_rules.fortification_bonus;
+		sightDistance -= fortification_bonus;
+		fortification_bonus = 0;
 	}
 
 	int flat_bonus = 0;
