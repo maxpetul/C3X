@@ -2183,6 +2183,17 @@ read_ai_auto_build_great_wall_strategy (struct string_slice const * s, int * out
 }
 
 bool
+read_pollution_spawn_effect (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "default"                            )) { *out_val = PSE_DEFAULT;                                  return true; }
+	else if (slice_matches_str (&trimmed, "reduce-population"                  )) { *out_val = PSE_REDUCE_POPULATION;                        return true; }
+	else if (slice_matches_str (&trimmed, "reduce-population-and-pollute-tile" )) { *out_val = PSE_REDUCE_POPULATION_AND_POLLUTE_TILE;       return true; }
+	else
+		return false;
+}
+
+bool
 read_tile_terrain_type_value (struct string_slice const * s, enum SquareTypes * out_type)
 {
 	if (s == NULL || out_type == NULL)
@@ -2753,6 +2764,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "sea_retreat_rules")) {
 					if (! read_retreat_rules (&value, (int *)&cfg->sea_retreat_rules))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "pollution_spawn_effect")) {
+					if (! read_pollution_spawn_effect (&value, (int *)&cfg->pollution_spawn_effect))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "draw_lines_using_gdi_plus")) {
 					if (! read_line_drawing_override (&value, (int *)&cfg->draw_lines_using_gdi_plus))
@@ -19259,7 +19273,6 @@ patch_init_floating_point ()
 		{"dont_end_units_turn_after_airdrop"                     , false, offsetof (struct c3x_config, dont_end_units_turn_after_airdrop)},
 		{"allow_airdrop_without_airport"                         , false, offsetof (struct c3x_config, allow_airdrop_without_airport)},
 		{"enable_negative_pop_pollution"                         , true , offsetof (struct c3x_config, enable_negative_pop_pollution)},
-		{"pollution_spawns_reduce_population"                    , false, offsetof (struct c3x_config, pollution_spawns_reduce_population)},
 		{"enable_pollution_from_free_improvements"               , false, offsetof (struct c3x_config, enable_pollution_from_free_improvements)},
 		{"allow_defensive_retreat_on_water"                      , false, offsetof (struct c3x_config, allow_defensive_retreat_on_water)},
 		{"promote_wonder_decorruption_effect"                    , false, offsetof (struct c3x_config, promote_wonder_decorruption_effect)},
@@ -19533,6 +19546,7 @@ patch_init_floating_point ()
 	base_config.distribution_hub_yield_division_mode = DHYDM_FLAT;
 	base_config.ai_distribution_hub_build_strategy = ADHBS_BY_CITY_COUNT;
 	base_config.ai_auto_build_great_wall_strategy = AAGWS_ALL_BORDERS;
+	base_config.pollution_spawn_effect = PSE_DEFAULT;
 	base_config.great_wall_auto_build_wonder_improv_id = -1;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
@@ -26291,10 +26305,12 @@ patch_City_get_total_pollution (City * this)
 void __fastcall
 patch_City_update_spawn_pollution (City * this)
 {
-	if (! is->current_config.pollution_spawns_reduce_population) {
+	enum pollution_spawn_effect effect = is->current_config.pollution_spawn_effect;
+	if (effect == PSE_DEFAULT) {
 		City_update_spawn_pollution (this);
 		return;
-	}
+	} else if (effect == PSE_REDUCE_POPULATION_AND_POLLUTE_TILE)
+		City_update_spawn_pollution (this);
 
 	int pollution = patch_City_get_total_pollution (this);
 	if ((pollution > 0) && (rand_int (p_rand_object, __, 100) < pollution) && (this->Body.Population.Size > 1)) {
