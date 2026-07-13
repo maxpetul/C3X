@@ -327,6 +327,7 @@ struct c3x_config {
 	bool dont_end_units_turn_after_airdrop;
 	bool allow_airdrop_without_airport;
 	bool enable_negative_pop_pollution;
+	bool enable_pollution_from_free_improvements;
 	enum retreat_rules land_retreat_rules;
 	enum retreat_rules sea_retreat_rules;
 	bool allow_defensive_retreat_on_water;
