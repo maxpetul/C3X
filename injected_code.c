@@ -211,6 +211,16 @@ get_city_ptr (int id)
 	return NULL;
 }
 
+// Forward declarations for unit counter system (defined after their dependencies)
+enum recognizable_parse_result parse_unit_counter_group (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_group);
+enum recognizable_parse_result parse_counter_rule (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_rule);
+Unit * find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded, bool require_visible, bool * out_any_counter_effect);
+Unit * find_counter_base_visible_defender_against (Main_Screen_Form * form, Unit * attacker, int tile_x, int tile_y, Unit * excluded);
+Unit * resolve_army_defending_member (Unit * army, Unit * attacker, bool sync_top_defender_id);
+Unit * counter_attacker_for_defender_selection (Unit * attacker, Unit * defender);
+bool unit_has_valid_type_id (Unit * unit);
+int __cdecl patch_get_building_defense_bonus_at (int x, int y, int param_3);
+
 // Declare various functions needed for districts and hard to untangle and reorder here
 void __fastcall patch_City_recompute_yields_and_happiness (City * this);
 void __fastcall patch_Map_build_trade_network (Map * this);
@@ -232,6 +242,9 @@ struct district_instance * get_district_instance (Tile * tile);
 struct named_tile_entry * get_named_tile_entry (Tile * tile);
 bool city_has_required_district (City * city, int district_id);
 bool district_is_complete (Tile * tile, int district_id);
+bool district_uses_tile_improvement_rules (int district_id);
+bool district_tile_bonus_applies_to_city (Tile * tile, int district_id, City * city);
+bool district_tile_should_be_unworkable (int district_id);
 bool city_requires_district_for_improvement (City * city, int improv_id, int * out_district_id);
 void clear_city_district_request (City * city, int district_id);
 void set_tile_unworkable_for_all_cities (Tile * tile, int tile_x, int tile_y);
@@ -239,7 +252,9 @@ bool city_radius_contains_tile (City * city, int tile_x, int tile_y);
 void on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y);
 bool ai_move_district_worker (Unit * worker, struct district_worker_record * rec);
 bool has_active_building (City * city, int improv_id);
-bool tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, int i_improv);
+bool tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, int district_id, int i_improv);
+void __fastcall patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups);
+int get_visible_non_subsumed_tile_resource (Tile * tile, struct district_instance * inst, int civ_id);
 void recompute_distribution_hub_totals ();
 void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y);
 void wrap_tile_coords (Map * map, int * x, int * y);
@@ -556,7 +571,9 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 			if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 				// Check if the tile itself is a completed district (includes natural wonders)
 				struct district_instance * inst = get_district_instance (tile);
-				if (inst != NULL && district_is_complete (tile, inst->district_id))
+				if ((inst != NULL) &&
+				    district_is_complete (tile, inst->district_id) &&
+				    district_tile_should_be_unworkable (inst->district_id))
 					return false;
 
 				// Check if the tile is covered by a distribution hub
@@ -758,10 +775,43 @@ reset_to_base_config ()
 		cc->great_wall_auto_build_wonder_name = NULL;
 	}
 
+	if (cc->unit_counter_groups != NULL) {
+		for (int n = 0; n < cc->count_unit_counter_groups; n++) {
+			free (cc->unit_counter_groups[n].name);
+			free (cc->unit_counter_groups[n].type_ids);
+		}
+		free (cc->unit_counter_groups);
+		cc->unit_counter_groups = NULL;
+		cc->count_unit_counter_groups = 0;
+	}
+
+	if (cc->counter_rules != NULL) {
+		for (int n = 0; n < cc->count_counter_rules; n++) {
+			free (cc->counter_rules[n].attacker_group);
+			free (cc->counter_rules[n].defender_group);
+			free (cc->counter_rules[n].district_name);
+		}
+		free (cc->counter_rules);
+		cc->counter_rules = NULL;
+		cc->count_counter_rules = 0;
+	}
+
 	// Free unit limits table
 	FOR_TABLE_ENTRIES (tei, &cc->unit_limits)
 		free ((void *)tei.value);
 	stable_deinit (&cc->unit_limits);
+
+	// ToC-26: (A way to group units for unit limits) - Free unit limit groups. Each group owns its unit_type_ids array.
+	// unit_type_to_group values are non-owning pointers into unit_limit_groups, so only
+	// the table structure itself needs to be freed (table_deinit does not free values).
+	FOR_TABLE_ENTRIES (tei_grp, &cc->unit_limit_groups) {
+		struct unit_limit_group * grp = (struct unit_limit_group *)tei_grp.value;
+		free (grp->unit_type_ids);
+		free (grp);
+	}
+	stable_deinit (&cc->unit_limit_groups);
+	table_deinit (&cc->unit_type_to_group);
+	// END ToC-26
 
 	// Free the linked list of loaded config names and the string name contained in each one
 	if (is->loaded_config_names != NULL) {
@@ -786,6 +836,13 @@ reset_to_base_config ()
 
 	// Overwrite the current config with the base config
 	memcpy (&is->current_config, &is->base_config, sizeof is->current_config);
+
+	// These fields are heap-allocated and must not be inherited from base_config
+	// (base_config never owns valid pointers for them)
+	is->current_config.unit_counter_groups       = NULL;
+	is->current_config.count_unit_counter_groups = 0;
+	is->current_config.counter_rules             = NULL;
+	is->current_config.count_counter_rules       = 0;
 
 	// Recreate loaded config names list with just the base config
 	is->loaded_config_names = malloc (sizeof *is->loaded_config_names);
@@ -1344,6 +1401,7 @@ parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_line
 		return RPR_PARSE_ERROR;
 }
 
+
 enum recognizable_parse_result
 parse_civ_name_alias_list  (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_civ_era_alias_list)
 {
@@ -1361,6 +1419,10 @@ struct parsed_unit_type_limit {
 	struct unit_type_limit limit;
 };
 
+// ToC-26: Code replace: Removed per-item unit-type validation from this parser. Validation is now deferred to
+// the post-parse copy phase (see "Copy and validate unit type limits" block in load_config) so
+// that unit_limit_groups is fully loaded regardless of key order in the config file. Group names
+// used as keys in unit_limits are therefore accepted here without triggering unrecognized warnings.
 enum recognizable_parse_result
 parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_unit_type_limit)
 {
@@ -1392,22 +1454,112 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 
 		} while (skip_punctuation (&cur, '+'));
 
-		int unused;
-		if (find_unit_type_id_by_name (&name, 0, &unused)) {
-			memset (out->name, 0, sizeof out->name);
-			strncpy (out->name, name.str, name.len);
-			out->limit = limit;
-			*p_cursor = cur;
-			return RPR_OK;
-		} else {
-			add_unrecognized_line (p_unrecognized_lines, &name);
-			*p_cursor = cur;
-			return RPR_UNRECOGNIZED;
-		}
+		// Store name and limit unconditionally; validation against unit types and groups
+		// happens in the post-parse copy phase after all config keys have been processed.
+		memset (out->name, 0, sizeof out->name);
+		strncpy (out->name, name.str, name.len);
+		out->limit = limit;
+		*p_cursor = cur;
+		return RPR_OK;
 
 	} else
 		return RPR_PARSE_ERROR;
 }
+
+// ToC-26: Parses the unit_limit_groups config setting.
+// Format: ["Group Name": "UnitTypeA" "UnitTypeB" ..., "Group2": "UnitTypeC" ...]
+//
+// - Group names are arbitrary labels (not validated against game data).
+// - Unit type names within each group are looked up against the scenario's unit roster;
+//   unrecognized names are soft-reported via p_unrecognized_lines.
+// - All unit type IDs matching each member name are stored, including AI strategy duplicates.
+// - Populates unit_limit_groups (group_name -> struct unit_limit_group*) and
+//   unit_type_to_group (unit_type_id -> struct unit_limit_group*) for O(1) runtime lookup.
+// - If the same unit type appears in multiple groups, the first group definition wins.
+// Returns -1 on success, or the byte offset of the first parse error within s.
+int
+read_unit_limit_groups (struct string_slice const * s,
+                        struct error_line ** p_unrecognized_lines,
+                        struct table * unit_limit_groups,
+                        struct table * unit_type_to_group)
+{
+	if (s->len <= 0)
+		return -1;
+
+	char * extracted = extract_slice (s);
+	char * cursor = extracted;
+	bool success = false;
+
+	while (1) {
+		skip_white_space (&cursor);
+		if (*cursor == '\0') { success = true; break; }
+
+		// Parse the group label (arbitrary string, not a game object name)
+		struct string_slice group_name;
+		if (! parse_string (&cursor, &group_name))
+			break;
+		if (! skip_punctuation (&cursor, ':'))
+			break;
+
+		// Collect unit type IDs for every space-separated member name in this group.
+		// find_unit_type_id_by_name is called in a loop to collect all IDs sharing the same
+		// name (i.e. AI strategy duplicates), matching the behavior of list_unit_type_duplicates.
+		int * ids = NULL;
+		int ids_count = 0, ids_capacity = 0;
+		struct string_slice member_name;
+		while (parse_string (&cursor, &member_name)) {
+			int search_start = 0, found_id;
+			bool any_found = false;
+			while (find_unit_type_id_by_name (&member_name, search_start, &found_id)) {
+				reserve (sizeof ids[0], (void **)&ids, &ids_capacity, ids_count);
+				ids[ids_count++] = found_id;
+				search_start = found_id + 1;
+				any_found = true;
+			}
+			if (! any_found)
+				add_unrecognized_line (p_unrecognized_lines, &member_name);
+		}
+
+		// Only register the group when at least one valid unit type was resolved
+		if (ids_count > 0) {
+			struct unit_limit_group * grp = malloc (sizeof *grp);
+			grp->unit_type_ids = ids;
+			grp->count         = ids_count;
+			memset (&grp->limit, 0, sizeof grp->limit);
+			grp->has_limit     = false; // limit is assigned in post-parse copy phase
+
+			// stable_insert strdup's the key; use extract_slice for a temp null-terminated copy
+			char * gname = extract_slice (&group_name);
+			stable_insert (unit_limit_groups, gname, (int)grp);
+			free (gname);
+
+			// Build reverse map: unit_type_id -> group (first group wins for any type in multiple groups)
+			for (int n = 0; n < ids_count; n++) {
+				int dummy;
+				if (! itable_look_up (unit_type_to_group, ids[n], &dummy))
+					itable_insert (unit_type_to_group, ids[n], (int)grp);
+			}
+		} else {
+			free (ids); // free(NULL) is safe; handles the zero-members case
+		}
+
+		// Advance past the comma between groups, or finish at end-of-string
+		skip_horiz_space (&cursor);
+		if (*cursor == ',') {
+			cursor++;
+		} else if (*cursor == '\0') {
+			success = true;
+			break;
+		} else {
+			break; // unexpected character: signal a parse error at this position
+		}
+	}
+
+	int result = success ? -1 : (int)(cursor - extracted);
+	free (extracted);
+	return result;
+}
+// END ToC-26
 
 enum recognizable_parse_result
 parse_unit_visibility_rule (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_unit_visibility_rule)
@@ -1540,7 +1692,11 @@ read_recognizables (struct string_slice const * s,
 	int new_items_capacity = 0;
 	void * temp_item = malloc (item_size);
 
-	while (1) {
+	skip_white_space (&cursor);
+	if (*cursor == '\0')
+		success = true;
+
+	while (! success) {
 		enum recognizable_parse_result result = parse_item (&cursor, p_unrecognized_lines, temp_item);
 		if (result != RPR_PARSE_ERROR) {
 			if (result == RPR_OK) {
@@ -1822,6 +1978,54 @@ read_ai_multi_start_extra_palaces (struct string_slice const * s,
 	return success;
 }
 
+struct parsable_field_bit {
+	char * name;
+	int bit_value;
+};
+
+bool
+read_bit_field (struct string_slice const * s, struct parsable_field_bit const * bits, int count_bits, int * out_field)
+{
+	struct string_slice trimmed = trim_string_slice (s, 0);
+	s = &trimmed;
+
+	int tr;
+	if (s->len <= 0)
+		tr = 0;
+	else if (slice_matches_str (s, "all"))
+		tr = ~0;
+	else {
+		tr = 0;
+		char * cursor = &s->str[0];
+		char * s_end = &s->str[s->len];
+		while (1) {
+			struct string_slice name;
+
+			if (cursor >= s_end)
+				break;
+			else if (! parse_string (&cursor, &name)) {
+				skip_white_space (&cursor);
+				if (cursor >= s_end)
+					break;
+				else
+					return false; // Invalid character in value
+			}
+
+			bool matched_any = false;
+			for (int n = 0; n < count_bits; n++)
+				if (slice_matches_str (&name, bits[n].name)) {
+					tr |= bits[n].bit_value;
+					matched_any = true;
+					break;
+				}
+			if (! matched_any)
+				return false;
+		}
+	}
+	*out_field = tr;
+	return true;
+}
+
 bool
 read_retreat_rules (struct string_slice const * s, int * out_val)
 {
@@ -1903,6 +2107,49 @@ read_day_night_cycle_mode (struct string_slice const * s, int * out_val)
 	else if (slice_matches_str (&trimmed, "specified" )) { *out_val = DNCM_SPECIFIED;  return true; }
 	else
 		return false;
+}
+
+bool
+read_seasonal_cycle_mode (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "off"              )) { *out_val = SCM_OFF;               return true; }
+	else if (slice_matches_str (&trimmed, "timer"            )) { *out_val = SCM_TIMER;             return true; }
+	else if (slice_matches_str (&trimmed, "user-season"      )) { *out_val = SCM_USER_SEASON;       return true; }
+	else if (slice_matches_str (&trimmed, "every-turn"       )) { *out_val = SCM_EVERY_TURN;        return true; }
+	else if (slice_matches_str (&trimmed, "on-day-night-hour")) { *out_val = SCM_ON_DAY_NIGHT_HOUR; return true; }
+	else if (slice_matches_str (&trimmed, "specified"        )) { *out_val = SCM_SPECIFIED;         return true; }
+	else
+		return false;
+}
+
+bool
+read_enabled_seasons_mask (struct string_slice const * s, int * out_val)
+{
+	struct parsable_field_bit bits[] = {
+		{"summer", 1 << CS_SUMMER},
+		{"fall"  , 1 << CS_FALL},
+		{"winter", 1 << CS_WINTER},
+		{"spring", 1 << CS_SPRING},
+	};
+	return read_bit_field (s, bits, ARRAY_LEN (bits), out_val);
+}
+
+bool
+read_pinned_season_for_seasonal_cycle (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "summer")) { *out_val = CS_SUMMER; return true; }
+	else if (slice_matches_str (&trimmed, "Summer")) { *out_val = CS_SUMMER; return true; }
+	else if (slice_matches_str (&trimmed, "fall"  )) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "Fall"  )) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "autumn")) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "autumn")) { *out_val = CS_FALL;   return true; }
+	else if (slice_matches_str (&trimmed, "winter")) { *out_val = CS_WINTER; return true; }
+	else if (slice_matches_str (&trimmed, "Winter")) { *out_val = CS_WINTER; return true; }
+	else if (slice_matches_str (&trimmed, "spring")) { *out_val = CS_SPRING; return true; }
+	else if (slice_matches_str (&trimmed, "Spring")) { *out_val = CS_SPRING; return true; }
+	return false;
 }
 
 bool
@@ -2278,54 +2525,6 @@ read_barbarian_activity_override (struct string_slice const * s, enum barbarian_
 	return found;
 }
 
-struct parsable_field_bit {
-	char * name;
-	int bit_value;
-};
-
-bool
-read_bit_field (struct string_slice const * s, struct parsable_field_bit const * bits, int count_bits, int * out_field)
-{
-	struct string_slice trimmed = trim_string_slice (s, 0);
-	s = &trimmed;
-
-	int tr;
-	if (s->len <= 0)
-		tr = 0;
-	else if (slice_matches_str (s, "all"))
-		tr = ~0;
-	else {
-		tr = 0;
-		char * cursor = &s->str[0];
-		char * s_end = &s->str[s->len];
-		while (1) {
-			struct string_slice name;
-
-			if (cursor >= s_end)
-				break;
-			else if (! parse_string (&cursor, &name)) {
-				skip_white_space (&cursor);
-				if (cursor >= s_end)
-					break;
-				else
-					return false; // Invalid character in value
-			}
-
-			bool matched_any = false;
-			for (int n = 0; n < count_bits; n++)
-				if (slice_matches_str (&name, bits[n].name)) {
-					tr |= bits[n].bit_value;
-					matched_any = true;
-					break;
-				}
-			if (! matched_any)
-				return false;
-		}
-	}
-	*out_field = tr;
-	return true;
-}
-
 int
 read_units_per_tile_limit (struct string_slice const * s, int * out_limits)
 {
@@ -2621,6 +2820,15 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				} else if (slice_matches_str (&p.key, "day_night_cycle_mode")) {
 					if (! read_day_night_cycle_mode (&value, (int *)&cfg->day_night_cycle_mode))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "seasonal_cycle_mode")) {
+					if (! read_seasonal_cycle_mode (&value, (int *)&cfg->seasonal_cycle_mode))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "enabled_seasons")) {
+					if (! read_enabled_seasons_mask (&value, (int *)&cfg->enabled_seasons_mask))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "pinned_season_for_seasonal_cycle")) {
+					if (! read_pinned_season_for_seasonal_cycle (&value, (int *)&cfg->pinned_season_for_seasonal_cycle))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "distribution_hub_yield_division_mode")) {
 					if (! read_distribution_hub_yield_division_mode (&value, (int *)&cfg->distribution_hub_yield_division_mode))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -2673,6 +2881,15 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 (void **)&parsed_unit_type_limits,
 											 &parsed_unit_type_limit_count)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+				// ToC-26: Parse group definitions for shared combined unit limits.
+				// Format: ["Group Label": "UnitA" "UnitB" ..., "Group2": ...]
+				// Group names used here must be referenced in unit_limits to have any effect.
+				} else if (slice_matches_str (&p.key, "unit_limit_groups")) {
+					if (0 <= (recog_err_offset = read_unit_limit_groups (&value,
+											  &unrecognized_lines,
+											  &cfg->unit_limit_groups,
+											  &cfg->unit_type_to_group)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "aircraft_victory_animation")) {
 					struct string_slice trimmed = trim_string_slice (&value, 1);
 					bool value_ok = false;
@@ -2693,6 +2910,24 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					}
 					if (! value_ok)
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "unit_groups") ||
+					   slice_matches_str (&p.key, "unit_group")) { // singular accepted for backward compatibility
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct unit_counter_group),
+											 parse_unit_counter_group,
+											 (void **)&cfg->unit_counter_groups,
+											 &cfg->count_unit_counter_groups)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "counter_rules") ||
+					   slice_matches_str (&p.key, "counter_rule")) { // singular accepted for backward compatibility
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct counter_rule),
+											 parse_counter_rule,
+											 (void **)&cfg->counter_rules,
+											 &cfg->count_counter_rules)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 
 				// if key is for an obsolete option
 				} else if (slice_matches_str (&p.key, "patch_disembark_immobile_bug")) {
@@ -2745,6 +2980,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 				} else if (slice_matches_str (&p.key, "move_trade_net_object")) {
 					; // No nothing. This setting no longer serves any purpose.
+				} else if (slice_matches_str (&p.key, "use_civ4_style_best_defender")) {
+					; // Obsolete. Counter rules now always affect normal defender selection when enable_unit_counters is on.
 
 				// if key was previously misspelled
 				} else if (slice_matches_str (&p.key, "share_visibility_in_hoseat")) {
@@ -2798,6 +3035,18 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		}
 	}
 
+	// If seasonal cycle mode is on "day_night_hour" but day/night cycle mode is off, disable seasonal cycle mode and show a warning
+	if (cfg->seasonal_cycle_mode == SCM_ON_DAY_NIGHT_HOUR && cfg->day_night_cycle_mode == DNCM_OFF) {
+		cfg->seasonal_cycle_mode = SCM_OFF;
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "\"seasonal_cycle_mode\" set to \"on_day_night_hour\", but \"day_night_cycle_mode\" is off. Disabling seasonal cycle mode.");
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, false);
+		patch_show_popup (popup, __, 0, 0);
+	}
+
 	if (cfg->warn_about_unrecognized_names && (unrecognized_lines != NULL)) {
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
@@ -2822,16 +3071,47 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 			free (list->items);
 		}
 	}
-
-	// Copy unit type limits from list to table
+	// ToC-26: Copy and validate unit type limits from parsed list to config tables.
+	// Validation is done here (post-parse) so that unit_limit_groups is fully populated
+	// regardless of which key appears first in the config file. Each name is checked:
+	//   (1) individual unit type  -> insert into unit_limits as before
+	//   (2) group label defined in unit_limit_groups -> assign limit to the group struct
+	//   (3) neither               -> add to unrecognized_lines for the warning popup
 	if (parsed_unit_type_limits != NULL) {
 		for (int n = 0; n < parsed_unit_type_limit_count; n++) {
 			struct parsed_unit_type_limit * parsed_lim = &parsed_unit_type_limits[n];
-			struct unit_type_limit * lim_values = malloc (sizeof *lim_values);
-			*lim_values = parsed_lim->limit;
-			stable_insert (&cfg->unit_limits, parsed_lim->name, (int)lim_values);
+			struct string_slice name_slice = { parsed_lim->name, (int)strlen (parsed_lim->name) };
+			int unused_id;
+			struct unit_limit_group * grp;
+			if (find_unit_type_id_by_name (&name_slice, 0, &unused_id)) {
+				// Valid unit type name: individual limit, stored by name for direct lookup
+				struct unit_type_limit * lim_values = malloc (sizeof *lim_values);
+				*lim_values = parsed_lim->limit;
+				stable_insert (&cfg->unit_limits, parsed_lim->name, (int)lim_values);
+			} else if (stable_look_up (&cfg->unit_limit_groups, parsed_lim->name, (int *)&grp)) {
+				// Group label: store limit inside the group struct for runtime use
+				grp->limit     = parsed_lim->limit;
+				grp->has_limit = true;
+			} else {
+				// Unrecognized: neither a unit type nor a defined group
+				add_unrecognized_line (&unrecognized_lines, &name_slice);
+			}
 		}
 		free (parsed_unit_type_limits);
+	}
+
+	// Unrecognized names popup shown here (moved below unit limit copy so deferred
+	// validation errors from unit_limits are included in the report)
+	if (cfg->warn_about_unrecognized_names && (unrecognized_lines != NULL)) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "Unrecognized names in %s:", full_path);
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, false);
+		for (struct error_line * line = unrecognized_lines; line != NULL; line = line->next)
+			PopupForm_add_text (popup, __, line->text, false);
+		patch_show_popup (popup, __, 0, 0);
 	}
 
 	free (text);
@@ -2847,6 +3127,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 
 	top_lcn->next = new_lcn;
 }
+// END ToC-26
 
 bool
 tile_coords_from_ptr (Map * map, Tile * tile, int * out_x, int * out_y)
@@ -3157,7 +3438,7 @@ apply_district_bonus_entries (struct district_instance * inst,
 				bonus += entry->bonus;
 		} else if (entry->type == DBET_BUILDING) {
 			if (entry->building_id >= 0 &&
-			    tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, entry->building_id))
+			    tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, entry->building_id))
 				bonus += entry->bonus;
 		}
 	}
@@ -6439,6 +6720,8 @@ city_has_river_district (City * city, int district_id)
 	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		if (wai.district_inst->district_id != district_id)
 			continue;
+		if (! district_tile_bonus_applies_to_city (wai.tile, district_id, city))
+			continue;
 		if (wai.tile->vtable->m37_Get_River_Code (wai.tile) != 0)
 			return true;
 	}
@@ -6539,8 +6822,23 @@ district_is_complete(Tile * tile, int district_id)
 
 	int tile_x, tile_y;
 	if (district_instance_get_coords (inst, tile, &tile_x, &tile_y)) {
-		set_tile_unworkable_for_all_cities (tile, tile_x, tile_y);
+		if (district_tile_should_be_unworkable (district_id))
+			set_tile_unworkable_for_all_cities (tile, tile_x, tile_y);
 		int territory_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+
+		if (cfg->consumes_worker) {
+			Unit * worker_to_consume = NULL;
+			FOR_UNITS_ON (uti, tile) {
+				Unit * unit = uti.unit;
+				if ((unit != NULL) && is_worker (unit)) {
+					worker_to_consume = unit;
+					break;
+				}
+			}
+			if (worker_to_consume != NULL) {
+				patch_Unit_despawn (worker_to_consume, __, 0, true, false, 0, 0, 0, 0);
+			}
+		}
 
 		if (cfg->auto_add_road) {
 			bool has_road = tile->vtable->m25_Check_Roads (tile, __, 0) != 0;
@@ -6574,6 +6872,9 @@ district_is_complete(Tile * tile, int district_id)
 		char ss[200];
 		snprintf (ss, sizeof ss, "District %d completed at tile (%d,%d)\n", district_id, tile_x, tile_y);
 		(*p_OutputDebugStringA) (ss);
+
+		if (cfg->subsumes_tile_resource && is->trade_net != NULL)
+			patch_Trade_Net_recompute_resources (is->trade_net, __, false);
 
 		// Check if this was an AI-requested district
 		struct pending_district_request * req = find_pending_district_request_by_coords (NULL, tile_x, tile_y, district_id);
@@ -7799,6 +8100,7 @@ init_parsed_district_definition (struct parsed_district_definition * def)
 	def->defense_bonus_percent = 0;
 	def->render_strategy = DRS_BY_COUNT;
 	def->ai_build_strategy = DABS_DISTRICT;
+	def->type = DT_DISTRICT;
 	def->buildable_square_types_mask = district_default_buildable_mask ();
 	def->buildable_adjacent_to_square_types_mask = 0;
 	def->buildable_without_removal_mask = 0;
@@ -7956,6 +8258,609 @@ find_special_district_index_by_name (char const * name)
 			return i;
 	}
 	return -1;
+}
+
+
+// ---------------------------------------------------------------
+// Unit counter system
+// ---------------------------------------------------------------
+
+bool
+read_counter_rule_terrain_mask (struct string_slice const * terrain_name, unsigned int * out_mask)
+{
+	if ((terrain_name == NULL) || (out_mask == NULL))
+		return false;
+
+	struct string_slice trimmed = trim_string_slice (terrain_name, 1);
+	if (trimmed.len <= 0)
+		return false;
+
+	if (slice_matches_str (&trimmed, "lake") || slice_matches_str (&trimmed, "lakes")) {
+		*out_mask = district_buildable_lake_mask_bit ();
+		return true;
+	}
+
+	enum SquareTypes parsed;
+	if (! read_tile_terrain_type_value (&trimmed, &parsed))
+		return false;
+
+	if (parsed == (enum SquareTypes)SQ_INVALID)
+		*out_mask = all_square_types_mask () | district_buildable_lake_mask_bit ();
+	else
+		*out_mask = square_type_mask_bit (parsed);
+
+	return *out_mask != 0;
+}
+
+struct unit_counter_group *
+find_unit_counter_group_by_name (struct c3x_config * cfg, char const * name)
+{
+	for (int i = 0; i < cfg->count_unit_counter_groups; i++) {
+		struct unit_counter_group * g = &cfg->unit_counter_groups[i];
+		if (g->name && strcmp (g->name, name) == 0)
+			return g;
+	}
+	return NULL;
+}
+
+bool
+unit_type_in_group (struct unit_counter_group * g, int type_id)
+{
+	char const * name = p_bic_data->UnitTypes[type_id].Name;
+	for (int i = 0; i < g->count_type_ids; i++)
+		if (strcmp (p_bic_data->UnitTypes[g->type_ids[i]].Name, name) == 0)
+			return true;
+	return false;
+}
+
+bool
+unit_matches_counter_side (struct c3x_config * cfg, int type_id,
+                           int match, char * group_name)
+{
+	if (match == UCM_ANY)
+		return true;
+	if (match == UCM_GROUP) {
+		struct unit_counter_group * g =
+		    find_unit_counter_group_by_name (cfg, group_name);
+		return g && unit_type_in_group (g, type_id);
+	}
+	// Direct unit type match: compare by name rather than exact ID so that
+	// AI strategy duplicates (same name, different ID) are also matched.
+	return strcmp (p_bic_data->UnitTypes[match].Name,
+	               p_bic_data->UnitTypes[type_id].Name) == 0;
+}
+
+bool
+slice_matches_str_case_insensitive (struct string_slice const * slice, char const * str)
+{
+	int str_len = strlen (str);
+	if (slice->len != str_len)
+		return false;
+	for (int i = 0; i < str_len; i++)
+		if (tolower ((unsigned char)slice->str[i]) !=
+		    tolower ((unsigned char)str[i]))
+			return false;
+	return true;
+}
+
+bool
+read_counter_rule_experience_value (struct string_slice const * exp_name, int * out_id)
+{
+	if ((exp_name == NULL) || (out_id == NULL))
+		return false;
+
+	struct string_slice trimmed = trim_string_slice (exp_name, 1);
+	if (trimmed.len <= 0)
+		return false;
+
+	if (slice_matches_str (&trimmed, "*") ||
+	    slice_matches_str_case_insensitive (&trimmed, "any")) {
+		*out_id = -1;
+		return true;
+	}
+
+	for (int i = 0; i < p_bic_data->CombatExperienceCount; i++) {
+		if (slice_matches_str_case_insensitive (
+		        &trimmed, p_bic_data->CombatExperience[i].Name.S)) {
+			*out_id = i;
+			return true;
+		}
+	}
+
+	struct {
+		char const * name;
+		int rank;
+	} const default_aliases[] = {
+		{ "conscript", 0 },
+		{ "regular",   1 },
+		{ "veteran",   2 },
+		{ "elite",     3 },
+	};
+
+	for (int i = 0; i < ARRAY_LEN (default_aliases); i++) {
+		if (slice_matches_str_case_insensitive (&trimmed, default_aliases[i].name)) {
+			int count = p_bic_data->CombatExperienceCount;
+			if ((default_aliases[i].rank >= 0) &&
+			    (default_aliases[i].rank < count)) {
+				int * ids = malloc (count * sizeof ids[0]);
+				if (ids == NULL)
+					return false;
+				for (int j = 0; j < count; j++)
+					ids[j] = j;
+				for (int j = 0; j < count - 1; j++) {
+					for (int k = j + 1; k < count; k++) {
+						int j_id = ids[j],
+						    k_id = ids[k],
+						    j_hp = p_bic_data->CombatExperience[j_id].Base_Hit_Points,
+						    k_hp = p_bic_data->CombatExperience[k_id].Base_Hit_Points;
+						if ((k_hp < j_hp) || ((k_hp == j_hp) && (k_id < j_id))) {
+							ids[j] = k_id;
+							ids[k] = j_id;
+						}
+					}
+				}
+				*out_id = ids[default_aliases[i].rank];
+				free (ids);
+				return true;
+			}
+		}
+	}
+
+	int id;
+	if (read_int (&trimmed, &id) &&
+	    (id >= 0) &&
+	    (id < p_bic_data->CombatExperienceCount)) {
+		*out_id = id;
+		return true;
+	}
+
+	return false;
+}
+
+bool
+is_counter_rule_self_experience_token (struct string_slice const * token)
+{
+	return slice_matches_str (token, "self-exp") ||
+	       slice_matches_str (token, "self-experience") ||
+	       slice_matches_str (token, "self-combat-exp") ||
+	       slice_matches_str (token, "self-combat-experience") ||
+	       slice_matches_str (token, "self_combat_experience");
+}
+
+bool
+is_counter_rule_enemy_experience_token (struct string_slice const * token)
+{
+	return slice_matches_str (token, "enemy-exp") ||
+	       slice_matches_str (token, "enemy-experience") ||
+	       slice_matches_str (token, "enemy-combat-exp") ||
+	       slice_matches_str (token, "enemy-combat-experience") ||
+	       slice_matches_str (token, "enemy_combat_experience");
+}
+
+bool
+is_counter_rule_ignore_defensive_bonuses_token (struct string_slice const * token)
+{
+	return slice_matches_str (token, "ignore-defensive-bonuses") ||
+	       slice_matches_str (token, "ignore_defensive_bonuses") ||
+	       slice_matches_str (token, "ignore-terrain");
+}
+
+bool
+is_counter_rule_option_token (struct string_slice const * token)
+{
+	return slice_matches_str (token, "in-city") ||
+	       is_counter_rule_ignore_defensive_bonuses_token (token) ||
+	       slice_matches_str (token, "self-atk") ||
+	       slice_matches_str (token, "self-def") ||
+	       slice_matches_str (token, "enemy-atk") ||
+	       slice_matches_str (token, "enemy-def") ||
+	       slice_matches_str (token, "self-bombard") ||
+	       slice_matches_str (token, "enemy-bombard") ||
+	       slice_matches_str (token, "terrain") ||
+	       slice_matches_str (token, "district") ||
+	       is_counter_rule_self_experience_token (token) ||
+	       is_counter_rule_enemy_experience_token (token);
+}
+
+enum recognizable_parse_result
+read_counter_rule_experience_mask (char ** p_cursor,
+                                   struct error_line ** p_unrecognized_lines,
+                                   unsigned int * out_mask)
+{
+	char * cur = *p_cursor;
+	unsigned int mask = 0;
+	bool got_any_value = false;
+	bool unrestricted = false;
+
+	while (1) {
+		char * before = cur;
+		struct string_slice exp_name;
+		if (! parse_string (&cur, &exp_name))
+			break;
+
+		if (is_counter_rule_option_token (&exp_name)) {
+			cur = before;
+			break;
+		}
+
+		int exp_id;
+		if (! read_counter_rule_experience_value (&exp_name, &exp_id)) {
+			add_unrecognized_line (p_unrecognized_lines, &exp_name);
+			*p_cursor = cur;
+			return RPR_UNRECOGNIZED;
+		}
+
+		got_any_value = true;
+		if (exp_id < 0) {
+			mask = 0;
+			unrestricted = true;
+		} else if (unrestricted) {
+			;
+		} else if (exp_id < 8 * sizeof mask) {
+			mask |= 1U << exp_id;
+		} else {
+			add_unrecognized_line (p_unrecognized_lines, &exp_name);
+			*p_cursor = cur;
+			return RPR_UNRECOGNIZED;
+		}
+	}
+
+	if (! got_any_value) {
+		*p_cursor = cur;
+		return RPR_PARSE_ERROR;
+	}
+
+	*out_mask = mask;
+	*p_cursor = cur;
+	return RPR_OK;
+}
+
+bool
+counter_rule_experience_mask_matches (unsigned int mask, int experience_id)
+{
+	if (mask == 0)
+		return true;
+	if ((experience_id < 0) || (experience_id >= 8 * sizeof mask))
+		return false;
+	return (mask & (1U << experience_id)) != 0;
+}
+
+bool
+counter_rule_experience_conditions_match (struct counter_rule * r,
+                                          int self_experience_id,
+                                          int enemy_experience_id)
+{
+	return counter_rule_experience_mask_matches (r->self_experience_mask,
+	                                             self_experience_id) &&
+	       counter_rule_experience_mask_matches (r->enemy_experience_mask,
+	                                             enemy_experience_id);
+}
+
+enum recognizable_parse_result
+parse_unit_counter_group (char ** p_cursor,
+                          struct error_line ** p_unrecognized_lines,
+                          void * out_group)
+{
+	char * cur = *p_cursor;
+	struct string_slice group_name;
+	if (! (parse_string (&cur, &group_name) && skip_punctuation (&cur, ':')))
+		return RPR_PARSE_ERROR;
+
+	struct unit_counter_group * g = out_group;
+	g->name           = extract_slice (&group_name);
+	g->type_ids       = NULL;
+	g->count_type_ids = 0;
+
+	int any_unrecognized = 0;
+	struct string_slice type_name;
+	while (parse_string (&cur, &type_name)) {
+		// Loop through all unit types with this name, including AI strategy
+		// duplicates (same name, different ID), which the game creates internally.
+		int type_id = 0;
+		bool found_any = false;
+		while (find_unit_type_id_by_name (&type_name, type_id, &type_id)) {
+			g->type_ids = realloc (g->type_ids,
+			    (g->count_type_ids + 1) * sizeof (int));
+			g->type_ids[g->count_type_ids++] = type_id;
+			found_any = true;
+			type_id++;  // continue search from next index
+		}
+		if (! found_any) {
+			add_unrecognized_line (p_unrecognized_lines, &type_name);
+			any_unrecognized = 1;
+		}
+	}
+	*p_cursor = cur;
+	return any_unrecognized ? RPR_UNRECOGNIZED : RPR_OK;
+}
+
+enum recognizable_parse_result
+parse_counter_rule (char ** p_cursor,
+                    struct error_line ** p_unrecognized_lines,
+                    void * out_rule)
+{
+	char * cur = *p_cursor;
+	struct string_slice attacker_name, vs_token, defender_name;
+
+	if (! parse_string (&cur, &attacker_name))
+		return RPR_PARSE_ERROR;
+	if (! (parse_string (&cur, &vs_token) &&
+	       slice_matches_str (&vs_token, "vs")))
+		return RPR_PARSE_ERROR;
+	if (! parse_string (&cur, &defender_name))
+		return RPR_PARSE_ERROR;
+
+	struct counter_rule * r = out_rule;
+	*r = (struct counter_rule) {
+		.attacker_match = UCM_ANY,
+		.defender_match = UCM_ANY,
+		.terrain_mask   = 0,
+		.district_id    = -1,
+		.district_name  = NULL,
+		.self_experience_mask  = 0,
+		.enemy_experience_mask = 0,
+		.self_atk_pct   = 100,
+		.self_def_pct   = 100,
+		.enemy_atk_pct  = 100,
+		.enemy_def_pct  = 100,
+		.self_bombard_pct  = 100,
+		.enemy_bombard_pct = 100,
+	};
+
+	if (! slice_matches_str (&attacker_name, "*")) {
+		int type_id;
+		if (find_unit_type_id_by_name (&attacker_name, 0, &type_id))
+			r->attacker_match = type_id;
+		else {
+			r->attacker_match = UCM_GROUP;
+			r->attacker_group = extract_slice (&attacker_name);
+		}
+	}
+
+	if (! slice_matches_str (&defender_name, "*")) {
+		int type_id;
+		if (find_unit_type_id_by_name (&defender_name, 0, &type_id))
+			r->defender_match = type_id;
+		else {
+			r->defender_match = UCM_GROUP;
+			r->defender_group = extract_slice (&defender_name);
+		}
+	}
+
+	struct string_slice token;
+	while (parse_string (&cur, &token)) {
+		if (slice_matches_str (&token, "in-city")) {
+			r->only_in_city = true;
+		} else if (is_counter_rule_ignore_defensive_bonuses_token (&token)) {
+			r->ignore_defensive_bonuses = true;
+		} else if (slice_matches_str (&token, "self-atk")) {
+			if (! parse_int (&cur, &r->self_atk_pct))
+				return RPR_PARSE_ERROR;
+		} else if (slice_matches_str (&token, "self-def")) {
+			if (! parse_int (&cur, &r->self_def_pct))
+				return RPR_PARSE_ERROR;
+		} else if (slice_matches_str (&token, "enemy-atk")) {
+			if (! parse_int (&cur, &r->enemy_atk_pct))
+				return RPR_PARSE_ERROR;
+		} else if (slice_matches_str (&token, "enemy-def")) {
+			if (! parse_int (&cur, &r->enemy_def_pct))
+				return RPR_PARSE_ERROR;
+		} else if (slice_matches_str (&token, "self-bombard")) {
+			if (! parse_int (&cur, &r->self_bombard_pct))
+				return RPR_PARSE_ERROR;
+		} else if (slice_matches_str (&token, "enemy-bombard")) {
+			if (! parse_int (&cur, &r->enemy_bombard_pct))
+				return RPR_PARSE_ERROR;
+		} else if (is_counter_rule_self_experience_token (&token)) {
+			enum recognizable_parse_result res =
+				read_counter_rule_experience_mask (&cur,
+				                                   p_unrecognized_lines,
+				                                   &r->self_experience_mask);
+			if (res != RPR_OK)
+				return res;
+		} else if (is_counter_rule_enemy_experience_token (&token)) {
+			enum recognizable_parse_result res =
+				read_counter_rule_experience_mask (&cur,
+				                                   p_unrecognized_lines,
+				                                   &r->enemy_experience_mask);
+			if (res != RPR_OK)
+				return res;
+		} else if (slice_matches_str (&token, "terrain")) {
+			struct string_slice terrain_name;
+			if (! parse_string (&cur, &terrain_name))
+				return RPR_PARSE_ERROR;
+			if (! read_counter_rule_terrain_mask (&terrain_name, &r->terrain_mask)) {
+				add_unrecognized_line (p_unrecognized_lines, &terrain_name);
+				return RPR_UNRECOGNIZED;
+			}
+		} else if (slice_matches_str (&token, "district")) {
+			struct string_slice district_name;
+			if (! parse_string (&cur, &district_name))
+				return RPR_PARSE_ERROR;
+			free (r->district_name);
+			r->district_name = extract_slice (&district_name);
+			r->district_id = -1;
+		} else {
+			break;
+		}
+	}
+
+	*p_cursor = cur;
+	return RPR_OK;
+}
+
+bool
+counter_rule_environment_matches (struct c3x_config * cfg,
+                                  struct counter_rule * r,
+                                  Tile * target_tile)
+{
+	if ((target_tile == NULL) || (target_tile == p_null_tile))
+		return false;
+
+	if (r->only_in_city && ! Tile_has_city (target_tile))
+		return false;
+	if (r->terrain_mask != 0 &&
+	    ! tile_matches_square_type_mask (target_tile, r->terrain_mask))
+		return false;
+	if (r->district_name != NULL &&
+	    ! ((r->district_id != -1) &&
+	       cfg->enable_districts &&
+	       district_is_complete (target_tile, r->district_id)))
+		return false;
+
+	return true;
+}
+
+void
+apply_counter_rules (struct c3x_config * cfg,
+                     Unit * attacker, Unit * defender, Tile * def_tile,
+                     int * out_attacker_atk, int * out_defender_def,
+                     bool * out_ignore_defensive_bonuses)
+{
+	int a_type   = attacker->Body.UnitTypeID;
+	int d_type   = defender->Body.UnitTypeID;
+
+	int aa = 100, dd = 100;
+	bool ignore_defensive_bonuses = false;
+
+	for (int i = 0; i < cfg->count_counter_rules; i++) {
+		struct counter_rule * r = &cfg->counter_rules[i];
+
+		// Check forward match (attacker=rule attacker side, defender=rule defender side)
+		// Applied fields: self-atk (attacker attack), enemy-def (defender defense)
+		bool forward = unit_matches_counter_side (cfg, a_type,
+		                   r->attacker_match, r->attacker_group) &&
+		               unit_matches_counter_side (cfg, d_type,
+		                   r->defender_match, r->defender_group);
+
+		// Check reverse match (attacker=rule defender side, defender=rule attacker side)
+		// Applied fields: self-def (rule attacker side is now defending), enemy-atk (rule defender side is now attacking)
+		bool reverse = unit_matches_counter_side (cfg, a_type,
+		                   r->defender_match, r->defender_group) &&
+		               unit_matches_counter_side (cfg, d_type,
+		                   r->attacker_match, r->attacker_group);
+
+		if (forward &&
+		    ! counter_rule_experience_conditions_match (
+		        r,
+		        attacker->Body.Combat_Experience,
+		        defender->Body.Combat_Experience))
+			forward = false;
+
+		if (reverse &&
+		    ! counter_rule_experience_conditions_match (
+		        r,
+		        defender->Body.Combat_Experience,
+		        attacker->Body.Combat_Experience))
+			reverse = false;
+
+		if (! forward && ! reverse)
+			continue;
+
+		// Environment checks are based on the defender's tile
+		if (! counter_rule_environment_matches (cfg, r, def_tile))
+			continue;
+
+		if (forward) {
+			aa = aa * r->self_atk_pct  / 100;  // self-atk: attacker attack
+			dd = dd * r->enemy_def_pct / 100;  // enemy-def: defender defense
+		}
+		if (reverse) {
+			aa = aa * r->enemy_atk_pct / 100;  // enemy-atk: rule defender side now acts as attacker
+			dd = dd * r->self_def_pct  / 100;  // self-def: rule attacker side now acts as defender
+		}
+		if (forward || reverse)
+			ignore_defensive_bonuses =
+				ignore_defensive_bonuses ||
+				r->ignore_defensive_bonuses;
+	}
+
+	*out_attacker_atk  = aa;
+	*out_defender_def  = dd;
+	*out_ignore_defensive_bonuses = ignore_defensive_bonuses;
+}
+
+int
+get_counter_rule_bombard_modifier (struct c3x_config * cfg,
+                                   Unit * bombarder, Unit * target,
+                                   Tile * target_tile)
+{
+	if (! (cfg->enable_unit_counters &&
+	       (bombarder != NULL) &&
+	       (target != NULL) &&
+	       (bombarder->Body.UnitTypeID >= 0) &&
+	       (bombarder->Body.UnitTypeID < p_bic_data->UnitTypeCount) &&
+	       (target->Body.UnitTypeID >= 0) &&
+	       (target->Body.UnitTypeID < p_bic_data->UnitTypeCount)))
+		return 100;
+
+	int b_type = bombarder->Body.UnitTypeID;
+	int t_type = target->Body.UnitTypeID;
+	int bombard_pct = 100;
+
+	for (int i = 0; i < cfg->count_counter_rules; i++) {
+		struct counter_rule * r = &cfg->counter_rules[i];
+
+		bool forward = unit_matches_counter_side (cfg, b_type,
+		                   r->attacker_match, r->attacker_group) &&
+		               unit_matches_counter_side (cfg, t_type,
+		                   r->defender_match, r->defender_group);
+
+		bool reverse = unit_matches_counter_side (cfg, b_type,
+		                   r->defender_match, r->defender_group) &&
+		               unit_matches_counter_side (cfg, t_type,
+		                   r->attacker_match, r->attacker_group);
+
+		if (forward &&
+		    ! counter_rule_experience_conditions_match (
+		        r,
+		        bombarder->Body.Combat_Experience,
+		        target->Body.Combat_Experience))
+			forward = false;
+
+		if (reverse &&
+		    ! counter_rule_experience_conditions_match (
+		        r,
+		        target->Body.Combat_Experience,
+		        bombarder->Body.Combat_Experience))
+			reverse = false;
+
+		if ((! forward && ! reverse) ||
+		    ! counter_rule_environment_matches (cfg, r, target_tile))
+			continue;
+
+		if (forward)
+			bombard_pct = bombard_pct * r->self_bombard_pct / 100;
+		if (reverse)
+			bombard_pct = bombard_pct * r->enemy_bombard_pct / 100;
+	}
+
+	return bombard_pct;
+}
+
+int
+counter_adjusted_bombard_strength (int base_strength, int bombard_pct)
+{
+	long long adjusted = (long long)base_strength * bombard_pct / 100;
+	if (adjusted < 0)
+		return 0;
+	if (adjusted > 0x3FFFFFFF)
+		return 0x3FFFFFFF;
+	return (int)adjusted;
+}
+
+int
+counter_adjusted_bombard_target_defense (int base_defense_strength, int bombard_pct)
+{
+	if (bombard_pct <= 0)
+		return 0x3FFFFFFF;
+
+	long long adjusted = (long long)base_defense_strength * 100 / bombard_pct;
+	if (adjusted < 0)
+		return 0;
+	if (adjusted > 0x3FFFFFFF)
+		return 0x3FFFFFFF;
+	return (int)adjusted;
 }
 
 bool
@@ -8696,16 +9601,22 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->render_strategy = def->render_strategy;
 	if (def->has_ai_build_strategy)
 		cfg->ai_build_strategy = def->ai_build_strategy;
+	if (def->has_type)
+		cfg->type = def->type;
 	if (def->has_align_to_coast)
 		cfg->align_to_coast = def->align_to_coast;
 	if (def->has_draw_over_resources)
 		cfg->draw_over_resources = def->draw_over_resources;
+	if (def->has_subsumes_tile_resource)
+		cfg->subsumes_tile_resource = def->subsumes_tile_resource;
 	if (def->has_allow_irrigation_from)
 		cfg->allow_irrigation_from = def->allow_irrigation_from;
 	if (def->has_auto_add_road)
 		cfg->auto_add_road = def->auto_add_road;
 	if (def->has_auto_add_railroad)
 		cfg->auto_add_railroad = def->auto_add_railroad;
+	if (def->has_consumes_worker)
+		cfg->consumes_worker = def->consumes_worker;
 	if (def->has_custom_width)
 		cfg->custom_width = def->custom_width;
 	if (def->has_custom_height)
@@ -9012,11 +9923,14 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.vary_img_by_culture = def->has_vary_img_by_culture ? def->vary_img_by_culture : false;
 	new_cfg.render_strategy = def->has_render_strategy ? def->render_strategy : DRS_BY_COUNT;
 	new_cfg.ai_build_strategy = def->has_ai_build_strategy ? def->ai_build_strategy : DABS_DISTRICT;
+	new_cfg.type = def->has_type ? def->type : DT_DISTRICT;
 	new_cfg.align_to_coast = def->has_align_to_coast ? def->align_to_coast : false;
 	new_cfg.draw_over_resources = def->has_draw_over_resources ? def->draw_over_resources : false;
+	new_cfg.subsumes_tile_resource = def->has_subsumes_tile_resource ? def->subsumes_tile_resource : false;
 	new_cfg.allow_irrigation_from = def->has_allow_irrigation_from ? def->allow_irrigation_from : false;
 	new_cfg.auto_add_road = def->has_auto_add_road ? def->auto_add_road : false;
 	new_cfg.auto_add_railroad = def->has_auto_add_railroad ? def->auto_add_railroad : false;
+	new_cfg.consumes_worker = def->has_consumes_worker ? def->consumes_worker : false;
 	new_cfg.custom_width = def->has_custom_width ? def->custom_width : 0;
 	new_cfg.custom_height = def->has_custom_height ? def->custom_height : 0;
 	new_cfg.x_offset = def->has_x_offset ? def->x_offset : 0;
@@ -9645,6 +10559,24 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		if (strategy != NULL)
 			free (strategy);
 
+	} else if (slice_matches_str (key, "type")) {
+		char * strategy = copy_trimmed_string_or_null (value, 1);
+		if (strategy == NULL) {
+			def->has_type = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
+		} else if (strcmp (strategy, "district") == 0) {
+			def->type = DT_DISTRICT;
+			def->has_type = true;
+		} else if (strcmp (strategy, "tile-improvement") == 0) {
+			def->type = DT_TILE_IMPROVEMENT;
+			def->has_type = true;
+		} else {
+			def->has_type = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected \"district\" or \"tile-improvement\")");
+		}
+		if (strategy != NULL)
+			free (strategy);
+
 	} else if (slice_matches_str (key, "align_to_coast")) {
 		struct string_slice val_slice = *value;
 		int ival;
@@ -9660,6 +10592,15 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		if (read_int (&val_slice, &ival)) {
 			def->draw_over_resources = (ival != 0);
 			def->has_draw_over_resources = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "subsumes_tile_resource")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->subsumes_tile_resource = (ival != 0);
+			def->has_subsumes_tile_resource = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
@@ -9687,6 +10628,15 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		if (read_int (&val_slice, &ival)) {
 			def->auto_add_railroad = (ival != 0);
 			def->has_auto_add_railroad = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "consumes_worker")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->consumes_worker = (ival != 0);
+			def->has_consumes_worker = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
@@ -11424,6 +12374,29 @@ find_district_index_by_name (char const * name)
 	return -1;
 }
 
+void
+resolve_counter_rule_districts (struct error_line ** parse_errors)
+{
+	struct c3x_config * cfg = &is->current_config;
+
+	for (int i = 0; i < cfg->count_counter_rules; i++) {
+		struct counter_rule * rule = &cfg->counter_rules[i];
+		rule->district_id = -1;
+
+		if ((rule->district_name == NULL) || (rule->district_name[0] == '\0'))
+			continue;
+
+		int district_id = find_district_index_by_name (rule->district_name);
+		if (district_id >= 0) {
+			rule->district_id = district_id;
+		} else {
+			struct error_line * err = add_error_line (parse_errors);
+			snprintf (err->text, sizeof err->text, "^  counter_rule district \"%s\" not found", rule->district_name);
+			err->text[(sizeof err->text) - 1] = '\0';
+		}
+	}
+}
+
 int
 find_wonder_district_index_by_name (char const * name)
 {
@@ -11810,6 +12783,8 @@ void parse_building_and_tech_ids ()
 		resolve_district_bonus_building_entries (&is->district_configs[i].happiness_bonus_extras, district_name, "happiness_bonus", &district_parse_errors);
 		resolve_district_bonus_building_entries (&is->district_configs[i].defense_bonus_extras, district_name, "defense_bonus_percent", &district_parse_errors);
 	}
+
+	resolve_counter_rule_districts (&district_parse_errors);
 
 	// Map wonder names to their improvement IDs for rendering under-construction wonders
 	for (int wi = 0; wi < is->wonder_district_count; wi++) {
@@ -12341,7 +13316,8 @@ finalize_scenario_district_entry (struct scenario_district_entry * entry,
 					if (success) {
 						if (district_id != NATURAL_WONDER_DISTRICT_ID && !tile->vtable->m18_Check_Mines (tile, __, 0))
 							tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, map_x, map_y);
-						set_tile_unworkable_for_all_cities (tile, map_x, map_y);
+						if (district_tile_should_be_unworkable (district_id))
+							set_tile_unworkable_for_all_cities (tile, map_x, map_y);
 					}
 				}
 			}
@@ -12913,7 +13889,7 @@ district_resource_prereqs_met_r (Tile * tile, int tile_x, int tile_y, int distri
 							continue;
 						if (radius_tile->vtable->m38_Get_Territory_OwnerID (radius_tile) != civ_id)
 							continue;
-						if (Tile_get_resource_visible_to (radius_tile, __, civ_id) == resource_req) {
+						if (get_visible_non_subsumed_tile_resource (radius_tile, NULL, civ_id) == resource_req) {
 							has_resource = true;
 							break;
 						}
@@ -13321,6 +14297,32 @@ district_generates_resource_for_civ (Tile * tile, struct district_instance * ins
 	return district_resource_prereqs_met_r (tile, tile_x, tile_y, inst->district_id, dc->generated_resource_id - 1);
 }
 
+bool
+district_uses_tile_improvement_rules (int district_id)
+{
+	if ((district_id < 0) || (district_id >= is->district_count))
+		return false;
+	return is->district_configs[district_id].type == DT_TILE_IMPROVEMENT;
+}
+
+bool
+district_tile_bonus_applies_to_city (Tile * tile, int district_id, City * city)
+{
+	if (city == NULL)
+		return false;
+	if (! district_uses_tile_improvement_rules (district_id))
+		return true;
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	return tile->Body.CityAreaID == city->Body.ID;
+}
+
+bool
+district_tile_should_be_unworkable (int district_id)
+{
+	return ! district_uses_tile_improvement_rules (district_id);
+}
+
 void
 calculate_city_center_district_bonus (City * city, int * out_food, int * out_shields, int * out_gold)
 {
@@ -13348,6 +14350,8 @@ calculate_city_center_district_bonus (City * city, int * out_food, int * out_shi
 
 		struct district_instance * inst = wai.district_inst;
 		int district_id = inst->district_id;
+		if (district_uses_tile_improvement_rules (district_id))
+			continue;
 
 		if (is->current_config.enable_neighborhood_districts &&
 		    (district_id == NEIGHBORHOOD_DISTRICT_ID)) {
@@ -13399,8 +14403,23 @@ patch_Map_calc_food_yield_at (Map * this, int edx, int tile_x, int tile_y, int t
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile != NULL) && (tile != p_null_tile)) {
 		struct district_instance * inst = get_district_instance (tile);
-		if (inst != NULL && district_is_complete (tile, inst->district_id)) {
-			return 0;
+		if (inst != NULL &&
+		    district_is_complete (tile, inst->district_id)) {
+			if (! district_uses_tile_improvement_rules (inst->district_id))
+				return 0;
+			City * yield_city = get_city_ptr (tile->Body.CityAreaID);
+			if (! district_tile_bonus_applies_to_city (tile, inst->district_id, yield_city))
+				return 0;
+			struct district_config * cfg = &is->district_configs[inst->district_id];
+			int food_bonus = 0;
+			get_effective_district_yields (inst, cfg, &food_bonus, NULL, NULL, NULL, NULL, NULL);
+			if ((cfg->generated_resource_id >= 0) &&
+			    (cfg->generated_resource_flags & MF_YIELDS) &&
+			    district_generates_resource_for_civ (tile, inst, cfg, yield_city->Body.CivID)) {
+				Resource_Type * res = &p_bic_data->ResourceTypes[cfg->generated_resource_id];
+				food_bonus += res->Food;
+			}
+			return food_bonus;
 		}
 	}
 
@@ -13416,12 +14435,59 @@ patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile != NULL) && (tile != p_null_tile)) {
 		struct district_instance * inst = get_district_instance (tile);
-		if (inst != NULL && district_is_complete (tile, inst->district_id)) {
-			return 0;
+		if (inst != NULL &&
+		    district_is_complete (tile, inst->district_id)) {
+			if (! district_uses_tile_improvement_rules (inst->district_id))
+				return 0;
+			City * yield_city = get_city_ptr (tile->Body.CityAreaID);
+			if (! district_tile_bonus_applies_to_city (tile, inst->district_id, yield_city))
+				return 0;
+			struct district_config * cfg = &is->district_configs[inst->district_id];
+			int shield_bonus = 0;
+			get_effective_district_yields (inst, cfg, NULL, &shield_bonus, NULL, NULL, NULL, NULL);
+			if ((cfg->generated_resource_id >= 0) &&
+			    (cfg->generated_resource_flags & MF_YIELDS) &&
+			    district_generates_resource_for_civ (tile, inst, cfg, yield_city->Body.CivID)) {
+				Resource_Type * res = &p_bic_data->ResourceTypes[cfg->generated_resource_id];
+				shield_bonus += res->Shield;
+			}
+			return shield_bonus;
 		}
 	}
 
 	return Map_calc_shield_yield_at (this, __, tile_x, tile_y, civ_id, city, param_5, param_6);
+}
+
+int __fastcall
+patch_Map_calc_commerce_yield_at (Map * this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city)
+{
+	if (! is->current_config.enable_districts)
+		return Map_calc_commerce_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile != NULL) && (tile != p_null_tile)) {
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst != NULL &&
+		    district_is_complete (tile, inst->district_id)) {
+			if (! district_uses_tile_improvement_rules (inst->district_id))
+				return 0;
+			City * yield_city = get_city_ptr (tile->Body.CityAreaID);
+			if (! district_tile_bonus_applies_to_city (tile, inst->district_id, yield_city))
+				return 0;
+			struct district_config * cfg = &is->district_configs[inst->district_id];
+			int commerce_bonus = 0;
+			get_effective_district_yields (inst, cfg, NULL, NULL, &commerce_bonus, NULL, NULL, NULL);
+			if ((cfg->generated_resource_id >= 0) &&
+			    (cfg->generated_resource_flags & MF_YIELDS) &&
+			    district_generates_resource_for_civ (tile, inst, cfg, yield_city->Body.CivID)) {
+				Resource_Type * res = &p_bic_data->ResourceTypes[cfg->generated_resource_id];
+				commerce_bonus += res->Commerce;
+			}
+			return commerce_bonus;
+		}
+	}
+
+	return Map_calc_commerce_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
 }
 
 int
@@ -14422,7 +15488,11 @@ city_has_required_district (City * city, int district_id)
 	if ((city == NULL) || (district_id < 0) || (district_id >= is->district_count))
 		return false;
 
-	if (get_completed_district_tile_for_city (city, district_id, NULL, NULL) != NULL) {
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		if (wai.district_inst->district_id != district_id)
+			continue;
+		if (! district_tile_bonus_applies_to_city (wai.tile, district_id, city))
+			continue;
 		clear_city_district_request (city, district_id);
 		return true;
 	}
@@ -14645,6 +15715,8 @@ calculate_district_culture_science_bonuses (City * city, int * culture_bonus, in
 		Tile * tile = wai.tile;
 		struct district_instance * inst = wai.district_inst;
 		int district_id = inst->district_id;
+		if (! district_tile_bonus_applies_to_city (tile, district_id, city))
+			continue;
 
 		struct district_config const * cfg = &is->district_configs[district_id];
 		int district_culture_bonus = 0;
@@ -14688,6 +15760,8 @@ calculate_district_happiness_bonus (City * city, int * happiness_bonus)
 
 		struct district_instance * inst = wai.district_inst;
 		int district_id = inst->district_id;
+		if (! district_tile_bonus_applies_to_city (wai.tile, district_id, city))
+			continue;
 		struct district_config const * cfg = &is->district_configs[district_id];
 
 		bool is_neighborhood = district_id == NEIGHBORHOOD_DISTRICT_ID;
@@ -15093,6 +16167,7 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 			actual_district_id = inst->district_id;
 	}
 
+	int assigned_city_id = tile->Body.CityAreaID;
 	remove_district_instance (tile);
 
 	bool removed_neighborhood = actual_district_id == NEIGHBORHOOD_DISTRICT_ID;
@@ -15112,8 +16187,15 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	if (district_id >= 0)
 		remove_dependent_buildings_for_district (district_id, center_x, center_y);
 
-	// Make the tile workable again by resetting CityAreaID and recomputing yields for nearby cities
-	tile->Body.CityAreaID = -1;
+	if (district_tile_should_be_unworkable (actual_district_id))
+		tile->Body.CityAreaID = -1;
+	else {
+		City * assigned_city = get_city_ptr (assigned_city_id);
+		if ((assigned_city != NULL) && city_radius_contains_tile (assigned_city, center_x, center_y))
+			tile->Body.CityAreaID = assigned_city_id;
+		else
+			tile->Body.CityAreaID = -1;
+	}
 
 	int tile_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
 
@@ -15578,43 +16660,90 @@ change_unit_type_count (Leader * leader, int unit_type_id, int amount)
 	itable_insert (counts, unit_type_id, prev_amount + amount);
 }
 
-// If this unit type is limited, returns true and writes how many units of the type the given player is allowed to "out_limit". If the type is not
-// limited, returns false.
+// If this unit type is limited, returns true and writes how many units of the type the given
+// player is allowed to *out_limit. Returns false if the type is not limited.
+// ToC-26: Checks individual unit_limits first; falls back to a unit_limit_groups entry if the
+// type belongs to a group with an assigned limit. Individual limits always take priority.
 bool
 get_unit_limit (Leader * leader, int unit_type_id, int * out_limit)
 {
+	if ((unit_type_id < 0) || (unit_type_id >= p_bic_data->UnitTypeCount))
+		return false;
+
 	UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
 	struct unit_type_limit * lim;
-	if ((unit_type_id >= 0) && (unit_type_id < p_bic_data->UnitTypeCount) &&
-	    stable_look_up (&is->current_config.unit_limits, type->Name, (int *)&lim)) {
+
+	// (1) Individual unit type limit
+	if (stable_look_up (&is->current_config.unit_limits, type->Name, (int *)&lim)) {
 		int city_count = leader->Cities_Count;
 		int tr = lim->per_civ + lim->per_city * city_count;
 		if (lim->cities_per != 0)
 			tr += city_count / lim->cities_per;
 		*out_limit = tr;
 		return true;
-	} else
-		return false;
+	}
+
+	// ToC-26: (2) Group limit — only when groups are configured and this type is a member
+	struct unit_limit_group * grp;
+	if (itable_look_up (&is->current_config.unit_type_to_group, unit_type_id, (int *)&grp) &&
+	    grp->has_limit) {
+		struct unit_type_limit * glim = &grp->limit;
+		int city_count = leader->Cities_Count;
+		int tr = glim->per_civ + glim->per_city * city_count;
+		if (glim->cities_per != 0)
+			tr += city_count / glim->cities_per;
+		*out_limit = tr;
+		return true;
+	}
+
+	return false;
 }
 
-// This this unit type is limited, returns true and writes to "out_available" how many units the given player can add before reaching the limit. If
-// the type is not limited, returns false.
+// If this unit type is limited, returns true and writes to *out_available how many units the
+// given player can still add before reaching the limit. Returns false if the type is not limited.
+// ToC-26: When the type belongs to a group with a limit (and no individual limit overrides it),
+// the count is the combined total of all unit types in that group rather than just this one type.
+// Individual limits always take priority over group limits for both the limit value and the count.
 bool
 get_available_unit_count (Leader * leader, int unit_type_id, int * out_available)
 {
 	int limit;
-	if (get_unit_limit (leader, unit_type_id, &limit)) {
-		int count = get_unit_type_count (leader, unit_type_id);
-		int dups[30];
-		int dups_count = list_unit_type_duplicates (unit_type_id, dups, ARRAY_LEN (dups));
-		for (int n = 0; n < dups_count; n++)
-			count += get_unit_type_count (leader, dups[n]);
-
-		*out_available = limit - count;
-		return true;
-	} else
+	if (! get_unit_limit (leader, unit_type_id, &limit))
 		return false;
+
+	int count;
+
+	// ToC-26: Check for group-based counting. Skip this branch entirely when no groups are
+	// configured (unit_type_to_group.len == 0) to keep the hot path cost-free for non-group games.
+	if (is->current_config.unit_type_to_group.len > 0) {
+		struct unit_limit_group * grp;
+		if (itable_look_up (&is->current_config.unit_type_to_group, unit_type_id, (int *)&grp) &&
+		    grp->has_limit) {
+			// Verify no individual limit overrides the group for this specific type
+			int unused;
+			if (! stable_look_up (&is->current_config.unit_limits,
+			                      p_bic_data->UnitTypes[unit_type_id].Name, &unused)) {
+				// Group count: sum all member IDs (AI strat dups already included in the array)
+				count = 0;
+				for (int n = 0; n < grp->count; n++)
+					count += get_unit_type_count (leader, grp->unit_type_ids[n]);
+				*out_available = limit - count;
+				return true;
+			}
+		}
+	}
+
+	// Standard individual count: this type plus any AI strategy duplicates
+	count = get_unit_type_count (leader, unit_type_id);
+	int dups[30];
+	int dups_count = list_unit_type_duplicates (unit_type_id, dups, ARRAY_LEN (dups));
+	for (int n = 0; n < dups_count; n++)
+		count += get_unit_type_count (leader, dups[n]);
+
+	*out_available = limit - count;
+	return true;
 }
+// END ToC-26
 
 int
 add_i31b_to_int (int base, i31b addition)
@@ -15750,6 +16879,35 @@ intercept_set_resource_bit (City * city, int resource_id)
 // Must forward declare this function since there's a circular dependency between it and patch_City_has_resource
 bool has_resources_required_by_building_r (City * city, int improv_id, int max_req_resource_id);
 
+int
+get_visible_non_subsumed_tile_resource (Tile * tile, struct district_instance * inst, int civ_id)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return -1;
+
+	int resource_id = Tile_get_resource_visible_to (tile, __, civ_id);
+	if ((resource_id < 0) || (resource_id >= p_bic_data->ResourceTypeCount))
+		return resource_id;
+
+	if (! is->current_config.enable_districts)
+		return resource_id;
+
+	if (inst == NULL)
+		inst = get_district_instance (tile);
+	if ((inst == NULL) || (inst->state != DS_COMPLETED))
+		return resource_id;
+
+	int district_id = inst->district_id;
+	if ((district_id < 0) || (district_id >= is->district_count))
+		return resource_id;
+
+	struct district_config * cfg = &is->district_configs[district_id];
+	if (! cfg->subsumes_tile_resource)
+		return resource_id;
+
+	return -1;
+}
+
 bool __fastcall
 patch_City_has_resource (City * this, int edx, int resource_id)
 {
@@ -15839,7 +16997,7 @@ has_resources_required_by_building_r (City * city, int improv_id, int max_req_re
 			wrap_tile_coords (&p_bic_data->Map, &x, &y);
 			Tile * tile = tile_at (x, y);
 			if (tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id) {
-				int res_here = Tile_get_resource_visible_to (tile, __, civ_id);
+				int res_here = get_visible_non_subsumed_tile_resource (tile, NULL, civ_id);
 				if (res_here >= 0) {
 					finds[0] |= targets[0] == res_here;
 					finds[1] |= targets[1] == res_here;
@@ -15984,6 +17142,10 @@ compare_resource_tiles (void const * vp_a, void const * vp_b)
 void __fastcall
 patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups)
 {
+	// Skip recomputing if we're already in the process and have saved the tile count. We can't save it twice.
+	if (is->saved_tile_count >= 0)
+		return;
+
 	int extra_resource_count = not_below (0, p_bic_data->ResourceTypeCount - 32);
 	int ints_per_city = 1 + extra_resource_count/32;
 	memset (is->extra_available_resources, 0, is->extra_available_resources_capacity * ints_per_city * sizeof (unsigned));
@@ -16076,16 +17238,25 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups
 Tile *
 get_resource_tile (int index)
 {
+	if ((index < 0) || (index >= is->count_resource_tiles)) {
+		is->got_resource_tile = NULL;
+		return p_null_tile;
+	}
+
 	struct extra_resource_tile * rt = &is->resource_tiles[index];
 	is->got_resource_tile = rt;
 	return rt->tile;
 }
 
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_1 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_resource_tile (index - is->saved_tile_count); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_2 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_resource_tile (index - is->saved_tile_count); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_3 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_resource_tile (index - is->saved_tile_count); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_4 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_resource_tile (index - is->saved_tile_count); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_5 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_resource_tile (index - is->saved_tile_count); }
+Tile * __fastcall
+patch_Map_get_tile_when_recomputing_resources (Map * map, int edx, int index)
+{
+	if ((is->saved_tile_count < 0) || (index < is->saved_tile_count)) {
+		is->got_resource_tile = NULL;
+		return Map_get_tile (map, __, index);
+	} else
+		return get_resource_tile (index - is->saved_tile_count);
+}
 
 int __fastcall
 patch_Tile_get_visible_resource_when_recomputing (Tile * tile, int edx, int civ_id)
@@ -16113,7 +17284,7 @@ patch_Tile_get_visible_resource_when_recomputing (Tile * tile, int edx, int civ_
 		}
 	}
 
-	int base_resource = Tile_get_resource_visible_to (tile, __, civ_id);
+	int base_resource = get_visible_non_subsumed_tile_resource (tile, NULL, civ_id);
 	return base_resource;
 }
 
@@ -16433,6 +17604,11 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 
 	// Remove the standard rule that blocks battle-created units while the player already has one
 	set_nopification (cfg->allow_multiple_battle_created_units_per_player, ADDR_EXISTING_BATTLE_CREATED_UNIT_CHECK, 6);
+
+	// Bypass air unit check when drawing pedia stats. If it passes, the check will draw the op. range instead of movement in the first column.
+	// replacing 0x75 (= jnz) with 0xEB (= uncond. jump)
+	WITH_MEM_PROTECTION (ADDR_AIR_UNIT_CHECK_TO_DRAW_PEDIA_STATS, 1, PAGE_EXECUTE_READWRITE)
+		*ADDR_AIR_UNIT_CHECK_TO_DRAW_PEDIA_STATS = is->current_config.expand_civilopedia_unit_stats ? 0xEB : 0x75;
 
 	// Remove era limit
 	// replacing 0x74 (= jump if zero [after cmp'ing era count with 4]) with 0xEB
@@ -17043,7 +18219,7 @@ read_in_dir(PCX_Image *img,
     PCX_Image_read_file(img, __, temp_path, NULL, 0, 0x100, 2);
 }
 
-bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char *art_dir, const char *hour)
+bool load_day_night_hour_and_season_images(struct day_night_cycle_img_set *this, const char *art_dir, const char *season, const char *hour)
 {
 	char ss[200];
     PCX_Image img; 
@@ -17338,7 +18514,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 	if (is->current_config.enable_districts) {
 		char art_dir[200];
 		char temp_path[2*MAX_PATH];
-		snprintf (art_dir, sizeof art_dir, "Districts/%s", hour);
+		snprintf (art_dir, sizeof art_dir, "Districts/%s/%s", season, hour);
 		get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 		for (int dc = 0; dc < is->district_count; dc++) {
 			struct district_config const * cfg = &is->district_configs[dc];
@@ -17447,7 +18623,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 	if (is->current_config.enable_natural_wonders && (is->natural_wonder_count > 0)) {
 		char art_dir[200];
 		char temp_path[2*MAX_PATH];
-		snprintf (art_dir, sizeof art_dir, "Districts/%s", hour);
+		snprintf (art_dir, sizeof art_dir, "Districts/%s/%s", season, hour);
 		get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 
 		char const * last_img_path = NULL;
@@ -17496,169 +18672,279 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 }
 
 Sprite *
-get_sprite_proxy_for_current_hour(Sprite *s) {
-    int v;
-    int hour = is->current_day_night_cycle;  // 0..23
-    if (itable_look_up(&is->day_night_sprite_proxy_by_hour[hour], (int)s, &v))
-        return (Sprite *)v;
-    return NULL;  // not proxied, fall back to s
+get_cycle_sprite_proxy(Sprite *s) {
+	if (is->current_config.day_night_cycle_mode == DNCM_OFF && is->current_config.seasonal_cycle_mode == SCM_OFF)
+		return NULL;
+	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
+		return NULL;
+
+	int season = (is->current_config.seasonal_cycle_mode != SCM_OFF)   ? clamp (0, 3, is->current_seasonal_cycle) : CS_SUMMER;
+	int hour   = (is->current_config.day_night_cycle_mode != DNCM_OFF) ? clamp (0, 23, is->current_day_night_cycle) : 12;
+	int cycle_idx = 24 * season + hour;
+	int v;
+	if (itable_look_up (&is->day_night_sprite_proxy_by_season_and_hour[cycle_idx], (int)s, &v))
+		return (Sprite *)v;
+	return NULL;
 }
 
 void
-insert_spritelist_proxies(SpriteList *ss, SpriteList *ps, int hour, int len1, int len2) {
+insert_spritelist_proxies(SpriteList *ss, SpriteList *ps, int season, int hour, int len1, int len2) {
+	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
+		return;
+	int cycle_idx = 24 * season + hour;
 	for (int i = 0; i < len1; i++) {
 		for (int j = 0; j < len2; j++) {
 			Sprite *s = &ss[i].field_0[j];
 			Sprite *p = &ps[i].field_0[j];
 			if (s && p) {
-				itable_insert(&is->day_night_sprite_proxy_by_hour[hour], (int)s, (int)p);
+				itable_insert(&is->day_night_sprite_proxy_by_season_and_hour[cycle_idx], (int)s, (int)p);
 			}
 		}
 	}
 }
 
 void
-insert_sprite_proxies(Sprite *ss, Sprite *ps, int hour, int len) {
+insert_sprite_proxies(Sprite *ss, Sprite *ps, int season, int hour, int len) {
+	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
+		return;
+	int cycle_idx = 24 * season + hour;
 	for (int i = 0; i < len; i++) {
 		Sprite *s = &ss[i];
 		Sprite *p = &ps[i];
 		if (s && p) {
-			itable_insert(&is->day_night_sprite_proxy_by_hour[hour], (int)s, (int)p);
+			itable_insert(&is->day_night_sprite_proxy_by_season_and_hour[cycle_idx], (int)s, (int)p);
 		}
 	}
 }
 
 void
-insert_sprite_proxy(Sprite *s, Sprite *p, int hour) {
+insert_sprite_proxy(Sprite *s, Sprite *p, int season, int hour) {
+	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
+		return;
+	int cycle_idx = 24 * season + hour;
 	if (s && p) {
-		itable_insert(&is->day_night_sprite_proxy_by_hour[hour], (int)s, (int)p);
+		itable_insert(&is->day_night_sprite_proxy_by_season_and_hour[cycle_idx], (int)s, (int)p);
 	}
 }
 
+bool
+allocate_day_night_cycle_runtime_storage ()
+{
+	int count = COUNT_CYCLE_SEASONS * 24;
+
+	if (is->cycle_imgs == NULL) {
+		is->cycle_imgs = malloc (count * sizeof is->cycle_imgs[0]);
+		if (is->cycle_imgs == NULL)
+			return false;
+		memset (is->cycle_imgs, 0, count * sizeof is->cycle_imgs[0]);
+	}
+
+	if (is->day_night_sprite_proxy_by_season_and_hour == NULL) {
+		is->day_night_sprite_proxy_by_season_and_hour = malloc (count * sizeof is->day_night_sprite_proxy_by_season_and_hour[0]);
+		if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
+			return false;
+		memset (is->day_night_sprite_proxy_by_season_and_hour, 0, count * sizeof is->day_night_sprite_proxy_by_season_and_hour[0]);
+	}
+
+	return true;
+}
+
+int
+normalize_enabled_season_mask (int mask)
+{
+	mask &= 0xF;
+	if (mask == 0)
+		mask = 1 << CS_SUMMER;
+	return mask;
+}
+
+int
+get_first_enabled_season (int mask)
+{
+	mask = normalize_enabled_season_mask (mask);
+	for (int season = 0; season < COUNT_CYCLE_SEASONS; season++)
+		if (mask & (1 << season))
+			return season;
+	return CS_SUMMER;
+}
+
+int
+get_next_enabled_season (int current_season, int mask)
+{
+	mask = normalize_enabled_season_mask (mask);
+	for (int offset = 1; offset <= COUNT_CYCLE_SEASONS; offset++) {
+		int season = (current_season + offset) % COUNT_CYCLE_SEASONS;
+		if (mask & (1 << season))
+			return season;
+	}
+	return CS_SUMMER;
+}
+
+int
+get_required_hour_mask_for_cycle_loading ()
+{
+	if (is->current_config.day_night_cycle_mode == DNCM_OFF)
+		return 1 << 12;
+
+	switch (is->current_config.day_night_cycle_mode) {
+		case DNCM_SPECIFIED:
+			return 1 << clamp (0, 23, is->current_config.pinned_hour_for_day_night_cycle);
+		default:
+			return (1 << 24) - 1;
+	}
+}
+
+int
+get_required_season_mask_for_cycle_loading ()
+{
+	if (is->current_config.seasonal_cycle_mode == SCM_OFF)
+		return 1 << CS_SUMMER;
+
+	int enabled_mask = normalize_enabled_season_mask (is->current_config.enabled_seasons_mask);
+	if (is->current_config.seasonal_cycle_mode == SCM_SPECIFIED) {
+		int pinned = clamp (CS_SUMMER, CS_SPRING, is->current_config.pinned_season_for_seasonal_cycle);
+		if ((enabled_mask & (1 << pinned)) != 0)
+			return 1 << pinned;
+		return 1 << get_first_enabled_season (enabled_mask);
+	}
+	return enabled_mask;
+}
+
+int
+get_current_local_season ()
+{
+	SYSTEMTIME st;
+	GetLocalTime (&st);
+	int month = st.wMonth;
+	if ((month == 12) || (month == 1) || (month == 2))
+		return CS_WINTER;
+	else if ((month >= 3) && (month <= 5))
+		return CS_SPRING;
+	else if ((month >= 6) && (month <= 8))
+		return CS_SUMMER;
+	else
+		return CS_FALL;
+}
+
 void 
-build_sprite_proxies_24(Map_Renderer *mr) {
-	for (int h = 0; h < 24; ++h) {
-		insert_sprite_proxies(city_sprites, is->day_night_cycle_imgs[h].City_Images, h, 80);
-		insert_sprite_proxies(destroyed_city_sprites, is->day_night_cycle_imgs[h].Destroyed_City_Images, h, 3);
-		insert_sprite_proxies(mr->Resources, is->day_night_cycle_imgs[h].Resources, h, 36);
-		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
-		insert_spritelist_proxies(mr->LM_Terrain_Images, is->day_night_cycle_imgs[h].LM_Terrain_Images, h, 9, 81);
-		insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &is->day_night_cycle_imgs[h].Terrain_Buldings_Barbarian_Camp, h);
-		insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &is->day_night_cycle_imgs[h].Terrain_Buldings_Mines, h);
-		insert_sprite_proxy(&mr->Victory_Image, &is->day_night_cycle_imgs[h].Victory_Image, h);
-		insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &is->day_night_cycle_imgs[h].Terrain_Buldings_Radar, h);
-		insert_sprite_proxies(mr->Flood_Plains_Images, is->day_night_cycle_imgs[h].Flood_Plains_Images, h, 16);
-		insert_sprite_proxies(mr->Polar_Icecaps_Images, is->day_night_cycle_imgs[h].Polar_Icecaps_Images, h, 32);
-		insert_sprite_proxies(mr->Roads_Images, is->day_night_cycle_imgs[h].Roads_Images, h, 256);
-		insert_sprite_proxies(mr->Railroads_Images, is->day_night_cycle_imgs[h].Railroads_Images, h, 272);
-		insert_sprite_proxies(mr->Terrain_Buldings_Airfields, is->day_night_cycle_imgs[h].Terrain_Buldings_Airfields, h, 2);
-		insert_sprite_proxies(mr->Terrain_Buldings_Camp, is->day_night_cycle_imgs[h].Terrain_Buldings_Camp, h, 4);
-		insert_sprite_proxies(mr->Terrain_Buldings_Fortress, is->day_night_cycle_imgs[h].Terrain_Buldings_Fortress, h, 4);
-		insert_sprite_proxies(mr->Terrain_Buldings_Barricade, is->day_night_cycle_imgs[h].Terrain_Buldings_Barricade, h, 4);
-		insert_sprite_proxies(mr->Goody_Huts_Images, is->day_night_cycle_imgs[h].Goody_Huts_Images, h, 8);
-		insert_sprite_proxies(mr->Terrain_Buldings_Outposts, is->day_night_cycle_imgs[h].Terrain_Buldings_Outposts, h, 3);
-		insert_sprite_proxies(mr->Pollution, is->day_night_cycle_imgs[h].Pollution, h, 25);
-		insert_sprite_proxies(mr->Craters, is->day_night_cycle_imgs[h].Craters, h, 25);
-		insert_sprite_proxies(mr->Tnt_Images, is->day_night_cycle_imgs[h].Tnt_Images, h, 18);
-		insert_sprite_proxies(mr->Waterfalls_Images, is->day_night_cycle_imgs[h].Waterfalls_Images, h, 4);
-		insert_sprite_proxies(mr->LM_Terrain, is->day_night_cycle_imgs[h].LM_Terrain, h, 7);
-		insert_sprite_proxies(mr->Marsh_Large, is->day_night_cycle_imgs[h].Marsh_Large, h, 8);
-		insert_sprite_proxies(mr->Marsh_Small, is->day_night_cycle_imgs[h].Marsh_Small, h, 10);
-		insert_sprite_proxies(mr->Volcanos_Images, is->day_night_cycle_imgs[h].Volcanos_Images, h, 16);
-		insert_sprite_proxies(mr->Volcanos_Forests_Images, is->day_night_cycle_imgs[h].Volcanos_Forests_Images, h, 16);
-		insert_sprite_proxies(mr->Volcanos_Jungles_Images, is->day_night_cycle_imgs[h].Volcanos_Jungles_Images, h, 16);
-		insert_sprite_proxies(mr->Volcanos_Snow_Images, is->day_night_cycle_imgs[h].Volcanos_Snow_Images, h, 16);
-		insert_sprite_proxies(mr->Grassland_Forests_Large, is->day_night_cycle_imgs[h].Grassland_Forests_Large, h, 8);
-		insert_sprite_proxies(mr->Plains_Forests_Large, is->day_night_cycle_imgs[h].Plains_Forests_Large, h, 8);
-		insert_sprite_proxies(mr->Tundra_Forests_Large, is->day_night_cycle_imgs[h].Tundra_Forests_Large, h, 8);
-		insert_sprite_proxies(mr->Grassland_Forests_Small, is->day_night_cycle_imgs[h].Grassland_Forests_Small, h, 10);
-		insert_sprite_proxies(mr->Plains_Forests_Small, is->day_night_cycle_imgs[h].Plains_Forests_Small, h, 10);
-		insert_sprite_proxies(mr->Tundra_Forests_Small, is->day_night_cycle_imgs[h].Tundra_Forests_Small, h, 10);
-		insert_sprite_proxies(mr->Grassland_Forests_Pines, is->day_night_cycle_imgs[h].Grassland_Forests_Pines, h, 12);
-		insert_sprite_proxies(mr->Plains_Forests_Pines, is->day_night_cycle_imgs[h].Plains_Forests_Pines, h, 12);
-		insert_sprite_proxies(mr->Tundra_Forests_Pines, is->day_night_cycle_imgs[h].Tundra_Forests_Pines, h, 12);
-		insert_sprite_proxies(mr->Irrigation_Desert_Images, is->day_night_cycle_imgs[h].Irrigation_Desert_Images, h, 16);
-		insert_sprite_proxies(mr->Irrigation_Plains_Images, is->day_night_cycle_imgs[h].Irrigation_Plains_Images, h, 16);
-		insert_sprite_proxies(mr->Irrigation_Images, is->day_night_cycle_imgs[h].Irrigation_Images, h, 16);
-		insert_sprite_proxies(mr->Irrigation_Tundra_Images, is->day_night_cycle_imgs[h].Irrigation_Tundra_Images, h, 16);
-		insert_sprite_proxies(mr->Grassland_Jungles_Large, is->day_night_cycle_imgs[h].Grassland_Jungles_Large, h, 8);
-		insert_sprite_proxies(mr->Grassland_Jungles_Small, is->day_night_cycle_imgs[h].Grassland_Jungles_Small, h, 12);
-		insert_sprite_proxies(mr->Mountains_Images, is->day_night_cycle_imgs[h].Mountains_Images, h, 16);
-		insert_sprite_proxies(mr->Mountains_Forests_Images, is->day_night_cycle_imgs[h].Mountains_Forests_Images, h, 16);
-		insert_sprite_proxies(mr->Mountains_Jungles_Images, is->day_night_cycle_imgs[h].Mountains_Jungles_Images, h, 16);
-		insert_sprite_proxies(mr->Mountains_Snow_Images, is->day_night_cycle_imgs[h].Mountains_Snow_Images, h, 16);
-		insert_sprite_proxies(mr->Hills_Images, is->day_night_cycle_imgs[h].Hills_Images, h, 16);
-		insert_sprite_proxies(mr->Hills_Forests_Images, is->day_night_cycle_imgs[h].Hills_Forests_Images, h, 16);
-		insert_sprite_proxies(mr->Hills_Jungle_Images, is->day_night_cycle_imgs[h].Hills_Jungle_Images, h, 16);
-		insert_sprite_proxies(mr->Delta_Rivers_Images, is->day_night_cycle_imgs[h].Delta_Rivers_Images, h, 16);
-		insert_sprite_proxies(mr->Mountain_Rivers_Images, is->day_night_cycle_imgs[h].Mountain_Rivers_Images, h, 16);
-		insert_sprite_proxies(mr->LM_Mountains_Images, is->day_night_cycle_imgs[h].LM_Mountains_Images, h, 16);
-		insert_sprite_proxies(mr->LM_Forests_Large_Images, is->day_night_cycle_imgs[h].LM_Forests_Large_Images, h, 8);
-		insert_sprite_proxies(mr->LM_Forests_Small_Images, is->day_night_cycle_imgs[h].LM_Forests_Small_Images, h, 10);
-		insert_sprite_proxies(mr->LM_Forests_Pines_Images, is->day_night_cycle_imgs[h].LM_Forests_Pines_Images, h, 12);
-		insert_sprite_proxies(mr->LM_Hills_Images, is->day_night_cycle_imgs[h].LM_Hills_Images, h, 16);
-		
-		if (is->current_config.enable_districts) {
-			for (int dc = 0; dc < is->district_count; dc++) {
-				struct district_config const * cfg = &is->district_configs[dc];
-				int variant_capacity = ARRAY_LEN (is->district_img_sets[dc].imgs);
-				int variant_count = cfg->img_path_count;
-				if (variant_count <= 0)
-					continue;
-				if (variant_count > variant_capacity)
-					variant_count = variant_capacity;
+build_sprite_proxies(Map_Renderer *mr) {
+	if (is->cycle_imgs == NULL || is->day_night_sprite_proxy_by_season_and_hour == NULL)
+		return;
 
-				int era_count    = cfg->vary_img_by_era ? 4 : 1;
-				int column_count = cfg->img_column_count;
-
-				for (int variant_i = 0; variant_i < variant_count; variant_i++) {
-					if ((cfg->img_paths[variant_i] == NULL) || (cfg->img_paths[variant_i][0] == '\0'))
+	int required_season_mask = get_required_season_mask_for_cycle_loading ();
+	int required_hour_mask = get_required_hour_mask_for_cycle_loading ();
+	for (int season = 0; season < COUNT_CYCLE_SEASONS; season++) {
+		if ((required_season_mask & (1 << season)) == 0)
+			continue;
+		for (int h = 0; h < 24; ++h) {
+			if ((required_hour_mask & (1 << h)) == 0)
+				continue;
+			struct day_night_cycle_img_set * set = &is->cycle_imgs[24 * season + h];
+			insert_sprite_proxies(city_sprites, set->City_Images, season, h, 80);
+			insert_sprite_proxies(destroyed_city_sprites, set->Destroyed_City_Images, season, h, 3);
+			insert_sprite_proxies(mr->Resources, set->Resources, season, h, 36);
+			insert_spritelist_proxies(mr->Std_Terrain_Images, set->Std_Terrain_Images, season, h, 9, 81);
+			insert_spritelist_proxies(mr->LM_Terrain_Images, set->LM_Terrain_Images, season, h, 9, 81);
+			insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &set->Terrain_Buldings_Barbarian_Camp, season, h);
+			insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &set->Terrain_Buldings_Mines, season, h);
+			insert_sprite_proxy(&mr->Victory_Image, &set->Victory_Image, season, h);
+			insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &set->Terrain_Buldings_Radar, season, h);
+			insert_sprite_proxies(mr->Flood_Plains_Images, set->Flood_Plains_Images, season, h, 16);
+			insert_sprite_proxies(mr->Polar_Icecaps_Images, set->Polar_Icecaps_Images, season, h, 32);
+			insert_sprite_proxies(mr->Roads_Images, set->Roads_Images, season, h, 256);
+			insert_sprite_proxies(mr->Railroads_Images, set->Railroads_Images, season, h, 272);
+			insert_sprite_proxies(mr->Terrain_Buldings_Airfields, set->Terrain_Buldings_Airfields, season, h, 2);
+			insert_sprite_proxies(mr->Terrain_Buldings_Camp, set->Terrain_Buldings_Camp, season, h, 4);
+			insert_sprite_proxies(mr->Terrain_Buldings_Fortress, set->Terrain_Buldings_Fortress, season, h, 4);
+			insert_sprite_proxies(mr->Terrain_Buldings_Barricade, set->Terrain_Buldings_Barricade, season, h, 4);
+			insert_sprite_proxies(mr->Goody_Huts_Images, set->Goody_Huts_Images, season, h, 8);
+			insert_sprite_proxies(mr->Terrain_Buldings_Outposts, set->Terrain_Buldings_Outposts, season, h, 3);
+			insert_sprite_proxies(mr->Pollution, set->Pollution, season, h, 25);
+			insert_sprite_proxies(mr->Craters, set->Craters, season, h, 25);
+			insert_sprite_proxies(mr->Tnt_Images, set->Tnt_Images, season, h, 18);
+			insert_sprite_proxies(mr->Waterfalls_Images, set->Waterfalls_Images, season, h, 4);
+			insert_sprite_proxies(mr->LM_Terrain, set->LM_Terrain, season, h, 7);
+			insert_sprite_proxies(mr->Marsh_Large, set->Marsh_Large, season, h, 8);
+			insert_sprite_proxies(mr->Marsh_Small, set->Marsh_Small, season, h, 10);
+			insert_sprite_proxies(mr->Volcanos_Images, set->Volcanos_Images, season, h, 16);
+			insert_sprite_proxies(mr->Volcanos_Forests_Images, set->Volcanos_Forests_Images, season, h, 16);
+			insert_sprite_proxies(mr->Volcanos_Jungles_Images, set->Volcanos_Jungles_Images, season, h, 16);
+			insert_sprite_proxies(mr->Volcanos_Snow_Images, set->Volcanos_Snow_Images, season, h, 16);
+			insert_sprite_proxies(mr->Grassland_Forests_Large, set->Grassland_Forests_Large, season, h, 8);
+			insert_sprite_proxies(mr->Plains_Forests_Large, set->Plains_Forests_Large, season, h, 8);
+			insert_sprite_proxies(mr->Tundra_Forests_Large, set->Tundra_Forests_Large, season, h, 8);
+			insert_sprite_proxies(mr->Grassland_Forests_Small, set->Grassland_Forests_Small, season, h, 10);
+			insert_sprite_proxies(mr->Plains_Forests_Small, set->Plains_Forests_Small, season, h, 10);
+			insert_sprite_proxies(mr->Tundra_Forests_Small, set->Tundra_Forests_Small, season, h, 10);
+			insert_sprite_proxies(mr->Grassland_Forests_Pines, set->Grassland_Forests_Pines, season, h, 12);
+			insert_sprite_proxies(mr->Plains_Forests_Pines, set->Plains_Forests_Pines, season, h, 12);
+			insert_sprite_proxies(mr->Tundra_Forests_Pines, set->Tundra_Forests_Pines, season, h, 12);
+			insert_sprite_proxies(mr->Irrigation_Desert_Images, set->Irrigation_Desert_Images, season, h, 16);
+			insert_sprite_proxies(mr->Irrigation_Plains_Images, set->Irrigation_Plains_Images, season, h, 16);
+			insert_sprite_proxies(mr->Irrigation_Images, set->Irrigation_Images, season, h, 16);
+			insert_sprite_proxies(mr->Irrigation_Tundra_Images, set->Irrigation_Tundra_Images, season, h, 16);
+			insert_sprite_proxies(mr->Grassland_Jungles_Large, set->Grassland_Jungles_Large, season, h, 8);
+			insert_sprite_proxies(mr->Grassland_Jungles_Small, set->Grassland_Jungles_Small, season, h, 12);
+			insert_sprite_proxies(mr->Mountains_Images, set->Mountains_Images, season, h, 16);
+			insert_sprite_proxies(mr->Mountains_Forests_Images, set->Mountains_Forests_Images, season, h, 16);
+			insert_sprite_proxies(mr->Mountains_Jungles_Images, set->Mountains_Jungles_Images, season, h, 16);
+			insert_sprite_proxies(mr->Mountains_Snow_Images, set->Mountains_Snow_Images, season, h, 16);
+			insert_sprite_proxies(mr->Hills_Images, set->Hills_Images, season, h, 16);
+			insert_sprite_proxies(mr->Hills_Forests_Images, set->Hills_Forests_Images, season, h, 16);
+			insert_sprite_proxies(mr->Hills_Jungle_Images, set->Hills_Jungle_Images, season, h, 16);
+			insert_sprite_proxies(mr->Delta_Rivers_Images, set->Delta_Rivers_Images, season, h, 16);
+			insert_sprite_proxies(mr->Mountain_Rivers_Images, set->Mountain_Rivers_Images, season, h, 16);
+			insert_sprite_proxies(mr->LM_Mountains_Images, set->LM_Mountains_Images, season, h, 16);
+			insert_sprite_proxies(mr->LM_Forests_Large_Images, set->LM_Forests_Large_Images, season, h, 8);
+			insert_sprite_proxies(mr->LM_Forests_Small_Images, set->LM_Forests_Small_Images, season, h, 10);
+			insert_sprite_proxies(mr->LM_Forests_Pines_Images, set->LM_Forests_Pines_Images, season, h, 12);
+			insert_sprite_proxies(mr->LM_Hills_Images, set->LM_Hills_Images, season, h, 16);
+			
+			if (is->current_config.enable_districts) {
+				for (int dc = 0; dc < is->district_count; dc++) {
+					struct district_config const * cfg = &is->district_configs[dc];
+					int variant_capacity = ARRAY_LEN (is->district_img_sets[dc].imgs);
+					int variant_count = cfg->img_path_count;
+					if (variant_count <= 0)
 						continue;
-					for (int era = 0; era < era_count; era++) {
-						for (int col = 0; col < column_count; col++) {
-							Sprite * base = &is->district_img_sets[dc].imgs[variant_i][era][col];
-							Sprite * proxy = &is->day_night_cycle_imgs[h].District_Images[dc][variant_i][era][col];
-							insert_sprite_proxy (base, proxy, h);
+					if (variant_count > variant_capacity)
+						variant_count = variant_capacity;
+
+					int era_count    = cfg->vary_img_by_era ? 4 : 1;
+					int column_count = cfg->img_column_count;
+
+					for (int variant_i = 0; variant_i < variant_count; variant_i++) {
+						if ((cfg->img_paths[variant_i] == NULL) || (cfg->img_paths[variant_i][0] == '\0'))
+							continue;
+						for (int era = 0; era < era_count; era++) {
+							for (int col = 0; col < column_count; col++) {
+								Sprite * base = &is->district_img_sets[dc].imgs[variant_i][era][col];
+								Sprite * proxy = &set->District_Images[dc][variant_i][era][col];
+								insert_sprite_proxy (base, proxy, season, h);
+							}
 						}
 					}
 				}
-			}
 
-			insert_sprite_proxy (&is->abandoned_district_img, &is->day_night_cycle_imgs[h].Abandoned_District_Image, h);
-			insert_sprite_proxy (&is->abandoned_maritime_district_img, &is->day_night_cycle_imgs[h].Abandoned_Maritime_District_Image, h);
+				insert_sprite_proxy (&is->abandoned_district_img, &set->Abandoned_District_Image, season, h);
+				insert_sprite_proxy (&is->abandoned_maritime_district_img, &set->Abandoned_Maritime_District_Image, season, h);
 
-			// Wonder districts
-			if (is->current_config.enable_wonder_districts) {
-				for (int wi = 0; wi < is->wonder_district_count; wi++) {
-					Sprite * base_img = &is->wonder_district_img_sets[wi].img;
-					Sprite * proxy_img = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].img;
-					insert_sprite_proxy (base_img, proxy_img, h);
+				if (is->current_config.enable_wonder_districts) {
+					for (int wi = 0; wi < is->wonder_district_count; wi++) {
+						insert_sprite_proxy (&is->wonder_district_img_sets[wi].img, &set->Wonder_District_Images[wi].img, season, h);
+						insert_sprite_proxy (&is->wonder_district_img_sets[wi].construct_img, &set->Wonder_District_Images[wi].construct_img, season, h);
 
-					Sprite * base_construct = &is->wonder_district_img_sets[wi].construct_img;
-					Sprite * proxy_construct = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].construct_img;
-					insert_sprite_proxy (base_construct, proxy_construct, h);
-
-					if (is->wonder_district_img_sets[wi].alt_dir_img.vtable != NULL) {
-						Sprite * base_alt = &is->wonder_district_img_sets[wi].alt_dir_img;
-						Sprite * proxy_alt = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].alt_dir_img;
-						insert_sprite_proxy (base_alt, proxy_alt, h);
-					}
-
-					if (is->wonder_district_img_sets[wi].alt_dir_construct_img.vtable != NULL) {
-						Sprite * base_alt_construct = &is->wonder_district_img_sets[wi].alt_dir_construct_img;
-						Sprite * proxy_alt_construct = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].alt_dir_construct_img;
-						insert_sprite_proxy (base_alt_construct, proxy_alt_construct, h);
+						if (is->wonder_district_img_sets[wi].alt_dir_img.vtable != NULL)
+							insert_sprite_proxy (&is->wonder_district_img_sets[wi].alt_dir_img, &set->Wonder_District_Images[wi].alt_dir_img, season, h);
+						if (is->wonder_district_img_sets[wi].alt_dir_construct_img.vtable != NULL)
+							insert_sprite_proxy (&is->wonder_district_img_sets[wi].alt_dir_construct_img, &set->Wonder_District_Images[wi].alt_dir_construct_img, season, h);
 					}
 				}
 			}
-		}
 
-		// Natural wonders
-		if (is->current_config.enable_natural_wonders && (is->natural_wonder_count > 0)) {
-			for (int ni = 0; ni < is->natural_wonder_count; ni++) {
-				Sprite * base_nw = &is->natural_wonder_img_sets[ni].img;
-				Sprite * proxy_nw = &is->day_night_cycle_imgs[h].Natural_Wonder_Images[ni].img;
-				insert_sprite_proxy (base_nw, proxy_nw, h);
+			if (is->current_config.enable_natural_wonders && (is->natural_wonder_count > 0)) {
+				for (int ni = 0; ni < is->natural_wonder_count; ni++)
+					insert_sprite_proxy (&is->natural_wonder_img_sets[ni].img, &set->Natural_Wonder_Images[ni].img, season, h);
 			}
 		}
 	}
@@ -17666,9 +18952,11 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 }
 
 void
-init_day_night_images()
+init_day_night_and_seasonal_images()
 {
 	if (is->day_night_cycle_img_state != IS_UNINITED)
+		return;
+	if (is->cycle_imgs == NULL)
 		return;
 
 	const char *hour_strs[24] = {
@@ -17677,26 +18965,34 @@ init_day_night_images()
 		"1600", "1700", "1800", "1900", "2000", "2100", "2200", "2300"
 	};
 
-	for (int i = 0; i < 24; i++) {
+	int required_season_mask = get_required_season_mask_for_cycle_loading ();
+	int required_hour_mask = get_required_hour_mask_for_cycle_loading ();
+	for (int season = 0; season < COUNT_CYCLE_SEASONS; season++) {
+		if ((required_season_mask & (1 << season)) == 0)
+			continue;
+		for (int i = 0; i < 24; i++) {
+			if ((required_hour_mask & (1 << i)) == 0)
+				continue;
 
-		char art_dir[200];
-		char temp_path[2*MAX_PATH];
-		snprintf (art_dir, sizeof art_dir, "DayNight/%s", hour_strs[i]);
-		get_mod_art_path (art_dir, temp_path, sizeof temp_path);
-		bool success = load_day_night_hour_images (&is->day_night_cycle_imgs[i], temp_path, hour_strs[i]);
+			char art_dir[200];
+			char temp_path[2*MAX_PATH];
+			snprintf (art_dir, sizeof art_dir, "DayNight/%s/%s", cycle_season_names[season], hour_strs[i]);
+			get_mod_art_path (art_dir, temp_path, sizeof temp_path);
+			bool success = load_day_night_hour_and_season_images (&is->cycle_imgs[24 * season + i], temp_path, cycle_season_names[season], hour_strs[i]);
 
-		if (!success) {
-			char ss[200];
-			snprintf(ss, sizeof ss, "Failed to load day/night cycle images for hour %s, reverting to base game art.", hour_strs[i]);
-			pop_up_in_game_error (ss);
+			if (!success) {
+				char ss[300];
+				snprintf (ss, sizeof ss, "Failed to load day/night cycle images for season %s at hour %s, reverting to base game art.", cycle_season_names[season], hour_strs[i]);
+				pop_up_in_game_error (ss);
 
-			is->day_night_cycle_img_state = IS_INIT_FAILED;
-			return;
+				is->day_night_cycle_img_state = IS_INIT_FAILED;
+				return;
+			}
 		}
 	}
 
 	Map_Renderer * mr = &p_bic_data->Map.Renderer;
-	build_sprite_proxies_24(mr);
+	build_sprite_proxies(mr);
 
 	is->day_night_cycle_img_state = IS_OK;
 }
@@ -17704,13 +19000,102 @@ init_day_night_images()
 void
 deindex_day_night_image_proxies()
 {
-	if (!is->day_night_cycle_img_proxies_indexed)
+	if (!is->day_night_cycle_img_proxies_indexed || is->day_night_sprite_proxy_by_season_and_hour == NULL)
 		return;
 
-	for (int i = 0; i < 24; i++) {
-		table_deinit (&is->day_night_sprite_proxy_by_hour[i]);
-	}
+	for (int season = 0; season < COUNT_CYCLE_SEASONS; season++)
+		for (int i = 0; i < 24; i++)
+			table_deinit (&is->day_night_sprite_proxy_by_season_and_hour[24 * season + i]);
 	is->day_night_cycle_img_proxies_indexed = false;
+}
+
+int
+calculate_current_seasonal_cycle (bool transition_on_day_night_hour_hit)
+{
+	int output = CS_SUMMER;
+	int enabled_mask = normalize_enabled_season_mask (is->current_config.enabled_seasons_mask);
+	switch (is->current_config.seasonal_cycle_mode) {
+		case SCM_OFF:
+			return CS_SUMMER;
+
+		case SCM_TIMER: {
+			output = get_first_enabled_season (enabled_mask);
+			if (is->seasonal_cycle_unstarted) {
+				is->current_seasonal_cycle = output;
+				QueryPerformanceCounter (&is->last_seasonal_cycle_update_time);
+			}
+
+			LARGE_INTEGER perf_freq, time_now;
+			QueryPerformanceFrequency (&perf_freq);
+			QueryPerformanceCounter (&time_now);
+
+			double elapsed_seconds =
+				(double)(time_now.QuadPart - is->last_seasonal_cycle_update_time.QuadPart) /
+				(double)perf_freq.QuadPart;
+			if (elapsed_seconds > (double)is->current_config.elapsed_minutes_per_season_transition * 60.0) {
+				output = get_next_enabled_season (is->current_seasonal_cycle, enabled_mask);
+				is->last_seasonal_cycle_update_time = time_now;
+			} else
+				output = is->current_seasonal_cycle;
+			break;
+		}
+
+		case SCM_USER_SEASON: {
+			output = get_current_local_season ();
+			if ((enabled_mask & (1 << output)) == 0)
+				output = get_first_enabled_season (enabled_mask);
+			break;
+		}
+
+		case SCM_EVERY_TURN: {
+			output = get_first_enabled_season (enabled_mask);
+			if (is->seasonal_cycle_unstarted) {
+				is->current_seasonal_cycle = output;
+				is->turns_in_current_season = 0;
+				break;
+			}
+			if ((enabled_mask & (1 << is->current_seasonal_cycle)) == 0) {
+				is->current_seasonal_cycle = output;
+				is->turns_in_current_season = 0;
+				break;
+			}
+			int turns_per_season = not_below (1, is->current_config.fixed_turns_per_season);
+			is->turns_in_current_season += 1;
+			if (is->turns_in_current_season >= turns_per_season) {
+				is->turns_in_current_season = 0;
+				output = get_next_enabled_season (is->current_seasonal_cycle, enabled_mask);
+			} else
+				output = is->current_seasonal_cycle;
+			break;
+		}
+
+		case SCM_ON_DAY_NIGHT_HOUR: {
+			output = get_first_enabled_season (enabled_mask);
+			if (is->seasonal_cycle_unstarted) {
+				is->current_seasonal_cycle = output;
+				break;
+			}
+			if ((enabled_mask & (1 << is->current_seasonal_cycle)) == 0) {
+				is->current_seasonal_cycle = output;
+				break;
+			}
+			if (transition_on_day_night_hour_hit)
+				output = get_next_enabled_season (is->current_seasonal_cycle, enabled_mask);
+			else
+				output = is->current_seasonal_cycle;
+			break;
+		}
+
+		case SCM_SPECIFIED: {
+			int pinned = clamp (CS_SUMMER, CS_SPRING, is->current_config.pinned_season_for_seasonal_cycle);
+			output = ((enabled_mask & (1 << pinned)) != 0) ? pinned : get_first_enabled_season (enabled_mask);
+			break;
+		}
+	}
+
+	output = clamp (CS_SUMMER, CS_SPRING, output);
+	is->seasonal_cycle_unstarted = false;
+	return output;
 }
 
 int
@@ -17792,19 +19177,29 @@ patch_Map_Renderer_load_images (Map_Renderer *this, int edx)
 {
 	Map_Renderer_load_images(this, __);
 
-	// Initialize day/night cycle and re-calculate hour, if applicable
-	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
-		is->current_day_night_cycle = calculate_current_day_night_cycle_hour ();
+	if (is->current_config.day_night_cycle_mode != DNCM_OFF || is->current_config.seasonal_cycle_mode != SCM_OFF) {
+		if (! allocate_day_night_cycle_runtime_storage ()) {
+			is->day_night_cycle_img_state = IS_INIT_FAILED;
+			return;
+		}
+
+		if (is->current_config.day_night_cycle_mode != DNCM_OFF)
+			is->current_day_night_cycle = calculate_current_day_night_cycle_hour ();
+		if ((is->current_config.seasonal_cycle_mode != SCM_OFF) &&
+		    (is->seasonal_cycle_unstarted ||
+		     ((is->current_config.seasonal_cycle_mode != SCM_EVERY_TURN) &&
+		      (is->current_config.seasonal_cycle_mode != SCM_ON_DAY_NIGHT_HOUR))))
+			is->current_seasonal_cycle = calculate_current_seasonal_cycle (false);
 
 		if (is->day_night_cycle_img_state == IS_UNINITED) {
-			init_day_night_images ();
+			init_day_night_and_seasonal_images ();
 		}
 
 		if (is->day_night_cycle_img_state == IS_OK) {
 			
 			// Sprite proxies are deindexed during each load event as sprite instances (really only Resources, which are reloaded) may change.
 			if (!is->day_night_cycle_img_proxies_indexed) {
-				build_sprite_proxies_24(this);
+				build_sprite_proxies(this);
 			}
 		}
 	}
@@ -17858,6 +19253,7 @@ patch_init_floating_point ()
 		{"enable_ai_production_ranking"                          , true , offsetof (struct c3x_config, enable_ai_production_ranking)},
 		{"enable_ai_city_location_desirability_display"          , true,  offsetof (struct c3x_config, enable_ai_city_location_desirability_display)},
 		{"show_ai_city_location_desirability_if_settler"         , false, offsetof (struct c3x_config, show_ai_city_location_desirability_if_settler)},
+		{"auto_zoom_city_screen_for_large_work_areas"            , true,  offsetof (struct c3x_config, auto_zoom_city_screen_for_large_work_areas)},
 		{"zero_corruption_when_off"                              , true , offsetof (struct c3x_config, zero_corruption_when_off)},
 		{"disallow_land_units_from_affecting_water_tiles"        , true , offsetof (struct c3x_config, disallow_land_units_from_affecting_water_tiles)},
 		{"dont_end_units_turn_after_airdrop"                     , false, offsetof (struct c3x_config, dont_end_units_turn_after_airdrop)},
@@ -17918,6 +19314,7 @@ patch_init_floating_point ()
 		{"charm_flag_triggers_ptw_like_targeting"                , false, offsetof (struct c3x_config, charm_flag_triggers_ptw_like_targeting)},
 		{"city_icons_show_unit_effects_not_trade"                , true , offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
 		{"ignore_king_ability_for_defense_priority"              , false, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
+		{"prefer_less_expensive_defenders"                        , false, offsetof (struct c3x_config, prefer_less_expensive_defenders)},
 		{"show_untradable_techs_on_trade_screen"                 , false, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
 		{"disallow_useless_bombard_vs_airfields"                 , true , offsetof (struct c3x_config, disallow_useless_bombard_vs_airfields)},
 		{"compact_luxury_display_on_city_screen"                 , false, offsetof (struct c3x_config, compact_luxury_display_on_city_screen)},
@@ -17955,7 +19352,6 @@ patch_init_floating_point ()
 		{"convert_to_landmark_after_planting_forest"             , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
 		{"allow_sale_of_aqueducts_and_hospitals"                 , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
 		{"no_cross_shore_detection"                              , false, offsetof (struct c3x_config, no_cross_shore_detection)},
-		{"auto_zoom_city_screen_for_large_work_areas"            , true,  offsetof (struct c3x_config, auto_zoom_city_screen_for_large_work_areas)},
 		{"limit_unit_loading_to_one_transport_per_turn"          , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block"   , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
 		{"allow_extraterritorial_colonies"                       , false, offsetof (struct c3x_config, allow_extraterritorial_colonies)},
@@ -18006,6 +19402,7 @@ patch_init_floating_point ()
 		{"terrain_visibility_euclidean"                          , false, offsetof (struct c3x_config, terrain_visibility_euclidean)},
 		{"terrain_visibility_bonus_can_stack"                    , false, offsetof (struct c3x_config, terrain_visibility_bonus_can_stack)},
 		{"terrain_visibility_flat_bonus_can_stack"               , false, offsetof (struct c3x_config, terrain_visibility_flat_bonus_can_stack)},
+		{"enable_unit_counters"                                  , false, offsetof (struct c3x_config, enable_unit_counters)},
 	};
 
 	struct integer_config_option {
@@ -18016,6 +19413,7 @@ patch_init_floating_point ()
 		{"limit_railroad_movement"                           ,     0,  offsetof (struct c3x_config, limit_railroad_movement)},
 		{"minimum_city_separation"                           ,     1,  offsetof (struct c3x_config, minimum_city_separation)},
 		{"anarchy_length_percent"                            ,   100,  offsetof (struct c3x_config, anarchy_length_percent)},
+		{"steal_plans_duration"                              ,     1,  offsetof (struct c3x_config, steal_plans_duration)},
 		{"ai_multi_city_start"                               ,     0,  offsetof (struct c3x_config, ai_multi_city_start)},
 		{"max_tries_to_place_fp_city"                        , 10000,  offsetof (struct c3x_config, max_tries_to_place_fp_city)},
 		{"ai_research_multiplier"                            ,   100,  offsetof (struct c3x_config, ai_research_multiplier)},
@@ -18027,10 +19425,15 @@ patch_init_floating_point ()
 		{"max_ai_naval_escorts"                              ,     3,  offsetof (struct c3x_config, max_ai_naval_escorts)},
 		{"ai_worker_requirement_percent"                     ,   150,  offsetof (struct c3x_config, ai_worker_requirement_percent)},
 		{"chance_for_nukes_to_destroy_max_one_hp_units"      ,   100,  offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
+		{"radar_tower_detection_distance"                    ,     0,  offsetof (struct c3x_config, radar_tower_detection_distance)},
+		{"outpost_detection_distance"                        ,     0,  offsetof (struct c3x_config, outpost_detection_distance)},
 		{"rebase_range_multiplier"                           ,     6,  offsetof (struct c3x_config, rebase_range_multiplier)},
 		{"elapsed_minutes_per_day_night_hour_transition"     ,     3,  offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
 		{"fixed_hours_per_turn_for_day_night_cycle"          ,     1,  offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
 		{"pinned_hour_for_day_night_cycle"                   ,     0,  offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
+		{"elapsed_minutes_per_season_transition"             ,     3,  offsetof (struct c3x_config, elapsed_minutes_per_season_transition)},
+		{"fixed_turns_per_season"                            ,     3,  offsetof (struct c3x_config, fixed_turns_per_season)},
+		{"transition_season_on_day_night_hour"               ,     0,  offsetof (struct c3x_config, transition_season_on_day_night_hour)},
 		{"years_to_double_building_culture"                  ,  1000,  offsetof (struct c3x_config, years_to_double_building_culture)},
 		{"tourism_time_scale_percent"                        ,   100,  offsetof (struct c3x_config, tourism_time_scale_percent)},
 		{"luxury_randomized_appearance_rate_percent"    ,       100,   offsetof (struct c3x_config, luxury_randomized_appearance_rate_percent)},
@@ -18122,6 +19525,9 @@ patch_init_floating_point ()
 	base_config.unit_cycle_search_criteria = UCSC_STANDARD;
 	base_config.city_work_radius = 2;
 	base_config.day_night_cycle_mode = DNCM_OFF;
+	base_config.seasonal_cycle_mode = SCM_OFF;
+	base_config.enabled_seasons_mask = 0xF;
+	base_config.pinned_season_for_seasonal_cycle = CS_SUMMER;
 	base_config.distribution_hub_yield_division_mode = DHYDM_FLAT;
 	base_config.ai_distribution_hub_build_strategy = ADHBS_BY_CITY_COUNT;
 	base_config.ai_auto_build_great_wall_strategy = AAGWS_ALL_BORDERS;
@@ -18297,6 +19703,18 @@ patch_init_floating_point ()
 	is->combat_defense_improvs = (struct improv_id_list) {0};
 
 	is->unit_display_override = (struct unit_display_override) {-1, -1, -1};
+	is->unit_display_override_2 = (struct unit_display_override) {-1, -1, -1};
+	is->combat_unit_display_override_active = false;
+	is->saved_combat_unit_display_override = (struct unit_display_override) {-1, -1, -1};
+	is->post_combat_defender_display_override = (struct unit_display_override) {-1, -1, -1};
+	is->post_combat_defender_display_attacker_id = -1;
+	is->bombard_target_display_override_active = false;
+	is->saved_bombard_target_display_override = (struct unit_display_override) {-1, -1, -1};
+	is->saved_bombard_target_display_override_2 = (struct unit_display_override) {-1, -1, -1};
+	is->current_bombard_target_display_override = (struct unit_display_override) {-1, -1, -1};
+	is->counter_defender_selection_ctx = (struct counter_defender_selection_context) {0};
+	is->counter_army_attacker_selection_ctx =
+		(struct counter_army_attacker_selection_context) {0};
 
 	is->dbe = (struct defensive_bombard_event) {0};
 
@@ -18309,6 +19727,8 @@ patch_init_floating_point ()
 
 	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
 	memset (&is->unit_type_duplicates    , 0, sizeof is->unit_type_duplicates);
+	memset (&is->steal_plans_expiration_turns, 0, sizeof is->steal_plans_expiration_turns);
+	is->steal_plans_success_roll = 0;
 	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
 	memset (&is->airdrops_this_turn      , 0, sizeof is->airdrops_this_turn);
 	memset (&is->unit_transport_ties     , 0, sizeof is->unit_transport_ties);
@@ -18325,6 +19745,14 @@ patch_init_floating_point ()
 	is->accessing_save_file = NULL;
 
 	is->drawn_strat_resource_count = 0;
+	is->current_day_night_cycle = 12;
+	is->day_night_cycle_unstarted = true;
+	is->current_seasonal_cycle = CS_SUMMER;
+	is->seasonal_cycle_unstarted = true;
+	is->turns_in_current_season = 0;
+	is->day_night_cycle_img_proxies_indexed = false;
+	is->day_night_sprite_proxy_by_season_and_hour = NULL;
+	is->cycle_imgs = NULL;
 
 	is->charmed_types_converted_to_ptw_arty = NULL;
 	is->count_charmed_types_converted_to_ptw_arty = 0;
@@ -18780,6 +20208,43 @@ recompute_resources_if_necessary ()
 		patch_Trade_Net_recompute_resources (is->trade_net, __, false);
 }
 
+void
+set_bombard_target_display_override (Unit * target)
+{
+	if ((! is->current_config.enable_unit_counters) ||
+	    (is->bombarding_unit == NULL) ||
+	    (target == NULL))
+		return;
+
+	struct unit_display_override override = {
+		target->Body.ID, target->Body.X, target->Body.Y
+	};
+
+	if (! is->bombard_target_display_override_active) {
+		is->saved_bombard_target_display_override = is->unit_display_override;
+		is->saved_bombard_target_display_override_2 = is->unit_display_override_2;
+		is->bombard_target_display_override_active = true;
+	}
+
+	is->current_bombard_target_display_override = override;
+	is->unit_display_override = override;
+	is->unit_display_override_2 = override;
+}
+
+void
+clear_bombard_target_display_override ()
+{
+	if (! is->bombard_target_display_override_active)
+		return;
+
+	is->unit_display_override = is->saved_bombard_target_display_override;
+	is->unit_display_override_2 = is->saved_bombard_target_display_override_2;
+	is->saved_bombard_target_display_override = (struct unit_display_override) {-1, -1, -1};
+	is->saved_bombard_target_display_override_2 = (struct unit_display_override) {-1, -1, -1};
+	is->current_bombard_target_display_override = (struct unit_display_override) {-1, -1, -1};
+	is->bombard_target_display_override_active = false;
+}
+
 void __fastcall
 patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 {
@@ -18801,6 +20266,7 @@ patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 	is->bombarding_unit = this;
 	record_ai_unit_seen (this, x, y);
 	Unit_bombard_tile (this, __, x, y);
+	clear_bombard_target_display_override ();
 	is->bombard_stealth_target = NULL;
 	is->bombarding_unit = NULL;
 
@@ -18874,6 +20340,69 @@ can_damage_bombarding (UnitType * attacker_type, Unit * defender, Tile * defende
 		return false;
 }
 
+bool
+tile_improvements_detect_unit_for_civ (Unit * unit, int civ_id)
+{
+	int radar_dist = is->current_config.radar_tower_detection_distance;
+	int outpost_dist = is->current_config.outpost_detection_distance;
+	int max_dist = (radar_dist > outpost_dist) ? radar_dist : outpost_dist;
+	if ((max_dist <= 0) || (civ_id < 0) || (civ_id >= 32))
+		return false;
+
+	unsigned detector_owner_bits = 1u << civ_id;
+	if (is->current_config.share_visibility_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) &&
+	    ((detector_owner_bits & *p_human_player_bits) != 0))
+		detector_owner_bits = *p_human_player_bits;
+
+	bool unit_is_sea = p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Sea;
+
+	// Larger distances cannot cover any new tiles, but would make this ring scan unnecessarily expensive.
+	int largest_useful_dist = (p_bic_data->Map.Width + p_bic_data->Map.Height) / 2;
+	if (max_dist > largest_useful_dist)
+		max_dist = largest_useful_dist;
+	for (int dist = 0; dist <= max_dist; dist++) {
+		struct vertex {
+			int x, y;
+		} vertices[4] = {
+			{unit->Body.X         , unit->Body.Y - 2*dist},
+			{unit->Body.X + 2*dist, unit->Body.Y         },
+			{unit->Body.X         , unit->Body.Y + 2*dist},
+			{unit->Body.X - 2*dist, unit->Body.Y         }
+		};
+
+		int edge_dirs[4] = {3, 5, 7, 1};
+		int edge_len = (dist == 0) ? 1 : 2 * dist;
+		for (int vert = 0; vert < 4; vert++) {
+			wrap_tile_coords (&p_bic_data->Map, &vertices[vert].x, &vertices[vert].y);
+			int dx, dy;
+			neighbor_index_to_diff (edge_dirs[vert], &dx, &dy);
+			for (int j = 0; j < edge_len; j++) {
+				int x = vertices[vert].x + j * dx;
+				int y = vertices[vert].y + j * dy;
+				wrap_tile_coords (&p_bic_data->Map, &x, &y);
+
+				Tile * tile = tile_at (x, y);
+				if ((tile == NULL) || (tile == p_null_tile))
+					continue;
+
+				unsigned overlays = tile->vtable->m42_Get_Overlays (tile, __, 0);
+				bool has_detector = ((dist <= radar_dist) && ((overlays & 0x40000000) != 0)) ||
+						    ((dist <= outpost_dist) && ((overlays & 0x80000000) != 0));
+				if (has_detector &&
+				    (! is->current_config.no_cross_shore_detection ||
+				     ((tile->vtable->m35_Check_Is_Water (tile) != 0) == unit_is_sea))) {
+					int owner_id = tile->vtable->m70_Get_Tile_Building_OwnerID (tile);
+					if ((owner_id >= 0) && (owner_id < 32) && ((detector_owner_bits & (1u << owner_id)) != 0))
+						return true;
+				}
+			}
+		}
+	}
+
+	return false;
+}
+
 char __fastcall
 patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2)
 {
@@ -18882,6 +20411,8 @@ patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2)
 	is->checking_visibility_for_unit = this;
 
 	char base_vis = Unit_is_visible_to_civ (this, __, civ_id, param_2);
+	if ((! base_vis) && tile_improvements_detect_unit_for_civ (this, civ_id))
+		base_vis = true;
 	if ((! base_vis) && // if unit is not visible to civ_id AND
 	    is->current_config.share_visibility_in_hotseat && // shared hotseat vis is enabled AND
 	    ((1 << civ_id) & *p_human_player_bits) && // civ_id is a human player AND
@@ -19166,7 +20697,10 @@ init_district_command_buttons ()
 		}
 
 		// For each district type
-		for (int dc = 0; dc < is->district_count; dc++) {
+		int district_count = is->district_count;
+		if (district_count > COUNT_DISTRICT_TYPES)
+			district_count = COUNT_DISTRICT_TYPES;
+		for (int dc = 0; dc < district_count; dc++) {
 			int x = 32 * is->district_configs[dc].btn_tile_sheet_column,
 			    y = 32 * is->district_configs[dc].btn_tile_sheet_row;
 			Sprite_slice_pcx (&is->district_btn_img_sets[dc].imgs[n], __, &pcx, x, y, 32, 32, 1, 0);
@@ -19788,19 +21322,37 @@ handle_worker_command_that_may_replace_district (Unit * unit, int unit_command_v
 }
 
 bool __fastcall
-	patch_Unit_can_upgrade (Unit * this)
+patch_Unit_can_upgrade (Unit * this)
 {
 	bool base = Unit_can_upgrade (this);
 	int available;
 	City * city = city_at (this->Body.X, this->Body.Y);
+	// ToC-27: Store upgrade_id so we can check for same-group upgrades below.
+	int upgrade_id;
 	if (base &&
 	    (city != NULL) &&
-	    get_available_unit_count (&leaders[this->Body.CivID], City_get_upgraded_type_id (city, __, this->Body.UnitTypeID), &available) &&
-	    (available <= 0))
+	    (0 <= (upgrade_id = City_get_upgraded_type_id (city, __, this->Body.UnitTypeID))) &&
+	    get_available_unit_count (&leaders[this->Body.CivID], upgrade_id, &available) &&
+	    (available <= 0)) {
+		// ToC-27: Allow same-group upgrades even at the group limit. An upgrade removes the
+		// source unit and adds the target unit — the group count is net zero. We only bypass
+		// the block when the target has no individual limit (i.e., the restriction came from
+		// the group limit, not a per-type override on the target type).
+		if (is->current_config.unit_type_to_group.len > 0) {
+			struct unit_limit_group * from_grp, * to_grp;
+			int unused;
+			if (itable_look_up (&is->current_config.unit_type_to_group, this->Body.UnitTypeID, (int *)&from_grp) &&
+			    itable_look_up (&is->current_config.unit_type_to_group, upgrade_id, (int *)&to_grp) &&
+			    (from_grp == to_grp) &&
+			    from_grp->has_limit &&
+			    ! stable_look_up (&is->current_config.unit_limits, p_bic_data->UnitTypes[upgrade_id].Name, &unused))
+				return base; // same-group upgrade: net-zero group count change — permit it
+		}
 		return false;
-	else
+	} else
 		return base;
 }
+// END ToC-27
 
 bool
 is_district_command (int unit_command_value)
@@ -19827,7 +21379,7 @@ patch_Map_check_colony_location (Map * this, int edx, int tile_x, int tile_y, in
 	int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
 	if ((owner_id < 0) || (owner_id == civ_id)) return base;
 
-	int resource_type = Tile_get_resource_visible_to (tile, __, civ_id);
+	int resource_type = get_visible_non_subsumed_tile_resource (tile, NULL, civ_id);
 	if ((resource_type < 0) || (resource_type >= p_bic_data->ResourceTypeCount)) return base;
 
 	int req_tech = p_bic_data->ResourceTypes[resource_type].RequireID;
@@ -20220,7 +21772,16 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 
 	clear_memo ();
 
-	if (command == UCV_Fortify) {
+	if (command == UCV_Skip_Turn) {
+		FOR_UNITS_ON (uti, tile)
+			if ((uti.unit->Body.UnitTypeID == unit_type_id) &&
+			    (uti.unit->Body.Container_Unit < 0) &&
+			    (uti.unit->Body.UnitState == 0) &&
+			    (uti.unit->Body.CivID == unit->Body.CivID) &&
+			    (uti.unit->Body.Moves < patch_Unit_get_max_move_points (uti.unit)))
+				Main_Screen_Form_issue_command (p_main_screen_form, __, UCV_Skip_Turn, uti.unit);
+
+	} else if (command == UCV_Fortify) {
 		// This probably won't work for online games since "fortify all" does additional work in that case. See Main_Screen_Form::fortify_all.
 		// I don't like how this method doesn't place units in the fortified pose. One workaround is so use
 		// Main_Screen_Form::issue_fortify_command, but that plays the entire fortify animation for each unit which is a major annoyance for
@@ -20238,15 +21799,35 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 
 		// If the unit type we're upgrading to is limited, find out how many we can add. Keep that in "available". If the type is not limited,
 		// leave available set to INT_MAX.
-		int available = INT_MAX; {
+		int available = INT_MAX;
+		{
 			City * city;
 			int upgrade_id;
-			if ((is->current_config.unit_limits.len > 0) &&
+			// ToC-26: also check unit_type_to_group so group-limited upgrade types are caught
+			if ((is->current_config.unit_limits.len > 0 ||
+			     is->current_config.unit_type_to_group.len > 0) &&
 			    patch_Unit_can_perform_command (unit, __, UCV_Upgrade_Unit) &&
 			    (NULL != (city = city_at (unit->Body.X, unit->Body.Y))) &&
-			    (0 < (upgrade_id = City_get_upgraded_type_id (city, __, unit_type_id))))
+			    (0 <= (upgrade_id = City_get_upgraded_type_id (city, __, unit_type_id)))) {
 				get_available_unit_count (&leaders[unit->Body.CivID], upgrade_id, &available);
+				// ToC-27: If source and target are in the same unit_limit_group with no individual
+				// limit on the target, upgrading is net-zero on the group count (source removed,
+				// target added). Reset available to INT_MAX so the loop below allows all units to
+				// queue for upgrade regardless of current group occupancy.
+				if ((available != INT_MAX) && (is->current_config.unit_type_to_group.len > 0)) {
+					struct unit_limit_group * from_grp, * to_grp;
+					int unused;
+					if (itable_look_up (&is->current_config.unit_type_to_group, unit_type_id, (int *)&from_grp) &&
+					    itable_look_up (&is->current_config.unit_type_to_group, upgrade_id, (int *)&to_grp) &&
+					    (from_grp == to_grp) &&
+					    from_grp->has_limit &&
+					    ! stable_look_up (&is->current_config.unit_limits,
+					                      p_bic_data->UnitTypes[upgrade_id].Name, &unused))
+						available = INT_MAX; // same-group upgrade: net-zero group count change
+				}
+			}
 		}
+		// END ToC-26 and ToC-27
 
 		int cost = 0;
 		FOR_UNITS_ON (uti, tile)
@@ -20721,6 +22302,8 @@ patch_City_Form_draw (City_Form * this)
 		Tile * tile = wai.tile;
 		struct district_instance * inst = wai.district_inst;
 		int district_id = inst->district_id;
+		if (! district_tile_bonus_applies_to_city (tile, district_id, city))
+			continue;
 
 		struct district_config const * cfg = &is->district_configs[district_id];
 		int gold_bonus = 0;
@@ -21568,6 +23151,7 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 	table_deinit (&is->extra_defensive_bombards);
 	table_deinit (&is->airdrops_this_turn);
 	table_deinit (&is->unit_transport_ties);
+	table_deinit (&is->steal_plans_expiration_turns);
 	is->last_selected_unit.initial_x = is->last_selected_unit.initial_y = -1;
 	is->last_selected_unit.last_x = is->last_selected_unit.last_y = is->last_selected_unit.type_id = -1;
 	is->last_selected_unit.ptr = NULL;
@@ -21726,13 +23310,30 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 	else if (is->current_config.override_no_ai_patrol == NAPO_NONE)
 		*p_allow_ai_patrol = 0 == get_int_from_conquests_ini ("NoAIPatrol", 1, 0);
 
-	// Clear day/night cycle vars and deindex sprite proxies, if necessary.
-	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
-		is->day_night_cycle_unstarted = true;
-		is->current_day_night_cycle = 12;
-		if (is->day_night_cycle_img_proxies_indexed) {
-			deindex_day_night_image_proxies ();
+	// Reset cycle vars and clear any indexed sprite proxies.
+	is->day_night_cycle_unstarted = true;
+	is->current_day_night_cycle = 12;
+	is->seasonal_cycle_unstarted = true;
+	is->current_seasonal_cycle = CS_SUMMER;
+	is->turns_in_current_season = 0;
+	if (is->day_night_cycle_img_proxies_indexed)
+		deindex_day_night_image_proxies ();
+	if ((is->current_config.day_night_cycle_mode != DNCM_OFF) ||
+	    (is->current_config.seasonal_cycle_mode != SCM_OFF)) {
+		if (! allocate_day_night_cycle_runtime_storage ()) {
+			is->day_night_cycle_img_state = IS_INIT_FAILED;
+			pop_up_in_game_error ("Could not allocate memory for day/night cycle sprite proxies.");
 		}
+	} else {
+		if (is->day_night_sprite_proxy_by_season_and_hour != NULL) {
+			free (is->day_night_sprite_proxy_by_season_and_hour);
+			is->day_night_sprite_proxy_by_season_and_hour = NULL;
+		}
+		if ((is->cycle_imgs != NULL) && (is->day_night_cycle_img_state != IS_OK)) {
+			free (is->cycle_imgs);
+			is->cycle_imgs = NULL;
+		}
+		is->day_night_cycle_img_state = IS_UNINITED;
 	}
 
 	return tr;
@@ -22737,11 +24338,16 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 			}
 		}
 
-		// Apply unit type limit
+		// Apply unit type limit.
+		// ToC-27: Skip this check when called from patch_City_can_build_upgrade_type (flag is set).
+		// The limit is re-applied with source-type context in patch_Unit_can_upgrade so that
+		// same-group upgrades (net-zero group count change) are correctly allowed.
 		int available;
-		if (get_available_unit_count (&leaders[this->Body.CivID], unit_type_id, &available) && (available <= 0))
+		if (! is->checking_upgrade_type_eligibility &&
+		    get_available_unit_count (&leaders[this->Body.CivID], unit_type_id, &available) &&
+		    (available <= 0))
 			return false;
-	}
+	}  // END ToC-27
 
 	if (is->current_config.enable_districts) {
 		bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
@@ -24201,14 +25807,14 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, bool 
 int __fastcall
 patch_Sprite_draw (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
-	Sprite * to_draw = get_sprite_proxy_for_current_hour(this);
+	Sprite * to_draw = get_cycle_sprite_proxy(this);
 	return Sprite_draw(to_draw ? to_draw : this, __, canvas, pixel_x, pixel_y, color_table);
 }
 
 int __fastcall
 patch_Sprite_draw_on_map (Sprite * this, int edx, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7)
 {
-	Sprite * to_draw = get_sprite_proxy_for_current_hour(this);
+	Sprite * to_draw = get_cycle_sprite_proxy(this);
 	return Sprite_draw_on_map(to_draw ? to_draw : this, __, map_renderer, pixel_x, pixel_y, param_4, param_5, param_6, param_7);
 }
 
@@ -24718,6 +26324,9 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 	} else if (! is->current_config.cities_with_mutual_district_receive_buildings)
 		return;
 
+	if (! is_wonder && district_uses_tile_improvement_rules (required_district_id))
+		return;
+
 	// If a Wonder, we know the specific tile it is at, so determine which other cities have that in work radius.
 	if (is_wonder) {
 		Tile * tile = tile_at (tile_x, tile_y);
@@ -24814,6 +26423,8 @@ grant_existing_district_buildings_to_city (City * city)
 
 		struct district_instance * inst = wai.district_inst;
 		int district_id = inst->district_id;
+		if (district_uses_tile_improvement_rules (district_id))
+			continue;
 
 		struct district_infos * info = &is->district_infos[district_id];
 		if (info->dependent_building_count <= 0)
@@ -25005,7 +26616,8 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 					inst->state = DS_COMPLETED;
 					if (! tile->vtable->m18_Check_Mines (tile, __, 0))
 						tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
-					set_tile_unworkable_for_all_cities (tile, x, y);
+					if (district_tile_should_be_unworkable (GREAT_WALL_DISTRICT_ID))
+						set_tile_unworkable_for_all_cities (tile, x, y);
 				}
 				continue;
 			}
@@ -25077,7 +26689,8 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 			inst->state = DS_COMPLETED;
 			if (! tile->vtable->m18_Check_Mines (tile, __, 0))
 				tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
-			set_tile_unworkable_for_all_cities (tile, x, y);
+			if (district_tile_should_be_unworkable (GREAT_WALL_DISTRICT_ID))
+				set_tile_unworkable_for_all_cities (tile, x, y);
 	}
 
 	// ToC-3: Mark only THIS civ as having completed its auto-build pass.
@@ -25251,6 +26864,8 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 					int district_id = prereq_list->district_ids[i];
 					if (district_id < 0)
 						continue;
+					if (! is_wonder && district_uses_tile_improvement_rules (district_id))
+						continue;
 					copy_building_with_cities_in_radius (this, improv_id, district_id, x, y);
 				}
 				is->sharing_buildings_by_districts_in_progress = false;
@@ -25259,10 +26874,328 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	}
 }
 
+void
+clear_post_combat_defender_display_override ()
+{
+	struct unit_display_override old_override =
+		is->post_combat_defender_display_override;
+	if ((old_override.unit_id >= 0) &&
+	    (is->unit_display_override.unit_id == old_override.unit_id) &&
+	    (is->unit_display_override.tile_x == old_override.tile_x) &&
+	    (is->unit_display_override.tile_y == old_override.tile_y))
+		is->unit_display_override = (struct unit_display_override) {-1, -1, -1};
+	if ((old_override.unit_id >= 0) &&
+	    (is->unit_display_override_2.unit_id == old_override.unit_id) &&
+	    (is->unit_display_override_2.tile_x == old_override.tile_x) &&
+	    (is->unit_display_override_2.tile_y == old_override.tile_y))
+		is->unit_display_override_2 = (struct unit_display_override) {-1, -1, -1};
+
+	is->post_combat_defender_display_override =
+		(struct unit_display_override) {-1, -1, -1};
+	is->post_combat_defender_display_attacker_id = -1;
+}
+
+void
+set_post_combat_defender_display_override (Unit * attacker, int tile_x,
+                                           int tile_y, Unit * excluded)
+{
+	clear_post_combat_defender_display_override ();
+
+	if (! (is->current_config.enable_unit_counters &&
+	       (attacker != NULL) &&
+	       (attacker->Body.UnitTypeID >= 0) &&
+	       (attacker->Body.UnitTypeID < p_bic_data->UnitTypeCount)))
+		return;
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	Unit * next_defender = find_counter_base_visible_defender_against (
+		p_main_screen_form, attacker, tile_x, tile_y, excluded);
+	if (next_defender == NULL)
+		next_defender = find_counter_best_defender_against (
+			attacker, tile, tile_x, tile_y, excluded, false, NULL);
+	if (next_defender == NULL)
+		return;
+
+	resolve_army_defending_member (next_defender, attacker, true);
+
+	is->post_combat_defender_display_override =
+		(struct unit_display_override) {
+			next_defender->Body.ID,
+			next_defender->Body.X,
+			next_defender->Body.Y
+		};
+	is->post_combat_defender_display_attacker_id = attacker->Body.ID;
+}
+
+void
+refresh_post_combat_defender_display_override_after_despawn (Unit * destroyed_defender)
+{
+	if (! (is->combat_unit_display_override_active &&
+	       (destroyed_defender != NULL) &&
+	       (p_bic_data->fighter.attacker != NULL) &&
+	       (destroyed_defender->Body.X == p_bic_data->fighter.defender_location_x) &&
+	       (destroyed_defender->Body.Y == p_bic_data->fighter.defender_location_y)))
+		return;
+
+	set_post_combat_defender_display_override (
+		p_bic_data->fighter.attacker,
+		destroyed_defender->Body.X,
+		destroyed_defender->Body.Y,
+		destroyed_defender);
+}
+
+void
+refresh_post_combat_defender_display_override_after_fight (Fighter * fighter,
+                                                           int attacker_id)
+{
+	if (fighter == NULL)
+		return;
+
+	Unit * attacker = get_unit_ptr (attacker_id);
+	if (attacker == NULL)
+		return;
+
+	set_post_combat_defender_display_override (
+		attacker,
+		fighter->defender_location_x,
+		fighter->defender_location_y,
+		NULL);
+}
+
+Unit *
+get_post_combat_defender_display_override (int tile_x, int tile_y,
+                                           Unit * excluded)
+{
+	struct unit_display_override * override =
+		&is->post_combat_defender_display_override;
+	if ((override->unit_id < 0) ||
+	    (override->tile_x != tile_x) ||
+	    (override->tile_y != tile_y))
+		return NULL;
+
+	Unit * unit = get_unit_ptr (override->unit_id);
+	if ((unit == NULL) ||
+	    (unit == excluded) ||
+	    (unit->Body.X != tile_x) ||
+	    (unit->Body.Y != tile_y) ||
+	    ((is->post_combat_defender_display_attacker_id >= 0) &&
+	     (get_unit_ptr (is->post_combat_defender_display_attacker_id) == NULL))) {
+		clear_post_combat_defender_display_override ();
+		return NULL;
+	}
+
+	return unit;
+}
+
+bool
+get_counter_defender_selection_tile (Unit * attacker, int attack_direction,
+                                     Unit * defender, int * out_tile_x,
+                                     int * out_tile_y,
+                                     bool * out_direction_matches_tile)
+{
+	if (out_direction_matches_tile != NULL)
+		*out_direction_matches_tile = false;
+
+	if (! unit_has_valid_type_id (attacker))
+		return false;
+
+	int direction_tile_x = 0,
+	    direction_tile_y = 0;
+	bool have_direction_tile = false;
+	if ((attack_direction >= 0) && (attack_direction < 8)) {
+		get_neighbor_coords (&p_bic_data->Map, attacker->Body.X,
+		                     attacker->Body.Y, attack_direction,
+		                     &direction_tile_x, &direction_tile_y);
+		Tile * direction_tile = tile_at (direction_tile_x, direction_tile_y);
+		if ((direction_tile != NULL) && (direction_tile != p_null_tile))
+			have_direction_tile = true;
+	}
+
+	if (defender != NULL) {
+		*out_tile_x = defender->Body.X;
+		*out_tile_y = defender->Body.Y;
+		if (out_direction_matches_tile != NULL)
+			*out_direction_matches_tile =
+				have_direction_tile &&
+				(direction_tile_x == defender->Body.X) &&
+				(direction_tile_y == defender->Body.Y);
+		Tile * defender_tile = tile_at (*out_tile_x, *out_tile_y);
+		return (defender_tile != NULL) && (defender_tile != p_null_tile);
+	}
+
+	if (! have_direction_tile)
+		return false;
+
+	*out_tile_x = direction_tile_x;
+	*out_tile_y = direction_tile_y;
+	if (out_direction_matches_tile != NULL)
+		*out_direction_matches_tile = true;
+	return true;
+}
+
+bool
+counter_defender_selection_can_pass_null_defender (Unit * attacker,
+                                                  bool direction_matches_tile)
+{
+	if (! (unit_has_valid_type_id (attacker) && direction_matches_tile))
+		return false;
+
+	UnitType * attacker_type = &p_bic_data->UnitTypes[attacker->Body.UnitTypeID];
+	if ((attacker_type->Special_Actions & UCV_Stealth_Attack) != 0)
+		return false;
+
+	return true;
+}
+
+Unit *
+resolve_army_defending_member (Unit * army, Unit * attacker,
+                               bool sync_top_defender_id)
+{
+	if (! (is->current_config.enable_unit_counters &&
+	       unit_has_valid_type_id (army) &&
+	       unit_has_valid_type_id (attacker) &&
+	       Unit_has_ability (army, __, UTA_Army)))
+		return army;
+
+	Tile * tile = tile_at (army->Body.X, army->Body.Y);
+	bool has_member = false;
+	if ((tile != NULL) && (tile != p_null_tile)) {
+		FOR_UNITS_ON (uti, tile) {
+			if ((uti.unit != NULL) &&
+			    (uti.unit->Body.Container_Unit == army->Body.ID)) {
+				has_member = true;
+				break;
+			}
+		}
+	}
+	if (! has_member)
+		return army;
+
+	Unit * saved_fighter_attacker = p_bic_data->fighter.attacker;
+	Unit * saved_fighter_defender = p_bic_data->fighter.defender;
+	int    saved_fighter_atk_x    = p_bic_data->fighter.attacker_location_x;
+	int    saved_fighter_atk_y    = p_bic_data->fighter.attacker_location_y;
+	int    saved_fighter_def_x    = p_bic_data->fighter.defender_location_x;
+	int    saved_fighter_def_y    = p_bic_data->fighter.defender_location_y;
+	struct counter_defender_selection_context saved_selection_ctx =
+		is->counter_defender_selection_ctx;
+
+	p_bic_data->fighter.attacker            = attacker;
+	p_bic_data->fighter.defender            = army;
+	p_bic_data->fighter.attacker_location_x = attacker->Body.X;
+	p_bic_data->fighter.attacker_location_y = attacker->Body.Y;
+	p_bic_data->fighter.defender_location_x = army->Body.X;
+	p_bic_data->fighter.defender_location_y = army->Body.Y;
+	is->counter_defender_selection_ctx =
+		(struct counter_defender_selection_context) {
+			true, attacker, army->Body.X, army->Body.Y
+		};
+
+	int hp_remaining = clamp (
+		0, 9999, Unit_get_max_hp (army) - army->Body.Damage);
+	Unit * member = Unit_select_army_member_for_combat (
+		army, __, hp_remaining, false);
+
+	p_bic_data->fighter.attacker            = saved_fighter_attacker;
+	p_bic_data->fighter.defender            = saved_fighter_defender;
+	p_bic_data->fighter.attacker_location_x = saved_fighter_atk_x;
+	p_bic_data->fighter.attacker_location_y = saved_fighter_atk_y;
+	p_bic_data->fighter.defender_location_x = saved_fighter_def_x;
+	p_bic_data->fighter.defender_location_y = saved_fighter_def_y;
+	is->counter_defender_selection_ctx = saved_selection_ctx;
+
+	if (unit_has_valid_type_id (member) &&
+	    (member->Body.Container_Unit == army->Body.ID)) {
+		if (sync_top_defender_id)
+			army->Body.army_top_defender_id = member->Body.ID;
+
+		return member;
+	}
+
+	return army;
+}
+
+Unit *
+combat_display_unit (Unit * unit)
+{
+	if (unit == NULL)
+		return NULL;
+
+	// During the combat animation the engine only draws the HP bar and the army
+	// indicator ("little army guy") for the tile's top/visible unit, and it
+	// suppresses them for a bare contained member. So we display the containing
+	// ARMY (to keep the HP bar + indicator) but point the army's top defender at
+	// the actual fighting member, so the army renders the correct unit's sprite
+	// (fixing the "top unit != combatant" mismatch).
+	Unit * army = Unit_get_containing_army (unit);
+	if (army != NULL) {
+		army->Body.army_top_defender_id = unit->Body.ID;
+		return army;
+	}
+
+	return unit;
+}
+
+void
+set_combat_unit_display_override (Unit * unit)
+{
+	Unit * display_unit = combat_display_unit (unit);
+	if (display_unit != NULL) {
+		is->unit_display_override = (struct unit_display_override) {
+			display_unit->Body.ID,
+			display_unit->Body.X,
+			display_unit->Body.Y
+		};
+	}
+}
+
 void __fastcall
 patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direction, Unit * defender)
 {
-	Fighter_begin (this, __, attacker, attack_direction, defender);
+	struct counter_defender_selection_context saved_selection_ctx =
+		is->counter_defender_selection_ctx;
+	Unit * defender_for_begin = defender;
+	int defender_tile_x = 0,
+	    defender_tile_y = 0;
+	bool direction_matches_tile = false;
+	if (is->current_config.enable_unit_counters &&
+	    get_counter_defender_selection_tile (
+		attacker, attack_direction, defender,
+		&defender_tile_x, &defender_tile_y,
+		&direction_matches_tile)) {
+		is->counter_defender_selection_ctx =
+			(struct counter_defender_selection_context) {
+				true, attacker, defender_tile_x, defender_tile_y
+			};
+		if (counter_defender_selection_can_pass_null_defender (
+			attacker, direction_matches_tile))
+			defender_for_begin = NULL;
+	}
+
+	Fighter_begin (this, __, attacker, attack_direction, defender_for_begin);
+
+	is->counter_defender_selection_ctx = saved_selection_ctx;
+
+	if (is->combat_unit_display_override_active &&
+	    unit_has_valid_type_id (this->defender))
+		set_combat_unit_display_override (this->defender);
+
+	// If the attacker is an army, point its top defender at the counter-selected
+	// attacking member before any animation runs, so the unit shown on the map is
+	// the one that will actually lunge out. Otherwise the army keeps displaying its
+	// idle top defender and visibly swaps to a different member when the attack
+	// animation starts.
+	if (is->current_config.enable_unit_counters &&
+	    unit_has_valid_type_id (this->attacker) &&
+	    Unit_has_ability (this->attacker, __, UTA_Army) &&
+	    unit_has_valid_type_id (this->defender)) {
+		Unit * atk_member = counter_attacker_for_defender_selection (
+			this->attacker, this->defender);
+		if ((atk_member != NULL) &&
+		    unit_has_valid_type_id (atk_member) &&
+		    (atk_member->Body.Container_Unit == this->attacker->Body.ID))
+			this->attacker->Body.army_top_defender_id = atk_member->Body.ID;
+	}
 
 	// Apply override of retreat eligibility
 	// Must use this->defender instead of the defender argument since the argument is often NULL, in which case Fighter_begin finds a defender on
@@ -25326,6 +27259,13 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	// If we're despawning the stored ZoC defender, clear that variable so we don't despawn it again in check_life_after_zoc
 	if (this == is->zoc_defender)
 		is->zoc_defender = NULL;
+
+	refresh_post_combat_defender_display_override_after_despawn (this);
+
+	if (this->Body.ID == is->unit_display_override.unit_id)
+		is->unit_display_override = (struct unit_display_override) {-1, -1, -1};
+	if (this->Body.ID == is->unit_display_override_2.unit_id)
+		is->unit_display_override_2 = (struct unit_display_override) {-1, -1, -1};
 
 	if (this == is->sb_next_up)
 		is->sb_next_up = NULL;
@@ -26742,6 +28682,32 @@ patch_Leader_begin_turn (Leader * this)
 	Leader_begin_turn (this);
 }
 
+int __fastcall
+patch_rand_int_for_steal_plans (void * this, int edx, int lim)
+{
+	int tr = rand_int (this, __, lim);
+	is->steal_plans_success_roll = tr;
+	return tr;
+}
+
+void __fastcall
+patch_Espionage_do_steal_plans (Espionage * this)
+{
+	Espionage_do_steal_plans (this);
+
+	City * target_city = get_city_ptr (this->city_id);
+	int spying_civ_id = this->civ_id;
+	if ((is->current_config.steal_plans_duration > 1) &&
+	    ((is->steal_plans_success_roll & 0xFFFF) < (byte)this->base_success_chance) &&
+	    (target_city != NULL) &&
+	    (spying_civ_id >= 0) && (spying_civ_id < 32) &&
+	    (target_city->Body.CivID >= 0) && (target_city->Body.CivID < 32)) {
+		int key = (spying_civ_id << 5) | target_city->Body.CivID;
+		int duration = not_below (1, is->current_config.steal_plans_duration);
+		itable_insert (&is->steal_plans_expiration_turns, key, *p_current_turn_no + duration);
+	}
+}
+
 void __fastcall
 patch_Leader_begin_unit_turns (Leader * this)
 {
@@ -26782,13 +28748,153 @@ patch_Leader_begin_unit_turns (Leader * this)
 	Leader_begin_unit_turns (this);
 }
 
+bool
+bombard_counter_target_is_eligible (Unit * bombarder, Unit * target,
+                                    UnitType * bombarder_type, Tile * target_tile,
+                                    int bombarder_civ_id, bool require_visible,
+                                    int * out_defense_strength)
+{
+	if ((bombarder == NULL) ||
+	    (target == NULL) ||
+	    (bombarder_type == NULL) ||
+	    (target_tile == NULL) ||
+	    (target_tile == p_null_tile) ||
+	    (bombarder->Body.UnitTypeID < 0) ||
+	    (bombarder->Body.UnitTypeID >= p_bic_data->UnitTypeCount) ||
+	    (target->Body.UnitTypeID < 0) ||
+	    (target->Body.UnitTypeID >= p_bic_data->UnitTypeCount) ||
+	    (target->Body.Container_Unit >= 0) ||
+	    (target->Body.CivID == bombarder_civ_id) ||
+	    ! target->vtable->is_enemy_of_civ (target, __, bombarder_civ_id, 0) ||
+	    (require_visible &&
+	     ! patch_Unit_is_visible_to_civ (target, __, bombarder_civ_id, 0)) ||
+	    ! can_damage_bombarding (bombarder_type, target, target_tile))
+		return false;
+
+	int defense_strength = Unit_get_defense_strength (target);
+	if (defense_strength <= 0)
+		return false;
+
+	if (out_defense_strength != NULL)
+		*out_defense_strength = defense_strength;
+	return true;
+}
+
+Unit *
+find_counter_best_bombard_defender_against (Unit * bombarder, int tile_x,
+                                            int tile_y, int bombarder_civ_id,
+                                            bool require_visible,
+                                            Unit * excluded)
+{
+	if (! is->current_config.enable_unit_counters ||
+	    (is->current_config.count_counter_rules <= 0) ||
+	    (bombarder == NULL) ||
+	    (bombarder->Body.UnitTypeID < 0) ||
+	    (bombarder->Body.UnitTypeID >= p_bic_data->UnitTypeCount))
+		return NULL;
+
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * target_tile = tile_at (tile_x, tile_y);
+	if ((target_tile == NULL) || (target_tile == p_null_tile))
+		return NULL;
+
+	UnitType * bombarder_type = &p_bic_data->UnitTypes[bombarder->Body.UnitTypeID];
+	Unit * best = NULL;
+	int best_adjusted_defense = -1,
+	    best_base_defense = -1,
+	    best_hp = -1,
+	    best_cost = -1;
+	bool any_counter_effect = false;
+
+	FOR_UNITS_ON (uti, target_tile) {
+		Unit * candidate = uti.unit;
+		int base_defense = 0;
+		if (candidate == excluded)
+			continue;
+		if (! bombard_counter_target_is_eligible (
+			bombarder, candidate, bombarder_type, target_tile,
+			bombarder_civ_id, require_visible, &base_defense))
+			continue;
+
+		int bombard_pct = get_counter_rule_bombard_modifier (
+			&is->current_config, bombarder, candidate, target_tile);
+		if (bombard_pct != 100)
+			any_counter_effect = true;
+
+		int adjusted_defense =
+			counter_adjusted_bombard_target_defense (base_defense, bombard_pct);
+		int hp = Unit_get_max_hp (candidate) - candidate->Body.Damage;
+		int cost = p_bic_data->UnitTypes[candidate->Body.UnitTypeID].Cost;
+
+		if ((best == NULL) ||
+		    (adjusted_defense > best_adjusted_defense) ||
+		    ((adjusted_defense == best_adjusted_defense) &&
+		     (base_defense > best_base_defense)) ||
+		    ((adjusted_defense == best_adjusted_defense) &&
+		     (base_defense == best_base_defense) &&
+		     (hp > best_hp)) ||
+		    ((adjusted_defense == best_adjusted_defense) &&
+		     (base_defense == best_base_defense) &&
+		     (hp == best_hp) &&
+		     (cost > best_cost))) {
+			best = candidate;
+			best_adjusted_defense = adjusted_defense;
+			best_base_defense = base_defense;
+			best_hp = hp;
+			best_cost = cost;
+		}
+	}
+
+	return any_counter_effect ? best : NULL;
+}
+
+Unit *
+find_counter_or_base_bombard_defender_against (Unit * bombarder, int tile_x,
+                                               int tile_y,
+                                               int bombarder_civ_id,
+                                               bool require_visible,
+                                               Unit * excluded)
+{
+	Unit * defender = find_counter_best_bombard_defender_against (
+		bombarder, tile_x, tile_y, bombarder_civ_id, require_visible,
+		excluded);
+	if (defender != NULL)
+		return defender;
+
+	if (! unit_has_valid_type_id (bombarder))
+		return NULL;
+
+	bool land_lethal =
+		Unit_has_ability (bombarder, __, UTA_Lethal_Land_Bombardment),
+	     sea_lethal =
+		Unit_has_ability (bombarder, __, UTA_Lethal_Sea_Bombardment);
+	defender = Fighter_find_defender_against_bombardment (
+		&p_bic_data->fighter, __, bombarder, tile_x, tile_y,
+		bombarder_civ_id, land_lethal, sea_lethal);
+
+	if ((defender == NULL) ||
+	    (defender == excluded) ||
+	    (require_visible &&
+	     ! patch_Unit_is_visible_to_civ (defender, __, bombarder_civ_id, 0)))
+		return NULL;
+
+	return defender;
+}
+
 Unit * __fastcall
 patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bombarder, int tile_x, int tile_y, int bombarder_civ_id, bool land_lethal, bool sea_lethal)
 {
-	if (is->bombard_stealth_target == NULL)
-		return Fighter_find_defender_against_bombardment (this, __, bombarder, tile_x, tile_y, bombarder_civ_id, land_lethal, sea_lethal);
-	else
-		return is->bombard_stealth_target;
+	Unit * defender = is->bombard_stealth_target;
+
+	if (defender == NULL)
+		defender = find_counter_best_bombard_defender_against (
+			bombarder, tile_x, tile_y, bombarder_civ_id, true, NULL);
+
+	if (defender == NULL)
+		defender = Fighter_find_defender_against_bombardment (this, __, bombarder, tile_x, tile_y, bombarder_civ_id, land_lethal, sea_lethal);
+
+	set_bombard_target_display_override (defender);
+	return defender;
 }
 
 Unit *
@@ -26796,7 +28902,10 @@ select_stealth_attack_bombard_target (Unit * unit, int tile_x, int tile_y)
 {
 	bool land_lethal = Unit_has_ability (unit, __, UTA_Lethal_Land_Bombardment),
 	     sea_lethal  = Unit_has_ability (unit, __, UTA_Lethal_Sea_Bombardment);
-	Unit * defender = Fighter_find_defender_against_bombardment (&p_bic_data->fighter, __, unit, tile_x, tile_y, unit->Body.CivID, land_lethal, sea_lethal);
+	Unit * defender = find_counter_best_bombard_defender_against (
+		unit, tile_x, tile_y, unit->Body.CivID, true, NULL);
+	if (defender == NULL)
+		defender = Fighter_find_defender_against_bombardment (&p_bic_data->fighter, __, unit, tile_x, tile_y, unit->Body.CivID, land_lethal, sea_lethal);
 	if (defender != NULL) {
 		Unit * target;
 		is->selecting_stealth_target_for_bombard = 1;
@@ -26840,13 +28949,13 @@ patch_Unit_play_bombing_anim_for_precision_strike (Unit * this, int edx, int x, 
 int __fastcall
 patch_Unit_play_anim_for_bombard_tile (Unit * this, int edx, int x, int y)
 {
-	Unit * stealth_attack_target = NULL;
 	if (((p_bic_data->UnitTypes[this->Body.UnitTypeID].Special_Actions & UCV_Stealth_Attack) != 0) &&
 	    is->current_config.enable_stealth_attack_via_bombardment &&
 	    (! is_online_game ()) &&
 	    patch_Leader_is_tile_visible (&leaders[this->Body.CivID], __, x, y))
 		is->bombard_stealth_target = select_stealth_attack_bombard_target (this, x, y);
 
+	set_bombard_target_display_override (is->bombard_stealth_target);
 	return Unit_play_bombard_fire_animation (this, __, x, y);
 }
 
@@ -27105,14 +29214,33 @@ patch_perform_interturn_in_main_loop ()
 
 	perform_interturn ();
 
-	if (is->current_config.day_night_cycle_mode) {
-		if (is->day_night_cycle_img_state == IS_OK) {
-			int new_hour = calculate_current_day_night_cycle_hour ();
+	if (is->day_night_cycle_img_state == IS_OK) {
+		bool redraw = false;
+		int old_hour = is->current_day_night_cycle;
+		int new_hour = old_hour;
+		if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
+			new_hour = calculate_current_day_night_cycle_hour ();
 			if (new_hour != is->current_day_night_cycle) {
 				is->current_day_night_cycle = new_hour;
-				p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+				redraw = true;
 			}
 		}
+		if (is->current_config.seasonal_cycle_mode != SCM_OFF) {
+			bool transition_on_day_night_hour_hit = false;
+			if (is->current_config.seasonal_cycle_mode == SCM_ON_DAY_NIGHT_HOUR) {
+				int transition_hour = clamp (0, 23, is->current_config.transition_season_on_day_night_hour);
+				transition_on_day_night_hour_hit = (is->current_config.day_night_cycle_mode != DNCM_OFF) &&
+					(new_hour != old_hour) && (new_hour == transition_hour);
+			}
+			int old_season = is->current_seasonal_cycle;
+			int new_season = calculate_current_seasonal_cycle (transition_on_day_night_hour_hit);
+			if (new_season != old_season) {
+				is->current_seasonal_cycle = new_season;
+				redraw = true;
+			}
+		}
+		if (redraw)
+			p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 	}
 
 	if (is->current_config.enable_city_work_radii_highlights && is->highlight_city_radii) {
@@ -27468,7 +29596,9 @@ count_workable_tiles_for_city (City * city)
 			continue;
 
 		struct district_instance * inst = get_district_instance (tile);
-		if ((inst != NULL) && district_is_complete (tile, inst->district_id))
+		if ((inst != NULL) &&
+		    district_is_complete (tile, inst->district_id) &&
+		    district_tile_should_be_unworkable (inst->district_id))
 			continue;
 
 		workable++;
@@ -27934,6 +30064,18 @@ patch_Leader_do_production_phase (Leader * this)
 
 	Leader_do_production_phase (this);
 
+	// The base game clears stolen-plans visibility during every production phase. Restore it until the configured duration expires.
+	for (int target_civ_id = 0; target_civ_id < 32; target_civ_id++) {
+		int key = (this->ID << 5) | target_civ_id;
+		int expiration_turn;
+		if (itable_look_up (&is->steal_plans_expiration_turns, key, &expiration_turn)) {
+			if (*p_current_turn_no + 1 < expiration_turn)
+				this->Contacts[target_civ_id] |= LCF_HAVE_MILITARY_MAP;
+			else
+				itable_remove (&is->steal_plans_expiration_turns, key);
+		}
+	}
+
 	if (is->force_barb_activity_for_cities) {
 		*p_barb_activity = saved_barb_activity;
 		is->force_barb_activity_for_cities = 0;
@@ -28057,19 +30199,180 @@ patch_Unit_get_attack_strength_for_land_zoc (Unit * this)
 	return (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land) ? Unit_get_attack_strength (this) : 0;
 }
 
+Unit * find_counter_best_visible_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded);
+Unit * find_counter_best_visible_defender_against_with_effect (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded, bool * out_any_counter_effect);
+
+Unit *
+find_counter_base_visible_defender_against (Main_Screen_Form * form,
+                                            Unit * attacker,
+                                            int tile_x,
+                                            int tile_y,
+                                            Unit * excluded)
+{
+	if (! (is->current_config.enable_unit_counters &&
+	       (form != NULL) &&
+	       unit_has_valid_type_id (attacker)))
+		return NULL;
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) ||
+	    (tile == p_null_tile) ||
+	    ! tile_has_enemy_unit (tile, attacker->Body.CivID))
+		return NULL;
+
+	struct counter_defender_selection_context saved_selection_ctx =
+		is->counter_defender_selection_ctx;
+	is->counter_defender_selection_ctx =
+		(struct counter_defender_selection_context) {
+			true, attacker, tile_x, tile_y
+		};
+
+	Unit * result = Main_Screen_Form_find_visible_unit (
+		form, __, tile_x, tile_y, excluded);
+
+	is->counter_defender_selection_ctx = saved_selection_ctx;
+
+	if ((result == NULL) ||
+	    (result == excluded) ||
+	    ! unit_has_valid_type_id (result) ||
+	    (result->Body.CivID == attacker->Body.CivID) ||
+	    ! result->vtable->is_enemy_of_civ (result, __, attacker->Body.CivID, 0))
+		return NULL;
+
+	resolve_army_defending_member (result, attacker, true);
+	return result;
+}
+
+bool
+main_screen_form_is_bombard_display_mode (Main_Screen_Form * form)
+{
+	if (form == NULL)
+		return false;
+
+	// If the player has explicitly entered a bombard mode, always show the
+	// bombard defender.
+	if ((form->Mode_Action == UMA_Bombard) ||
+	    (form->Mode_Action == UMA_Air_Bombard) ||
+	    (form->Mode_Action == UMA_Auto_Bombard) ||
+	    (form->Mode_Action == UMA_Auto_Air_Bombard))
+		return true;
+
+	// Otherwise the bombard button being merely available shouldn't switch the
+	// hover display for units that would normally attack directly (e.g.
+	// battleships). Only treat "button available" as bombard display mode for
+	// units that can't direct-attack: zero attack strength or air units.
+	Unit * unit = form->Current_Unit;
+	if (! unit_has_valid_type_id (unit))
+		return false;
+	if ((Unit_get_attack_strength (unit) != 0) &&
+	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class != UTC_Air))
+		return false;
+
+	Command_Button * buttons = form->GUI.Unit_Command_Buttons;
+	for (int n = 0; n < ARRAY_LEN (form->GUI.Unit_Command_Buttons); n++) {
+		int command = buttons[n].Command;
+		if (((buttons[n].Button.Base_Data.Status2 & 1) != 0) &&
+		    ((command == UCV_Bombard) ||
+		     (command == UCV_Bombing) ||
+		     (command == UCV_Auto_Bombard) ||
+		     (command == UCV_Auto_Air_Bombard)))
+			return true;
+	}
+
+	return false;
+}
+
 Unit * __fastcall
 patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int tile_x, int tile_y, Unit * excluded)
 {
-	struct unit_display_override * override = &is->unit_display_override;
-	if ((override->unit_id >= 0) && (override->tile_x == tile_x) && (override->tile_y == tile_y)) {
-		Unit * unit = get_unit_ptr (override->unit_id);
-		if (unit != NULL) {
-			if ((unit->Body.X == tile_x) && (unit->Body.Y == tile_y))
-				return unit;
+	bool unit_counter_display_enabled =
+		is->current_config.enable_unit_counters &&
+		(this->Current_Unit != NULL) &&
+		(this->Current_Unit->Body.CivID == this->Player_CivID) &&
+		((this->Current_Unit->Body.X != tile_x) || (this->Current_Unit->Body.Y != tile_y));
+	bool unit_counter_bombard_display_mode =
+		main_screen_form_is_bombard_display_mode (this);
+
+	struct unit_display_override * overrides[] = {
+		&is->unit_display_override_2,
+		&is->unit_display_override,
+	};
+	for (int i = 0; i < ARRAY_LEN (overrides); i++) {
+		struct unit_display_override * override = overrides[i];
+		if ((override->unit_id >= 0) && (override->tile_x == tile_x) && (override->tile_y == tile_y)) {
+			Unit * unit = get_unit_ptr (override->unit_id);
+			if (unit != NULL) {
+				if ((unit != excluded) &&
+				    (unit->Body.X == tile_x) &&
+				    (unit->Body.Y == tile_y))
+					return unit;
+			}
 		}
 	}
 
-	return Main_Screen_Form_find_visible_unit (this, __, tile_x, tile_y, excluded);
+	if (unit_counter_display_enabled && unit_counter_bombard_display_mode) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile != NULL) && (tile != p_null_tile) &&
+		    tile_has_enemy_unit (tile, this->Current_Unit->Body.CivID)) {
+			Unit * bombard_best = find_counter_or_base_bombard_defender_against (
+				this->Current_Unit, tile_x, tile_y,
+				this->Current_Unit->Body.CivID, true, excluded);
+			if (bombard_best != NULL)
+				return bombard_best;
+		}
+		return Main_Screen_Form_find_visible_unit (
+			this, __, tile_x, tile_y, excluded);
+	}
+
+	Unit * post_combat_defender =
+		get_post_combat_defender_display_override (tile_x, tile_y,
+		                                           excluded);
+	if (post_combat_defender != NULL)
+		return post_combat_defender;
+
+	// Default selection display should match the normal combat defender.
+	// Bombardment has its own display branch above.
+	if (unit_counter_display_enabled &&
+	    ! unit_counter_bombard_display_mode &&
+	    (this->Mode_Action != UMA_Precision_Strike) &&
+	    (this->Mode_Action != UMA_Auto_Precision_Strike)) {
+		Unit * combat_best = find_counter_base_visible_defender_against (
+			this, this->Current_Unit, tile_x, tile_y, excluded);
+		if (combat_best != NULL) {
+			// Attacker aiming preview: if this tile is the enemy currently under
+			// the mouse cursor and is attack-adjacent to the player's active
+			// army, point the army's top defender at the member that would
+			// actually attack it. Otherwise a never-fought army keeps showing its
+			// formation-time top defender while aiming and only swaps to the real
+			// attacker once the attack begins. (Unit_has_ability is checked first
+			// so the mouse->tile lookup only runs for armies, which is rare.)
+			if (! is->combat_unit_display_override_active &&
+			    Unit_has_ability (this->Current_Unit, __, UTA_Army) &&
+			    are_tiles_adjacent (this->Current_Unit->Body.X,
+						this->Current_Unit->Body.Y,
+						tile_x, tile_y)) {
+				int mx = -1, my = -1;
+				if ((Main_Screen_Form_get_tile_coords_under_mouse (
+					     this, __, this->mouse_x, this->mouse_y,
+					     &mx, &my) == 0) &&
+				    (mx == tile_x) && (my == tile_y)) {
+					Unit * atk_member =
+						counter_attacker_for_defender_selection (
+							this->Current_Unit, combat_best);
+					if ((atk_member != NULL) &&
+					    unit_has_valid_type_id (atk_member) &&
+					    (atk_member->Body.Container_Unit ==
+					     this->Current_Unit->Body.ID))
+						this->Current_Unit->Body.army_top_defender_id =
+							atk_member->Body.ID;
+				}
+			}
+			return combat_best;
+		}
+	}
+
+	return Main_Screen_Form_find_visible_unit (
+		this, __, tile_x, tile_y, excluded);
 }
 
 void __fastcall
@@ -28077,6 +30380,29 @@ patch_Animator_play_zoc_animation (Animator * this, int edx, Unit * unit, Animat
 {
 	if (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class != UTC_Air)
 		Animator_play_one_shot_unit_animation (this, __, unit, anim_type, param_3);
+}
+
+void __fastcall
+patch_Animator_play_one_shot_unit_animation (Animator * this, int edx, Unit * unit, AnimationType anim_type, bool param_3)
+{
+	struct unit_display_override saved_udo = is->unit_display_override;
+	struct unit_display_override saved_udo_2 = is->unit_display_override_2;
+	bool force_unit_to_top = (unit != NULL) && (anim_type == AT_DEATH);
+	if (force_unit_to_top) {
+		is->unit_display_override = (struct unit_display_override) {
+			unit->Body.ID, unit->Body.X, unit->Body.Y
+		};
+		is->unit_display_override_2 = (struct unit_display_override) {
+			unit->Body.ID, unit->Body.X, unit->Body.Y
+		};
+	}
+
+	Animator_play_one_shot_unit_animation (this, __, unit, anim_type, param_3);
+
+	if (force_unit_to_top && ! is->combat_unit_display_override_active) {
+		is->unit_display_override = saved_udo;
+		is->unit_display_override_2 = saved_udo_2;
+	}
 }
 
 bool __fastcall
@@ -28360,7 +30686,11 @@ Unit * __fastcall
 patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker, Unit * defender)
 {
 	int special_db_rules = is->current_config.special_defensive_bombard_rules;
-	if ((special_db_rules == 0) &&
+	bool apply_counter_bombard_rules =
+		is->current_config.enable_unit_counters &&
+		(is->current_config.count_counter_rules > 0);
+	if ((! apply_counter_bombard_rules) &&
+	    (special_db_rules == 0) &&
 	    ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) == 0) &&
 	    ((is->current_config.special_helicopter_rules & SHR_NO_DEFENSE_FROM_INSIDE) == 0))
 		return Fighter_find_defensive_bombarder (this, __, attacker, defender);
@@ -28377,12 +30707,20 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 
 		Unit * tr = NULL;
 		int highest_strength = -1;
+		Tile * bombard_target_tile = tile_at (attacker->Body.X, attacker->Body.Y);
 		enum UnitTypeAbilities lethal_bombard_req = (attacker_class == UTC_Sea) ? UTA_Lethal_Sea_Bombardment : UTA_Lethal_Land_Bombardment;
 		FOR_UNITS_ON (uti, defender_tile) {
 			Unit * candidate = uti.unit;
 			UnitType * candidate_type = &p_bic_data->UnitTypes[candidate->Body.UnitTypeID];
+			int candidate_strength = counter_adjusted_bombard_strength (
+				candidate_type->Bombard_Strength,
+				get_counter_rule_bombard_modifier (
+					&is->current_config,
+					candidate,
+					attacker,
+					bombard_target_tile));
 			if (can_do_defensive_bombard (candidate, candidate_type) &&
-			    (candidate_type->Bombard_Strength > highest_strength) &&
+			    (candidate_strength > highest_strength) &&
 			    (candidate != defender) &&
 			    (Unit_get_containing_army (candidate) != defender) &&
 			    ((attacker_class == candidate_type->Unit_Class) ||
@@ -28394,7 +30732,7 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 			      (get_city_ptr (defender_tile->CityID) != NULL))) &&
 			    ((! attacker_has_one_hp) || UnitType_has_ability (candidate_type, __, lethal_bombard_req))) {
 				tr = candidate;
-				highest_strength = candidate_type->Bombard_Strength;
+				highest_strength = candidate_strength;
 			}
 		}
 		return tr;
@@ -28404,10 +30742,22 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 void __fastcall
 patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombarder, Unit * defender)
 {
+	// Defensive bombard may briefly show the bombarder, then possibly the defender dying.
+	// Keep the bombard target visible in the secondary slot while the bombarder animates.
+	struct unit_display_override saved_udo = is->unit_display_override;
+	struct unit_display_override saved_udo_2 = is->unit_display_override_2;
+	struct unit_display_override bombard_target_udo = {
+		defender->Body.ID, defender->Body.X, defender->Body.Y
+	};
+	is->unit_display_override = bombard_target_udo;
+	is->unit_display_override_2 = bombard_target_udo;
+
 	if (p_bic_data->UnitTypes[bombarder->Body.UnitTypeID].Unit_Class == UTC_Air) {
-		if (Unit_try_flying_over_tile (bombarder, __, defender->Body.X, defender->Body.Y))
+		if (Unit_try_flying_over_tile (bombarder, __, defender->Body.X, defender->Body.Y)) {
+			is->unit_display_override = saved_udo;
+			is->unit_display_override_2 = saved_udo_2;
 			return; // intercepted
-		else if (patch_Main_Screen_Form_is_unit_visible_to_player (p_main_screen_form, __, defender->Body.X, defender->Body.Y, bombarder))
+		} else if (patch_Main_Screen_Form_is_unit_visible_to_player (p_main_screen_form, __, defender->Body.X, defender->Body.Y, bombarder))
 			Unit_play_bombing_animation (bombarder, __, defender->Body.X, defender->Body.Y);
 	}
 
@@ -28433,32 +30783,585 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 		// patch to get_combat_odds ensures the dead unit has no chance of winning a round.
 		if (dead_before ^ dead_after) {
 			is->dbe.defender_was_destroyed = true;
-			if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (this, __, bombarder, defender, true))
-				Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, defender, AT_DEATH, false);
+			if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (this, __, bombarder, defender, true)) {
+				patch_Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, defender, AT_DEATH, false);
+			}
 			is->dbe.saved_animation_setting = this->play_animations;
 			this->play_animations = 0;
 		}
 	}
+
+	if (is->dbe.defender_was_destroyed) {
+		is->unit_display_override = bombard_target_udo;
+		is->unit_display_override_2 = bombard_target_udo;
+	} else if (is->combat_unit_display_override_active && (this->defender != NULL)) {
+		set_combat_unit_display_override (this->defender);
+		is->unit_display_override_2 = saved_udo_2;
+	} else {
+		is->unit_display_override = saved_udo;
+		is->unit_display_override_2 = saved_udo_2;
+	}
+}
+
+int __fastcall
+patch_Fighter_get_odds_for_bombardment (Fighter * this, int edx, Unit * attacker, Unit * defender, bool bombarding, bool ignore_defensive_bonuses)
+{
+	if (! (bombarding &&
+	       is->current_config.enable_unit_counters &&
+	       (attacker != NULL) &&
+	       (defender != NULL) &&
+	       (attacker->Body.UnitTypeID >= 0) &&
+	       (attacker->Body.UnitTypeID < p_bic_data->UnitTypeCount) &&
+	       (defender->Body.UnitTypeID >= 0) &&
+	       (defender->Body.UnitTypeID < p_bic_data->UnitTypeCount)))
+		return Fighter_get_combat_odds (this, __, attacker, defender, bombarding, ignore_defensive_bonuses);
+
+	Tile * target_tile = tile_at (defender->Body.X, defender->Body.Y);
+	int bombard_pct = get_counter_rule_bombard_modifier (
+		&is->current_config,
+		attacker,
+		defender,
+		target_tile);
+
+	if (bombard_pct == 100)
+		return Fighter_get_combat_odds (this, __, attacker, defender, bombarding, ignore_defensive_bonuses);
+
+	UnitType * attacker_type = &p_bic_data->UnitTypes[attacker->Body.UnitTypeID];
+	int saved_bombard_strength = attacker_type->Bombard_Strength;
+	attacker_type->Bombard_Strength =
+		counter_adjusted_bombard_strength (saved_bombard_strength, bombard_pct);
+
+	int result = Fighter_get_combat_odds (this, __, attacker, defender, bombarding, ignore_defensive_bonuses);
+
+	attacker_type->Bombard_Strength = saved_bombard_strength;
+	return result;
 }
 
 int __fastcall
 patch_Fighter_get_odds_for_main_combat_loop (Fighter * this, int edx, Unit * attacker, Unit * defender, bool bombarding, bool ignore_defensive_bonuses)
 {
-	// If the attacker was destroyed by defensive bombard, return a number that will ensure the defender wins the first round of combat, otherwise
-	// the zero HP attacker might go on to win an absurd victory. (The attacker in the overall combat is the defender during DB).
+	if (is->combat_unit_display_override_active && (defender != NULL))
+		set_combat_unit_display_override (defender);
+
 	if (is->dbe.defender_was_destroyed)
 		return 1025;
 
-	else
-		return Fighter_get_combat_odds (this, __, attacker, defender, bombarding, ignore_defensive_bonuses);
+	struct c3x_config * cfg = &is->current_config;
+	// Only OR in counter-rule defensive-bonus skipping when we actually ran
+	// apply_counter_rules for this call. Otherwise counter_combat_ctx can be
+	// stale from an earlier combat
+	// round or a future odds probe.
+	bool ignore_defensive_bonuses_for_odds = ignore_defensive_bonuses;
+	if (cfg->enable_unit_counters && attacker != NULL && defender != NULL) {
+		Tile * def_tile = tile_at (this->defender_location_x,
+		                           this->defender_location_y);
+		int  aa, dd;
+		bool rule_ignore_defensive_bonuses;
+		apply_counter_rules (cfg, attacker, defender, def_tile,
+		                     &aa, &dd,
+		                     &rule_ignore_defensive_bonuses);
+
+		is->counter_combat_ctx.active          = true;
+		is->counter_combat_ctx.attacker        = attacker;
+		is->counter_combat_ctx.defender        = defender;
+		is->counter_combat_ctx.attacker_atk_pct = aa;
+		is->counter_combat_ctx.defender_def_pct = dd;
+		is->counter_combat_ctx.ignore_defensive_bonuses =
+			rule_ignore_defensive_bonuses;
+		ignore_defensive_bonuses_for_odds =
+			ignore_defensive_bonuses || rule_ignore_defensive_bonuses;
+	}
+
+	int result = Fighter_get_combat_odds (this, __, attacker, defender, bombarding,
+	                                      ignore_defensive_bonuses_for_odds);
+	is->counter_combat_ctx.active = false;
+	return result;
+}
+
+bool
+unit_has_valid_type_id (Unit * unit)
+{
+	return (unit != NULL) &&
+	       (unit->Body.UnitTypeID >= 0) &&
+	       (unit->Body.UnitTypeID < p_bic_data->UnitTypeCount);
+}
+
+long long
+divide_counter_strength (long long numerator, int denominator)
+{
+	if (denominator <= 0)
+		return 0x3FFFFFFF;
+	return numerator / denominator;
+}
+
+bool
+counter_tile_has_river_edge (Tile * tile, enum direction dir)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	int bit = direction_to_neighbor_bit (dir);
+	return (bit >= 0) &&
+	       ((tile->vtable->m37_Get_River_Code (tile) & (1 << bit)) != 0);
+}
+
+bool
+counter_attack_crosses_river (Unit * attacker, Unit * defender, Tile * def_tile)
+{
+	if (! (unit_has_valid_type_id (attacker) &&
+	       unit_has_valid_type_id (defender)))
+		return false;
+
+	// Match the base game: only the defender tile's river edge toward the
+	// attacker counts for the river defense bonus.
+	int def_to_atk = Map_compute_neighbor_index (
+		&p_bic_data->Map, __,
+		defender->Body.X, defender->Body.Y,
+		attacker->Body.X, attacker->Body.Y,
+		8);
+
+	return (def_to_atk > 0) && (def_to_atk <= 8) &&
+	       counter_tile_has_river_edge (def_tile, (enum direction)def_to_atk);
+}
+
+int
+counter_defender_selection_defensive_bonus_percent (Unit * attacker,
+                                                    Unit * defender,
+                                                    Tile * def_tile)
+{
+	if (! unit_has_valid_type_id (defender))
+		return 0;
+
+	UnitType * defender_type = &p_bic_data->UnitTypes[defender->Body.UnitTypeID];
+	if (defender_type->Unit_Class != UTC_Land)
+		return 0;
+
+	int bonus = 0;
+
+	enum SquareTypes terrain = def_tile->vtable->m50_Get_Square_BaseType (def_tile);
+	if ((terrain >= 0) && (terrain < p_bic_data->TileTypesCount)) {
+		Tile_Type * terrain_type = &p_bic_data->TileTypes[terrain];
+		bonus += def_tile->vtable->m30_Check_is_LM (def_tile) ?
+			terrain_type->LM_DefenceBonus :
+			terrain_type->DefenceBonus;
+	}
+
+	City * city = city_at (defender->Body.X, defender->Body.Y);
+	if (city != NULL) {
+		int city_bonus_index = 0;
+		if (city->Body.Population.Size > p_bic_data->General.MaximumSize_City)
+			city_bonus_index = 2;
+		else if (city->Body.Population.Size > p_bic_data->General.MaximumSize_Town)
+			city_bonus_index = 1;
+		bonus += p_bic_data->General.DefenceBonus_Cities[city_bonus_index];
+	}
+
+	bonus += patch_get_building_defense_bonus_at (
+		defender->Body.X, defender->Body.Y, 0);
+
+	if (def_tile->vtable->m14_Check_Barricade (def_tile, __, 0))
+		bonus += 2 * p_bic_data->General.DefenceBonus_Fortress;
+	else if (def_tile->vtable->m13_Check_Fortress (def_tile, __, 0))
+		bonus += p_bic_data->General.DefenceBonus_Fortress;
+
+	if (defender->Body.UnitState == UnitState_Fortifying)
+		bonus += p_bic_data->General.DefenceBonus_Fortification;
+
+	if (counter_attack_crosses_river (attacker, defender, def_tile))
+		bonus += p_bic_data->General.DefenceBonus_River;
+
+	return bonus;
+}
+
+int
+counter_adjusted_defender_strength (Unit * attacker,
+                                    Unit * defender,
+                                    int defender_strength,
+                                    bool include_defensive_bonuses)
+{
+	if (! (is->current_config.enable_unit_counters &&
+	       unit_has_valid_type_id (attacker) &&
+	       unit_has_valid_type_id (defender)))
+		return defender_strength;
+
+	Tile * def_tile = tile_at (defender->Body.X, defender->Body.Y);
+	if ((def_tile == NULL) || (def_tile == p_null_tile))
+		return defender_strength;
+
+	int  attacker_atk_pct, defender_def_pct;
+	bool ignore_defensive_bonuses;
+	apply_counter_rules (&is->current_config, attacker, defender, def_tile,
+	                     &attacker_atk_pct, &defender_def_pct,
+	                     &ignore_defensive_bonuses);
+
+	if ((attacker_atk_pct == 100) &&
+	    (defender_def_pct == 100) &&
+	    (! include_defensive_bonuses || ignore_defensive_bonuses))
+		return defender_strength;
+
+	if (attacker_atk_pct <= 0)
+		return 0x3FFFFFFF;
+
+	long long adjusted = (long long)defender_strength * defender_def_pct / 100;
+	if (include_defensive_bonuses && ! ignore_defensive_bonuses) {
+		int bonus =
+			counter_defender_selection_defensive_bonus_percent (
+				attacker, defender, def_tile);
+		adjusted = adjusted * (100 + bonus) / 100;
+	}
+
+	adjusted = divide_counter_strength (
+		adjusted * 100,
+		attacker_atk_pct);
+	if (adjusted < 0)
+		return 0;
+	if (adjusted > 0x3FFFFFFF)
+		return 0x3FFFFFFF;
+	return (int)adjusted;
+}
+
+int
+counter_adjusted_attacker_strength (Unit * attacker, Unit * defender, int attacker_strength)
+{
+	if (! (is->current_config.enable_unit_counters &&
+	       unit_has_valid_type_id (attacker) &&
+	       unit_has_valid_type_id (defender)))
+		return attacker_strength;
+
+	Tile * def_tile = tile_at (defender->Body.X, defender->Body.Y);
+	if ((def_tile == NULL) || (def_tile == p_null_tile))
+		return attacker_strength;
+
+	int  attacker_atk_pct, defender_def_pct;
+	bool ignore_defensive_bonuses;
+	apply_counter_rules (&is->current_config, attacker, defender, def_tile,
+	                     &attacker_atk_pct, &defender_def_pct,
+	                     &ignore_defensive_bonuses);
+
+	if ((attacker_atk_pct == 100) && (defender_def_pct == 100))
+		return attacker_strength;
+
+	if (defender_def_pct <= 0)
+		return 0x3FFFFFFF;
+
+	long long adjusted = divide_counter_strength (
+		(long long)attacker_strength * attacker_atk_pct,
+		defender_def_pct);
+	if (adjusted < 0)
+		return 0;
+	if (adjusted > 0x3FFFFFFF)
+		return 0x3FFFFFFF;
+	return (int)adjusted;
+}
+
+Unit *
+select_counter_best_attacking_army_member (Unit * army, Unit * defender,
+                                           int army_hp_remaining)
+{
+	if (! (is->current_config.enable_unit_counters &&
+	       unit_has_valid_type_id (army) &&
+	       unit_has_valid_type_id (defender) &&
+	       Unit_has_ability (army, __, UTA_Army)))
+		return NULL;
+
+	Tile * tile = tile_at (army->Body.X, army->Body.Y);
+	bool has_member = false;
+	if ((tile != NULL) && (tile != p_null_tile)) {
+		FOR_UNITS_ON (uti, tile) {
+			if ((uti.unit != NULL) &&
+			    (uti.unit->Body.Container_Unit == army->Body.ID)) {
+				has_member = true;
+				break;
+			}
+		}
+	}
+	if (! has_member)
+		return NULL;
+
+	struct counter_army_attacker_selection_context saved_ctx =
+		is->counter_army_attacker_selection_ctx;
+	is->counter_army_attacker_selection_ctx =
+		(struct counter_army_attacker_selection_context) {
+			true, army, defender
+		};
+
+	// Keep the base selector's HP allocation and tie-breaking. Its calls to
+	// get_attack_strength are adjusted by the temporary context above.
+	Unit * selected = Unit_select_army_member_for_combat (
+		army, __, army_hp_remaining, true);
+
+	is->counter_army_attacker_selection_ctx = saved_ctx;
+
+	return selected;
+}
+
+Unit *
+counter_attacker_for_defender_selection (Unit * attacker, Unit * defender)
+{
+	if (unit_has_valid_type_id (attacker) &&
+	    unit_has_valid_type_id (defender) &&
+	    Unit_has_ability (attacker, __, UTA_Army)) {
+		int hp_remaining = clamp (
+			0, 9999, Unit_get_max_hp (attacker) - attacker->Body.Damage);
+		Unit * member = select_counter_best_attacking_army_member (
+			attacker, defender, hp_remaining);
+		if (member != NULL)
+			return member;
+	}
+	return attacker;
+}
+
+bool __fastcall
+patch_Fighter_prefer_first_defender_1 (Fighter * this, int edx, Unit * first, int first_strength, Unit * second, int second_strength, bool param_5)
+{
+	Unit * attacker = (this != NULL) ? this->attacker : NULL;
+	if (! unit_has_valid_type_id (attacker) &&
+	    is->counter_defender_selection_ctx.active)
+		attacker = is->counter_defender_selection_ctx.attacker;
+
+	if (is->current_config.enable_unit_counters &&
+	    unit_has_valid_type_id (attacker) &&
+	    unit_has_valid_type_id (first) &&
+	    unit_has_valid_type_id (second) &&
+	    (first->Body.CivID != attacker->Body.CivID) &&
+	    (second->Body.CivID != attacker->Body.CivID) &&
+	    first->vtable->is_enemy_of_civ (first, __, attacker->Body.CivID, 0) &&
+	    second->vtable->is_enemy_of_civ (second, __, attacker->Body.CivID, 0)) {
+		Unit * first_attacker = counter_attacker_for_defender_selection (attacker, first);
+		Unit * second_attacker = counter_attacker_for_defender_selection (attacker, second);
+		Tile * first_tile = tile_at (first->Body.X, first->Body.Y);
+		Tile * second_tile = tile_at (second->Body.X, second->Body.Y);
+		int unused_atk_pct, unused_def_pct;
+		bool first_ignore_defensive_bonuses = false,
+		     second_ignore_defensive_bonuses = false;
+		if ((first_tile != NULL) && (first_tile != p_null_tile))
+			apply_counter_rules (
+				&is->current_config, first_attacker, first,
+				first_tile, &unused_atk_pct, &unused_def_pct,
+				&first_ignore_defensive_bonuses);
+		if ((second_tile != NULL) && (second_tile != p_null_tile))
+			apply_counter_rules (
+				&is->current_config, second_attacker, second,
+				second_tile, &unused_atk_pct, &unused_def_pct,
+				&second_ignore_defensive_bonuses);
+		bool include_defensive_bonuses =
+			first_ignore_defensive_bonuses ||
+			second_ignore_defensive_bonuses;
+		first_strength = counter_adjusted_defender_strength (
+			first_attacker, first, first_strength,
+			include_defensive_bonuses);
+		second_strength = counter_adjusted_defender_strength (
+			second_attacker, second, second_strength,
+			include_defensive_bonuses);
+	}
+
+	if (is->current_config.prefer_less_expensive_defenders &&
+	    unit_has_valid_type_id (first) &&
+	    unit_has_valid_type_id (second) &&
+	    (first_strength > 0) &&
+	    (first_strength == second_strength)) {
+		bool first_is_king =
+			patch_Unit_check_king_for_defense_priority (
+				first, __, UTA_King);
+		bool second_is_king =
+			patch_Unit_check_king_for_defense_priority (
+				second, __, UTA_King);
+		if (first_is_king == second_is_king) {
+			int first_cost =
+				p_bic_data->UnitTypes[first->Body.UnitTypeID].Cost;
+			int second_cost =
+				p_bic_data->UnitTypes[second->Body.UnitTypeID].Cost;
+			if ((first_cost > 0) &&
+			    (second_cost > 0) &&
+			    (first_cost != second_cost))
+				return first_cost < second_cost;
+		}
+	}
+
+	return Fighter_prefer_first_defender_1 (
+		this, __, first, first_strength, second, second_strength,
+		param_5);
+}
+
+Unit *
+find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x,
+                                    int tile_y, Unit * excluded,
+                                    bool require_visible,
+                                    bool * out_any_counter_effect)
+{
+	if (out_any_counter_effect != NULL)
+		*out_any_counter_effect = false;
+
+	if (! (unit_has_valid_type_id (attacker) &&
+	       (tile != NULL) &&
+	       (tile != p_null_tile)))
+		return NULL;
+
+	int attacker_civ = attacker->Body.CivID;
+	Unit * saved_fighter_attacker = p_bic_data->fighter.attacker;
+	Unit * saved_fighter_defender = p_bic_data->fighter.defender;
+	int    saved_fighter_atk_x    = p_bic_data->fighter.attacker_location_x;
+	int    saved_fighter_atk_y    = p_bic_data->fighter.attacker_location_y;
+	int    saved_fighter_def_x    = p_bic_data->fighter.defender_location_x;
+	int    saved_fighter_def_y    = p_bic_data->fighter.defender_location_y;
+	struct counter_defender_selection_context saved_selection_ctx =
+		is->counter_defender_selection_ctx;
+	is->counter_defender_selection_ctx =
+		(struct counter_defender_selection_context) {
+			true, attacker, tile_x, tile_y
+		};
+
+	Unit * best = NULL;
+	FOR_UNITS_ON (uti, tile) {
+		Unit * unit = uti.unit;
+		if ((unit == NULL) ||
+		    (unit == excluded) ||
+		    (unit->Body.Container_Unit >= 0) ||
+		    ! unit_has_valid_type_id (unit) ||
+		    (unit->Body.CivID == attacker_civ) ||
+		    ! unit->vtable->is_enemy_of_civ (unit, __, attacker_civ, 0) ||
+		    (Unit_get_defense_strength (unit) <= 0) ||
+		    (require_visible &&
+		     ! patch_Unit_is_visible_to_civ (unit, __, attacker_civ, 0)))
+			continue;
+
+		p_bic_data->fighter.attacker            = attacker;
+		p_bic_data->fighter.defender            = unit;
+		p_bic_data->fighter.attacker_location_x = attacker->Body.X;
+		p_bic_data->fighter.attacker_location_y = attacker->Body.Y;
+		p_bic_data->fighter.defender_location_x = tile_x;
+		p_bic_data->fighter.defender_location_y = tile_y;
+
+		int base_defense_strength = Unit_get_defense_strength (unit);
+		if (! Fighter_unit_can_defend (&p_bic_data->fighter, __, unit, tile_x, tile_y))
+			continue;
+
+		if (out_any_counter_effect != NULL) {
+			Unit * counter_attacker =
+				counter_attacker_for_defender_selection (
+					attacker, unit);
+			int attacker_atk_pct, defender_def_pct;
+			bool ignore_defensive_bonuses;
+			apply_counter_rules (
+				&is->current_config, counter_attacker, unit, tile,
+				&attacker_atk_pct, &defender_def_pct,
+				&ignore_defensive_bonuses);
+			if ((attacker_atk_pct != 100) ||
+			    (defender_def_pct != 100) ||
+			    ignore_defensive_bonuses)
+				*out_any_counter_effect = true;
+		}
+
+		int best_defense_strength =
+			(best != NULL) ? Unit_get_defense_strength (best) : -1;
+		bool prefer_unit =
+			(best == NULL) ||
+			patch_Fighter_prefer_first_defender_1 (
+				&p_bic_data->fighter, __,
+				unit, base_defense_strength,
+				best, best_defense_strength,
+				true);
+		if (prefer_unit)
+			best = unit;
+	}
+
+	p_bic_data->fighter.attacker            = saved_fighter_attacker;
+	p_bic_data->fighter.defender            = saved_fighter_defender;
+	p_bic_data->fighter.attacker_location_x = saved_fighter_atk_x;
+	p_bic_data->fighter.attacker_location_y = saved_fighter_atk_y;
+	p_bic_data->fighter.defender_location_x = saved_fighter_def_x;
+	p_bic_data->fighter.defender_location_y = saved_fighter_def_y;
+	is->counter_defender_selection_ctx = saved_selection_ctx;
+
+	return best;
+}
+
+Unit *
+find_counter_best_visible_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded)
+{
+	return find_counter_best_defender_against (attacker, tile, tile_x,
+	                                           tile_y, excluded, true, NULL);
+}
+
+Unit *
+find_counter_best_visible_defender_against_with_effect (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded, bool * out_any_counter_effect)
+{
+	return find_counter_best_defender_against (attacker, tile, tile_x,
+	                                           tile_y, excluded, true,
+	                                           out_any_counter_effect);
 }
 
 byte __fastcall
-patch_Fighter_fight (Fighter * this, int edx, Unit * attacker, int attack_direction, Unit * defender_or_null)
+patch_Fighter_fight (Fighter * this, int edx, Unit * attacker,
+                     int attack_direction, Unit * defender_or_null)
 {
-	byte tr = Fighter_fight (this, __, attacker, attack_direction, defender_or_null);
+	bool saved_combat_udo_active = is->combat_unit_display_override_active;
+	struct unit_display_override saved_combat_udo = is->saved_combat_unit_display_override;
+	int attacker_id = (attacker != NULL) ? attacker->Body.ID : -1;
+	clear_post_combat_defender_display_override ();
+	is->saved_combat_unit_display_override = is->unit_display_override;
+	is->combat_unit_display_override_active = true;
+	is->unit_display_override_2 = (struct unit_display_override) {-1, -1, -1};
+
+	Unit * defender_for_fight = defender_or_null;
+	int defender_tile_x = 0,
+	    defender_tile_y = 0;
+	bool direction_matches_tile = false;
+	if (is->current_config.enable_unit_counters &&
+	    get_counter_defender_selection_tile (
+		attacker, attack_direction, defender_or_null,
+		&defender_tile_x, &defender_tile_y,
+		&direction_matches_tile) &&
+	    counter_defender_selection_can_pass_null_defender (
+		attacker, direction_matches_tile))
+		defender_for_fight = NULL;
+
+	byte tr = Fighter_fight (this, __, attacker, attack_direction,
+	                         defender_for_fight);
+
+	refresh_post_combat_defender_display_override_after_fight (this,
+	                                                           attacker_id);
+
+	is->unit_display_override = saved_combat_udo_active ?
+		is->saved_combat_unit_display_override :
+		(struct unit_display_override) {-1, -1, -1};
+	is->unit_display_override_2 = (struct unit_display_override) {-1, -1, -1};
+	is->saved_combat_unit_display_override = saved_combat_udo;
+	is->combat_unit_display_override_active = saved_combat_udo_active;
 	is->dbe = (struct defensive_bombard_event) {0};
+	is->counter_combat_ctx.active = false;
 	return tr;
+}
+
+int __fastcall
+patch_Unit_get_attack_strength (Unit * this)
+{
+	int base = Unit_get_attack_strength (this);
+	if (is->counter_army_attacker_selection_ctx.active &&
+	    unit_has_valid_type_id (
+		is->counter_army_attacker_selection_ctx.army) &&
+	    unit_has_valid_type_id (this) &&
+	    (this->Body.Container_Unit ==
+	     is->counter_army_attacker_selection_ctx.army->Body.ID))
+		return counter_adjusted_attacker_strength (
+			this,
+			is->counter_army_attacker_selection_ctx.defender,
+			base);
+	if (! is->counter_combat_ctx.active)
+		return base;
+	if (this == is->counter_combat_ctx.attacker)
+		return base * is->counter_combat_ctx.attacker_atk_pct / 100;
+	return base;
+}
+
+int __fastcall
+patch_Unit_get_defense_strength (Unit * this)
+{
+	int base = Unit_get_defense_strength (this);
+	if (is->counter_combat_ctx.active &&
+	    (this == is->counter_combat_ctx.defender))
+		return base * is->counter_combat_ctx.defender_def_pct / 100;
+	return base;
 }
 
 void __fastcall
@@ -28482,15 +31385,22 @@ patch_Unit_play_attack_anim_for_def_bombard (Unit * this, int edx, int direction
 	// Don't play any animation for air units, the animations are instead handled in the patch for damage_by_defensive_bombard
 	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air) {
 
-		// Make sure the unit is displayed if it's in an army and we're configured for that
+		// Defensive bombard can come from a mid-stack unit. Force the bombarder to the top
+		// only for its attack animation, then restore the defender/top-unit override.
 		struct unit_display_override saved_udo = is->unit_display_override;
-		Unit * container;
-		if (is->current_config.show_armies_performing_defensive_bombard &&
-		    (container = get_unit_ptr (this->Body.Container_Unit)) != NULL &&
-		    Unit_has_ability (container, __, UTA_Army))
+		Unit * container = get_unit_ptr (this->Body.Container_Unit);
+		bool in_army = (container != NULL) && Unit_has_ability (container, __, UTA_Army);
+		if ((! in_army) || is->current_config.show_armies_performing_defensive_bombard)
 			is->unit_display_override = (struct unit_display_override) { this->Body.ID, this->Body.X, this->Body.Y };
 
+		bool restore_fortify = this->Body.UnitState == UnitState_Fortifying;
+		if (restore_fortify)
+			Unit_set_state (this, __, 0);
+
 		Unit_play_attack_animation (this, __, direction);
+
+		if (restore_fortify)
+			Unit_set_state (this, __, UnitState_Fortifying);
 
 		is->unit_display_override = saved_udo;
 	}
@@ -29529,11 +32439,31 @@ patch_Unit_can_perform_upgrade_all (Unit * this, int edx, int unit_command_value
 	// so many upgrades that we exceed the limit.
 	City * city;
 	int upgrade_id, available;
+	// ToC-26: also check unit_type_to_group so group-limited upgrade types are caught
 	if (base &&
-	    (is->current_config.unit_limits.len > 0) &&
+	    (is->current_config.unit_limits.len > 0 ||
+	     is->current_config.unit_type_to_group.len > 0) &&
 	    (NULL != (city = city_at (this->Body.X, this->Body.Y))) &&
 	    (0 <= (upgrade_id = City_get_upgraded_type_id (city, __, this->Body.UnitTypeID))) &&
 	    get_available_unit_count (&leaders[this->Body.CivID], upgrade_id, &available)) {
+
+		// ToC-27: If source and target are in the same unit_limit_group (and the target has no
+		// individual limit), the upgrade is net-zero on the group count — the source unit is
+		// consumed and the target unit is produced. There is no risk of exceeding the group limit
+		// regardless of how many such upgrades are queued, so skip the penciled-in accounting
+		// entirely and allow every qualifying unit to upgrade freely.
+		if (is->current_config.unit_type_to_group.len > 0) {
+			struct unit_limit_group * from_grp, * to_grp;
+			int unused;
+			if (itable_look_up (&is->current_config.unit_type_to_group, this->Body.UnitTypeID, (int *)&from_grp) &&
+			    itable_look_up (&is->current_config.unit_type_to_group, upgrade_id, (int *)&to_grp) &&
+			    (from_grp == to_grp) &&
+			    from_grp->has_limit &&
+			    ! stable_look_up (&is->current_config.unit_limits,
+			                      p_bic_data->UnitTypes[upgrade_id].Name, &unused))
+				return true; // same-group upgrade: net-zero group count change — always permit
+		}
+
 
 		// Find penciled in upgrade. Add a new one if we don't already have one.
 		struct penciled_in_upgrade * piu = NULL; {
@@ -29562,6 +32492,8 @@ patch_Unit_can_perform_upgrade_all (Unit * this, int edx, int unit_command_value
 	} else
 		return base;
 }
+
+		// END ToC-26 and ToC-27
 
 void __fastcall
 patch_Fighter_animate_start_of_combat (Fighter * this, int edx, Unit * attacker, Unit * defender)
@@ -30280,6 +33212,10 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			serialize_aligned_text ("unit_transport_ties", &mod_data);
 			itable_serialize (&is->unit_transport_ties, &mod_data);
 		}
+		if (is->steal_plans_expiration_turns.len > 0) {
+			serialize_aligned_text ("steal_plans_expiration_turns", &mod_data);
+			itable_serialize (&is->steal_plans_expiration_turns, &mod_data);
+		}
 		if (is->current_config.unit_cycle_search_criteria != UCSC_STANDARD && is->waiting_units.len > 0) {
 			serialize_aligned_text ("waiting_units", &mod_data);
 			itable_serialize (&is->waiting_units, &mod_data);
@@ -30331,6 +33267,12 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
 		serialize_aligned_text ("current_day_night_cycle", &mod_data);
 		int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_day_night_cycle), is->current_day_night_cycle);
+	}
+	if (is->current_config.seasonal_cycle_mode != SCM_OFF) {
+		serialize_aligned_text ("current_seasonal_cycle", &mod_data);
+		int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_seasonal_cycle), is->current_seasonal_cycle);
+		serialize_aligned_text ("turns_in_current_season", &mod_data);
+		int_to_bytes (buffer_allocate (&mod_data, sizeof is->turns_in_current_season), is->turns_in_current_season);
 	}
 	if (is->current_config.enable_districts && (is->district_count > 0)) {
 		serialize_aligned_text ("district_config_names", &mod_data);
@@ -30744,6 +33686,15 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					break;
 				}
 
+			} else if (match_save_chunk_name (&cursor, "steal_plans_expiration_turns")) {
+				int bytes_read = itable_deserialize (cursor, seg + seg_size, &is->steal_plans_expiration_turns);
+				if (bytes_read > 0)
+					cursor += bytes_read;
+				else {
+					error_chunk_name = "steal_plans_expiration_turns";
+					break;
+				}
+
 			} else if (match_save_chunk_name (&cursor, "waiting_units")) {
 				int bytes_read = itable_deserialize (cursor, seg + seg_size, &is->waiting_units);
 				if (bytes_read > 0) {
@@ -30823,11 +33774,21 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				// only the standard graphics; I didn't test). If day/night cycle mode is active, restore the proxies now if they
 				// haven't already been.
 				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
-					build_sprite_proxies_24 (&p_bic_data->Map.Renderer);
+					build_sprite_proxies (&p_bic_data->Map.Renderer);
 
 				// Because we've restored current_day_night_cycle from the save, set that is is not the first turn so the cycle
 				// doesn't get restarted.
 				is->day_night_cycle_unstarted = false;
+			
+			} else if (match_save_chunk_name (&cursor, "current_seasonal_cycle")) {
+				is->current_seasonal_cycle = clamp (CS_SUMMER, CS_SPRING, *((int *)cursor)++);
+				QueryPerformanceCounter (&is->last_seasonal_cycle_update_time);
+				is->seasonal_cycle_unstarted = false;
+				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
+					build_sprite_proxies (&p_bic_data->Map.Renderer);
+			
+			} else if (match_save_chunk_name (&cursor, "turns_in_current_season")) {
+				is->turns_in_current_season = not_below (0, *((int *)cursor)++);
 			
 				// ToC-3
 			} else if (match_save_chunk_name (&cursor, "great_wall_auto_build_state")) {
@@ -31008,7 +33969,8 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 										if (info_city == NULL)
 											inst->wonder_info.city_id = -1;
 										inst->wonder_info.wonder_index = wonder_index;
-										set_tile_unworkable_for_all_cities (tile, x, y);
+										if (district_tile_should_be_unworkable (district_id))
+											set_tile_unworkable_for_all_cities (tile, x, y);
 									}
 								}
 							}
@@ -32223,6 +35185,9 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 
 	if (district_id < 0 || district_id >= is->district_count)
 		return;
+	if ((city_form->CurrentCity != NULL) &&
+	    (! district_tile_bonus_applies_to_city (tile, district_id, city_form->CurrentCity)))
+		return;
 
 	// Get district configuration
 	struct district_config * config = &is->district_configs[district_id];
@@ -32449,6 +35414,9 @@ draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, in
 void __fastcall
 patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 {
+	Tile * district_tiles_hidden[256];
+	int district_tiles_hidden_count = 0;
+
 	// If we're zoomed in and the city work radius is at least 4 then it's likely we'll end up drawing things outside of the city screen's usual
 	// map area. Set the clip area to the map area so none of those draws are visible.
 	bool changed_clip_area = false;
@@ -32461,6 +35429,23 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 		recompute_city_yields_with_districts (this->CurrentCity);
 	}
 
+	// Hide vanilla per-tile yield icons on completed district tiles; district icons are drawn below.
+	if ((this->CurrentCity != NULL) &&
+	    (is->current_config.enable_districts || is->current_config.enable_natural_wonders)) {
+		int city_id = this->CurrentCity->Body.ID;
+		FOR_DISTRICTS_AROUND (wai, this->CurrentCity->Body.X, this->CurrentCity->Body.Y, true) {
+			struct district_instance * inst = wai.district_inst;
+			if ((inst == NULL) || ! district_is_complete (wai.tile, inst->district_id))
+				continue;
+			if (wai.tile->Body.CityAreaID != city_id)
+				continue;
+			if (district_tiles_hidden_count < ARRAY_LEN (district_tiles_hidden)) {
+				district_tiles_hidden[district_tiles_hidden_count++] = wai.tile;
+				wai.tile->Body.CityAreaID = -1;
+			}
+		}
+	}
+
 	is->do_not_draw_already_worked_tile_img = false;
 	City_Form_draw_yields_on_worked_tiles (this);
 
@@ -32471,6 +35456,15 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 	if (p_bic_data->is_zoomed_out) {
 		is->do_not_draw_already_worked_tile_img = true;
 		City_Form_draw_yields_on_worked_tiles (this);
+	}
+
+	if (this->CurrentCity != NULL) {
+		int city_id = this->CurrentCity->Body.ID;
+		for (int i = 0; i < district_tiles_hidden_count; i++) {
+			Tile * tile = district_tiles_hidden[i];
+			if ((tile != NULL) && (tile != p_null_tile))
+				tile->Body.CityAreaID = city_id;
+		}
 	}
 
 	// Draw district bonuses on district tiles
@@ -32515,6 +35509,8 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 				continue;
 
 			if (!is_natural_wonder && (!is->current_config.enable_districts))
+				continue;
+			if (! district_tile_bonus_applies_to_city (wai.tile, district_id, city))
 				continue;
 
 			// For neighborhood districts, check if population is high enough to utilize them
@@ -32570,6 +35566,9 @@ skip_district_yields:
 bool __fastcall
 patch_City_Form_draw_highlighted_yields (City_Form * this, int edx, int tile_x, int tile_y, int neighbor_index)
 {
+	Tile * hidden_district_tile = NULL;
+	short hidden_district_city_area_id = -1;
+
 	// Make sure we don't draw outside the map area
 	bool changed_clip_area = false;
 	if ((is->current_config.city_work_radius >= 4) && ! p_bic_data->is_zoomed_out) {
@@ -32577,7 +35576,25 @@ patch_City_Form_draw_highlighted_yields (City_Form * this, int edx, int tile_x, 
 		changed_clip_area = true;
 	}
 
+	if ((this->CurrentCity != NULL) &&
+	    (is->current_config.enable_districts || is->current_config.enable_natural_wonders)) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (tile);
+			if ((inst != NULL) &&
+			    district_is_complete (tile, inst->district_id) &&
+			    (tile->Body.CityAreaID == this->CurrentCity->Body.ID)) {
+				hidden_district_tile = tile;
+				hidden_district_city_area_id = tile->Body.CityAreaID;
+				tile->Body.CityAreaID = -1;
+			}
+		}
+	}
+
 	bool tr = City_Form_draw_highlighted_yields (this, __, tile_x, tile_y, neighbor_index);
+
+	if (hidden_district_tile != NULL)
+		hidden_district_tile->Body.CityAreaID = hidden_district_city_area_id;
 
 	if (changed_clip_area)
 		clear_clip_area (this);
@@ -33129,8 +36146,16 @@ patch_City_can_build_upgrade_type (City * this, int edx, int unit_type_id, bool 
 	    (type->Available_To & (1 << leaders[this->Body.CivID].RaceID)))
 		exclude_upgradable = false;
 
-	return patch_City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
-}
+	// ToC-27: Set the upgrade-eligibility flag so patch_City_can_build_unit skips its unit-type
+	// limit check. Without this, group-limited types at their limit would cause Unit_can_upgrade
+	// to return false (base = false in patch_Unit_can_upgrade), making the ToC-27 same-group
+	// bypass unreachable. With the flag, the limit is deferred to patch_Unit_can_upgrade, which
+	// has the source unit's type and can correctly allow same-group upgrades.
+	is->checking_upgrade_type_eligibility = true;
+	bool result = patch_City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
+	is->checking_upgrade_type_eligibility = false;
+	return result;
+}  // END ToC-27
 
 void __fastcall
 patch_Main_GUI_position_elements (Main_GUI * this)
@@ -33497,6 +36522,21 @@ init_district_images ()
 
 	char art_dir[200];
 	char temp_path[2*MAX_PATH];
+	int base_season = CS_SUMMER;
+	if (is->current_config.seasonal_cycle_mode != SCM_OFF) {
+		int enabled_mask = normalize_enabled_season_mask (is->current_config.enabled_seasons_mask);
+		base_season = get_first_enabled_season (enabled_mask);
+		if (is->current_config.seasonal_cycle_mode == SCM_USER_SEASON) {
+			int user_season = get_current_local_season ();
+			if (enabled_mask & (1 << user_season))
+				base_season = user_season;
+		} else if (! is->seasonal_cycle_unstarted) {
+			int current_season = clamp (CS_SUMMER, CS_SPRING, is->current_seasonal_cycle);
+			if (enabled_mask & (1 << current_season))
+				base_season = current_season;
+		}
+	}
+	char const * base_season_name = cycle_season_names[base_season];
 
 	is->dc_img_state = IS_INIT_FAILED;
 
@@ -33521,7 +36561,7 @@ init_district_images ()
 				continue;
 
 			// Read PCX file
-			snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", cfg->img_paths[variant_i]);
+			snprintf (art_dir, sizeof art_dir, "Districts/%s/1200/%s", base_season_name, cfg->img_paths[variant_i]);
 			get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 			PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 
@@ -33562,7 +36602,8 @@ init_district_images ()
 		}
 	}
 	// Load abandoned district images (land + maritime)
-	get_mod_art_path ("Districts/1200/Abandoned.pcx", temp_path, sizeof temp_path);
+	snprintf (art_dir, sizeof art_dir, "Districts/%s/1200/Abandoned.pcx", base_season_name);
+	get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 
 	if (pcx.JGL.Image == NULL) {
@@ -33609,7 +36650,7 @@ init_district_images ()
 				if (pcx_loaded)
 					wpcx.vtable->clear_JGL (&wpcx);
 
-				snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", img_path);
+				snprintf (art_dir, sizeof art_dir, "Districts/%s/1200/%s", base_season_name, img_path);
 				get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 				PCX_Image_read_file (&wpcx, __, temp_path, NULL, 0, 0x100, 2);
 
@@ -33674,7 +36715,7 @@ init_district_images ()
 				if (pcx_loaded)
 					nwpcx.vtable->clear_JGL (&nwpcx);
 
-				snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", img_path);
+				snprintf (art_dir, sizeof art_dir, "Districts/%s/1200/%s", base_season_name, img_path);
 				get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 				PCX_Image_read_file (&nwpcx, __, temp_path, NULL, 0, 0x100, 2);
 
@@ -33705,17 +36746,35 @@ init_district_images ()
 	}
 
 	is->dc_img_state = IS_OK;
+
+	if (((is->current_config.day_night_cycle_mode != DNCM_OFF) || (is->current_config.seasonal_cycle_mode != SCM_OFF)) &&
+	    (is->day_night_cycle_img_state == IS_OK)) {
+		if (is->day_night_cycle_img_proxies_indexed)
+			deindex_day_night_image_proxies ();
+		build_sprite_proxies (&p_bic_data->Map.Renderer);
+	}
+
 	pcx.vtable->destruct (&pcx, __, 0);
 }
 
 bool
-tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, int i_improv)
+tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, int district_id, int i_improv)
 {
 	Tile * center = tile_at (tile_x, tile_y);
 
     if ((center == NULL) || (center == p_null_tile)) return false;
     int owner_id = center->Territory_OwnerID;
     if (owner_id <= 0) return false;
+
+	if (district_uses_tile_improvement_rules (district_id)) {
+		int city_id = center->Body.CityAreaID;
+		if (city_id < 0)
+			return false;
+		City * city = get_city_ptr (city_id);
+		if ((city == NULL) || ! city_radius_contains_tile (city, tile_x, tile_y))
+			return false;
+		return has_active_building (city, i_improv);
+	}
 
 	FOR_CITIES_AROUND (wai, tile_x, tile_y) {
 		if (has_active_building (wai.city, i_improv))
@@ -34157,7 +37216,7 @@ get_energy_grid_image_index (int tile_x, int tile_y)
 		// Zero is "no building"; Buildings start from index one
 		int column_index = i + 1;
 		int building_id = info->dependent_building_ids[i];
-		if (tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, building_id))
+		if (tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, ENERGY_GRID_DISTRICT_ID, building_id))
 			return column_index;
 	}
 
@@ -34483,7 +37542,7 @@ void
 draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, struct district_instance * inst, 
 	int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int visible_to_civ_id)
 {
-	int base_resource = Tile_get_resource_visible_to (tile, __, visible_to_civ_id);
+	int base_resource = get_visible_non_subsumed_tile_resource (tile, inst, visible_to_civ_id);
 	int district_resource = -1;
 
 	if (inst->state == DS_COMPLETED) {
@@ -34502,7 +37561,8 @@ draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, stru
 	}
 
 	if (district_resource < 0) {
-		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		if (base_resource >= 0)
+			Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
 	}
 
@@ -34560,7 +37620,7 @@ count_completed_buildings_in_district_radius (int tile_x, int tile_y, int distri
 	int completed_count = 0;
 	for (int i = 0; i < district_info->dependent_building_count; i++) {
 		int building_id = district_info->dependent_building_ids[i];
-		if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, building_id))
+		if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id))
 			completed_count++;
 	}
 	return completed_count;
@@ -34578,7 +37638,7 @@ draw_district_on_map_or_canvas_by_buildings (Sprite * base_sprite, Map_Renderer 
 		// Zero is "base texture"; Actual building column art starts from index one
 		int column_index = i + 1;
 		int building_id = district_info->dependent_building_ids[i];
-		if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, building_id)) {
+		if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id)) {
 			Sprite * district_sprite = &is->district_img_sets[district_id].imgs[variant][era][column_index];
 			draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
 		}
@@ -35274,7 +38334,6 @@ patch_Unit_ai_move_terraformer (Unit * this)
 	bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
 	int territory_owner = ((tile != NULL) && (tile != p_null_tile)) ? tile->vtable->m38_Get_Territory_OwnerID (tile) : -1;
 
-	
 	if (is->current_config.enable_districts && ! is_human && is_worker (this)) {
 		update_tracked_worker_for_unit (this);
 		struct district_instance * inst = get_district_instance (tile);
@@ -35428,6 +38487,8 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 	int standard_district_food = 0;
 	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		int district_id = wai.district_inst->district_id;
+		if (! district_tile_bonus_applies_to_city (wai.tile, district_id, city))
+			continue;
 		int food_bonus = 0;
 		get_effective_district_yields (wai.district_inst, &is->district_configs[district_id], &food_bonus, NULL, NULL, NULL, NULL, NULL);
 		standard_district_food += food_bonus;
@@ -35578,6 +38639,25 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 	int city_center_base_shields = City_calc_tile_yield_at (city, __, YK_SHIELDS, city_x, city_y);
 	int total_district_shield_bonus = 0;
 	calculate_city_center_district_bonus (city, NULL, &total_district_shield_bonus, NULL);
+	int city_center_district_shields = total_district_shield_bonus;
+
+	FOR_DISTRICTS_AROUND (wai, city_x, city_y, true) {
+		int district_id = wai.district_inst->district_id;
+		if (! district_uses_tile_improvement_rules (district_id))
+			continue;
+		if (! district_tile_bonus_applies_to_city (wai.tile, district_id, city))
+			continue;
+		int shield_bonus = 0;
+		struct district_config * cfg = &is->district_configs[district_id];
+		get_effective_district_yields (wai.district_inst, cfg, NULL, &shield_bonus, NULL, NULL, NULL, NULL);
+		if ((cfg->generated_resource_id >= 0) &&
+		    (cfg->generated_resource_flags & MF_YIELDS) &&
+		    district_generates_resource_for_civ (wai.tile, wai.district_inst, cfg, city->Body.CivID)) {
+			Resource_Type * res = &p_bic_data->ResourceTypes[cfg->generated_resource_id];
+			shield_bonus += res->Shield;
+		}
+		total_district_shield_bonus += shield_bonus;
+	}
 
 	// Distribution hub contribution is tracked separately for icon rendering.
 	int distribution_hub_shields = 0;
@@ -35585,8 +38665,8 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 		get_distribution_hub_yields_for_city (city, NULL, &distribution_hub_shields);
 	if (distribution_hub_shields < 0)
 		distribution_hub_shields = 0;
-	if (distribution_hub_shields > total_district_shield_bonus)
-		distribution_hub_shields = total_district_shield_bonus;
+	if (distribution_hub_shields > city_center_district_shields)
+		distribution_hub_shields = city_center_district_shields;
 
 	int standard_district_shields = total_district_shield_bonus - distribution_hub_shields;
 	if (standard_district_shields < 0)
@@ -36790,7 +39870,7 @@ patch_Unit_ai_move_air_transport (Unit * this)
 				continue;
 
 			int score = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 0, -1, -1) +
-				count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 1, -1, -1) + 1;
+			            count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 1, -1, -1) + 1;
 			if (count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 9, -1, -1) == 0)
 				score *= 2;
 			int cont_id = aerodrome_tile->vtable->m46_Get_ContinentID (aerodrome_tile);
@@ -36870,11 +39950,19 @@ patch_Leader_get_attitude_toward (Leader * this, int edx, int civ_id, int param_
 					continue;
 				if (colony_body->OwnerID != civ_id)
 					continue;
-				score -= penalty;
+				score += penalty;
 			}
 		}
 	}
 	return score;
+}
+
+void __fastcall
+patch_UnitIDList_insert_after_init (UnitIDList * this, int edx, int id, UnitIDItem * item)
+{
+	// If using non-standard unit cycling, avoid calling this method b/c it sometimes causes a crash
+	if (is->current_config.unit_cycle_search_criteria == UCSC_STANDARD)
+		UnitIDList_insert_after (this, __, id, item);
 }
 
 bool __fastcall
@@ -37245,14 +40333,6 @@ patch_Main_Screen_Form_find_next_unit_for_cycling (Main_Screen_Form * this)
 }
 
 void __fastcall
-patch_UnitIDList_insert_after_init (UnitIDList * this, int edx, int id, UnitIDItem * item)
-{
-	// If using non-standard unit cycling, avoid calling this method b/c it sometimes causes a crash
-	if (is->current_config.unit_cycle_search_criteria == UCSC_STANDARD)
-		UnitIDList_insert_after (this, __, id, item);
-}
-
-void __fastcall
 patch_City_m22 (City * this, int edx, bool param_1)
 {
 	int * p_stack = (int *)&param_1;
@@ -37395,7 +40475,27 @@ patch_Unit_select_army_member_for_combat (Unit * this, int edx, int param_1, cha
 			return this;
 	}
 
-	return Unit_select_army_member_for_combat (this, __, param_1, param_2);
+	// Defensive selection stays entirely in the base function below. Its calls
+	// to prefer_first_defender already receive counter-adjusted comparisons and
+	// the base function preserves the army's HP-band rotation.
+	Unit * result = NULL;
+	if ((param_2 != 0) &&
+	    is->current_config.enable_unit_counters &&
+	    Unit_has_ability (this, __, UTA_Army) &&
+	    unit_has_valid_type_id (p_bic_data->fighter.defender) &&
+	    (p_bic_data->fighter.defender->Body.CivID != this->Body.CivID) &&
+	    p_bic_data->fighter.defender->vtable->is_enemy_of_civ (
+		    p_bic_data->fighter.defender, __, this->Body.CivID, 0)) {
+		Unit * best_attacker = select_counter_best_attacking_army_member (
+			this, p_bic_data->fighter.defender, param_1);
+		if (best_attacker != NULL)
+			result = best_attacker;
+	}
+
+	if (result == NULL)
+		result = Unit_select_army_member_for_combat (this, __, param_1, param_2);
+
+	return result;
 }
 
 int __fastcall
@@ -37415,7 +40515,6 @@ patch_Tile_check_water_for_canal_move_to_adjacent_tile_dest (Tile * this)
 
 	return this->vtable->m35_Check_Is_Water (this);
 }
-
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

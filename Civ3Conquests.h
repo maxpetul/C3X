@@ -875,10 +875,21 @@ enum FLIC_Chuck_Types
   FLCT_HUFFMAN_TABLE = 0xF1FC,
 };
 
-enum Civ_Contact_Type
+typedef enum leader_contact_flags
 {
-  CCT_Have_Military_Map = 0x40,
-};
+  LCF_HAVE_CONTACT = 0x1,
+  LCF_PLOTTING_WAR = 0x20,
+  LCF_HAVE_MILITARY_MAP = 0x40,
+} LeaderContactFlags;
+
+typedef enum diplomatic_mood
+{
+  DM_GRACIOUS = 0,
+  DM_POLITE,
+  DM_CAUTIOUS,
+  DM_ANGRY,
+  DM_FURIOUS
+} DiplomaticMood;
 
 enum Game_Render_Flags
 {
@@ -1809,7 +1820,7 @@ struct Race_vtable
   char * (__fastcall * GetTitle) (Race *);
   char * (__fastcall * GetSingularName) (Race *);
   int (__fastcall * GetStartupAdvance) (Race *, __, int);
-  int (__fastcall * f1) (Race *);
+  int (__fastcall * get_effective_aggression_level) (Race *);
 };
 
 struct Citizens
@@ -3301,11 +3312,11 @@ struct Leader_vtable
 //  void (__thiscall *m28)(Leader *);
   void *m28;
   int m29;
-  int m30;
-  int (__fastcall * get_attitude_toward) (Leader * this, int edx, int civ_id, int param_2);
+  void (__fastcall * ai_negotiate_with_other_ai) (Leader * this, int edx, int other_civ_id);
+  int m31;
   int m32;
-  int m33;
-  int m34;
+  int (__fastcall * get_attitude_toward) (Leader * this, int edx, int civ_id, int param_2);
+  DiplomaticMood (__fastcall * get_diplomatic_mood_toward) (Leader * this, int edx, int civ_id, int param_2);
   int m35;
   int m36;
   int m37;
@@ -4240,8 +4251,8 @@ struct Reputation
 	int field_28;
 	int icbm;
 	int icbm_other;
-	int recent_ww_given;
-	int recent_ww_taken; // war weariness inflicted on us (= Leader object) by this player (= index in the reputations array) during the last turn
+	int war_damage_memory; // Combat damage taken by 'us' (the Leader object) from this player in the reputations array. Decays over time.
+	int war_damage_this_turn; // Like war_damage_from but cleared every turn
 	int field_3C[4];
 };
 
@@ -4251,7 +4262,8 @@ struct Leader
   int field_4[6];
   int ID;
   int RaceID;
-  int field_24[2];
+  int power_rank; // 31 = strongest, 30 = second strongest, 29 = third, and so forth
+  int power_level;
   int CapitalID;
   int player_difficulty;
   int field_34;
@@ -4361,7 +4373,7 @@ struct Government
   void *PropagandaData;
   int HurryProduction;
   int AssimilationChange;
-  int DratfLimit;
+  int DraftLimit;
   int Military_Police_Limit;
   int field_1B0;
   int Ruler_Titles_Count;
@@ -4374,7 +4386,7 @@ struct Government
   int All_Units_Free;
   int City_Class_Free_Units[3];
   int Unit_Support_Cost;
-  int Last;
+  int war_weariness; // 0 = none, 1 = low, 2 = high
 };
 
 struct Tile_Body
@@ -5129,7 +5141,7 @@ struct BIC
   int TileTypesCount;
   int UnitsCount;
   int WorldSizesCount;
-  int field_8C8;
+  int transition_government;
   int Header;
   int field_8D0;
   int field_8D4[180];
@@ -5785,7 +5797,10 @@ struct New_Game_Player_Form
   Button DescriptionBtn;
   Button ConstraintsBtn;
   PCX_Image PCX2;
-  int field_2E18[4];
+  int field_2E18;
+  int field_2E1C;
+  int field_2E20;
+  int ai_aggression;
   Game_Limits Turns_Limit;
   int field_2E64;
   int field_2E68;
