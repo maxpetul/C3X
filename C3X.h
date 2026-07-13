@@ -1,4 +1,3 @@
-
 #include <stdbool.h>
 
 #define NOVIRTUALKEYCODES // Keycodes defined in Civ3Conquests.h instead
@@ -93,6 +92,16 @@ struct work_area_improvement {
 	short improv_id;
 	int work_area_radius_limit;
 	int work_area_radius_bonus;
+};
+
+struct unit_visibility_rule {
+	struct table unit_ids; // Table mapping unit type IDs to 1's; used as a hash set
+	enum UnitTypeClasses unit_class;
+
+	int base_visibility;
+	int terrain_bonus_multiplier;
+	int fortification_bonus;
+	bool fortification_bonus_continent_lock;
 };
 
 enum retreat_rules {
@@ -227,6 +236,43 @@ enum perfume_kind {
 	COUNT_PERFUME_KINDS
 };
 
+struct unit_counter_group {
+	char * name;
+	int *  type_ids;
+	int    count_type_ids;
+};
+
+// Attacker/defender match modes
+#define UCM_ANY   -1  // * Any unit type
+#define UCM_GROUP -2  // Match using the group_name field
+
+struct counter_rule {
+	// Attacker side
+	int    attacker_match;    // UnitTypeID, or UCM_ANY / UCM_GROUP
+	char * attacker_group;    // Used when attacker_match == UCM_GROUP
+
+	// Defender side
+	int    defender_match;
+	char * defender_group;
+
+	// Environment conditions (0 / false means no restriction)
+	unsigned int terrain_mask; // SquareTypes mask, 0 = no restriction
+	bool   only_in_city;
+	int    district_id;       // -1 = no restriction
+	char * district_name;     // Resolved after district configs are loaded
+	unsigned int self_experience_mask;  // 0 = no restriction
+	unsigned int enemy_experience_mask; // 0 = no restriction
+	bool   ignore_defensive_bonuses; // true = defender receives no defensive bonuses
+
+	// Effects (percent values, 100 = no change)
+	int    self_atk_pct;
+	int    self_def_pct;
+	int    enemy_atk_pct;
+	int    enemy_def_pct;
+	int    self_bombard_pct;
+	int    enemy_bombard_pct;
+};
+
 struct c3x_config {
 	bool enable_stack_bombard;
 	bool enable_disorder_warning;
@@ -282,6 +328,7 @@ struct c3x_config {
 	bool allow_airdrop_without_airport;
 	bool enable_negative_pop_pollution;
 	bool pollution_spawns_reduce_population;
+	bool enable_pollution_from_free_improvements;
 	enum retreat_rules land_retreat_rules;
 	enum retreat_rules sea_retreat_rules;
 	bool allow_defensive_retreat_on_water;
@@ -317,6 +364,7 @@ struct c3x_config {
 	bool charm_flag_triggers_ptw_like_targeting;
 	bool city_icons_show_unit_effects_not_trade;
 	bool ignore_king_ability_for_defense_priority;
+	bool prefer_less_expensive_defenders;
 	bool show_untradable_techs_on_trade_screen;
 	bool disallow_useless_bombard_vs_airfields;
 	enum line_drawing_override draw_lines_using_gdi_plus;
@@ -394,6 +442,11 @@ struct c3x_config {
 	enum no_ai_patrol_override override_no_ai_patrol;
 	enum barbarian_activity_override override_barbarian_activity_level_for_scenario_maps;
 	bool initialize_preplaced_scenario_leaders_as_mgls;
+	bool enable_unit_counters;
+	struct unit_counter_group * unit_counter_groups;
+	int count_unit_counter_groups;
+	struct counter_rule * counter_rules;
+	int count_counter_rules;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
@@ -527,6 +580,20 @@ struct c3x_config {
 	int ai_auto_build_great_wall_strategy;
 
 	bool enable_city_work_radii_highlights;
+
+	bool enable_alternate_view_distance_logic; //enable the whole system or not
+	bool terrain_visibility_euclidean; //whether the upper bound should be determined by a euclidean metric than a chebyshev one.
+	int base_visibility_range; //should default to 1
+	int terrain_visibility_see_height[14]; //most tiles are 1, mountains+volcanoes are 2
+	int terrain_visibility_seen_height[14]; //most tiles are 0, forest+jungle+hills are 1, mountains+volcanoes are 2
+	int terrain_visibility_bonus[14]; //most tiles are 0, hills+mountains+volcanoes are 1
+	bool terrain_visibility_bonus_can_stack; //whether seeing hills and being on a hill provides double the bonus
+	bool terrain_visibility_flat_bonus[14]; //water tiles provide height bonus to tiles being seen across them [ie +2] / adjacent tiles always seen
+	int terrain_visibility_flat_bonus_limit; //maximum size of the flat bonus, in tiles
+	bool terrain_visibility_flat_bonus_can_stack; //whether flat bonus and regular bonus can both apply at once
+	struct unit_visibility_rule * unit_visibility_rule_list; //should default to naval unit type has +1 range in fortification with continent lock
+	int c_unit_visibility_rules;
+	//tiles blocked by obstructions are visible if *either* intermediate tile is not blocking in height.
 };
 
 enum stackable_command {
@@ -1892,7 +1959,41 @@ struct injected_state {
 	// not on that tile, there is no effect. This is only intended to be used on a temporary basis.
 	struct unit_display_override {
 		int unit_id, tile_x, tile_y;
-	} unit_display_override;
+	} unit_display_override, unit_display_override_2;
+	bool combat_unit_display_override_active;
+	struct unit_display_override saved_combat_unit_display_override;
+	struct unit_display_override post_combat_defender_display_override;
+	int post_combat_defender_display_attacker_id;
+	bool bombard_target_display_override_active;
+	struct unit_display_override saved_bombard_target_display_override;
+	struct unit_display_override saved_bombard_target_display_override_2;
+	struct unit_display_override current_bombard_target_display_override;
+
+	// Set in patch_Fighter_get_odds_for_main_combat_loop, read by patch_Unit_get_attack/defense_strength.
+	// Stores counter multipliers for the current combat. Active only during Fighter_get_combat_odds call.
+	struct {
+		bool   active;
+		Unit * attacker;
+		Unit * defender;
+		int    attacker_atk_pct;  // Attacker attack multiplier (combines forward self-atk and reverse enemy-atk)
+		int    defender_def_pct;  // Defender defense multiplier (combines forward enemy-def and reverse self-def)
+		bool   ignore_defensive_bonuses; // Counter rule makes the defender receive no defensive bonuses
+	} counter_combat_ctx;
+	// Set while Fighter::begin is choosing a defender so Fighter::prefer_first_defender_1 can apply counter-adjusted strengths.
+	struct counter_defender_selection_context {
+		bool   active;
+		Unit * attacker;
+		int    tile_x;
+		int    tile_y;
+	} counter_defender_selection_ctx;
+	// Set while the base army-member selector is ranking attacking members. This
+	// lets get_attack_strength expose counter-adjusted values without replacing
+	// the base selector's HP-band logic.
+	struct counter_army_attacker_selection_context {
+		bool   active;
+		Unit * army;
+		Unit * defender;
+	} counter_army_attacker_selection_ctx;
 
 	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
 	Unit * zoc_interceptor;
