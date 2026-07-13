@@ -3312,7 +3312,7 @@ struct Leader_vtable
 //  void (__thiscall *m28)(Leader *);
   void *m28;
   int m29;
-  int m30;
+  void (__fastcall * ai_negotiate_with_other_ai) (Leader * this, int edx, int other_civ_id);
   int m31;
   int m32;
   int (__fastcall * get_attitude_toward) (Leader * this, int edx, int civ_id, int param_2);

@@ -952,6 +952,17 @@ define,	   0x4D519C,	0x4DD953,	0x4D525C,	"ADDR_AIR_UNIT_CHECK_TO_DRAW_PEDIA_STAT
 define,	   0x1A8,	0x1A9,		0x1A8,		"LBL_BOMBARD_RANGE",				"int"
 define,	   0x437F20,	0x439AC0,	0x437FA0,	"Unit_get_transport_capacity",			"int (__fastcall *) (Unit * this)"
 inlead,	   0x5543B0,	0x55FB10,	0x554360,	"Main_GUI_get_unit_stat_str",			"void (__fastcall *) (Main_GUI * this, int edx, char * out_str, Unit * unit)"
+inlead,	   0x5BA010,	0x5C8AD0,	0x5B9D20,	"Unit_can_see_tile",				"bool (__fastcall *) (Unit * this, int edx, int x, int y)"
+define,	   0x44A8D0,	0x44C870,	0x44A950,	"Map_chebyshev_distance",			"int (__fastcall *) (Map * this, int edx, int x1, int y1, int x2, int y2)"
+define,	   0x5BA1F9,	0x5C8CD6,	0x5B9F09,	"ADDR_UNIT_VISIBILITY_RADIUS_1",		"byte *"
+define,	   0x5BA29B,	0x5C8D76,	0x5B9FAB,	"ADDR_UNIT_VISIBILITY_RADIUS_2",		"byte *"
+define,	   0x5BA5F4,	0x5C90CD,	0x5BA304,	"ADDR_UNIT_VISIBILITY_RADIUS_3",		"byte *"
+define,	   0x5C811A,	0x5D6FF5,	0x5C7E2A,	"ADDR_UNIT_TO_UNIT_VISIBILITY_RADIUS",		"byte *"
+define,	   0x5BB7E6,	0x5CA333,	0x5BB4F6,	"ADDR_CIV_UNIT_VISIBILITY_RADIUS",		"byte *"
+define,	   0x5BEB25,	0x5CD745,	0x5BE835,	"ADDR_UTC_SEA_CMP_1",				"byte *"
+define,	   0x5C644C,	0x5D529C,	0x5C615C,	"ADDR_UTC_SEA_CMP_2",				"byte *"
+define,	   0x5C65C8,	0x5D5418,	0x5C62D8,	"ADDR_UTC_SEA_CMP_3",				"byte *"
+define,	   0x5C7E43,	0x5D6D08,	0x5C7B53,	"ADDR_UTC_SEA_CMP_4",				"byte *"
 
 ignore,	   0x5FC710,	0x0,		0x0,		"PCX_Image_create_and_init_jgl_image",		"int (__fastcall *) (PCX_Image * this, int edx, int width, int height, int bit_depth, int param_4, int param_5, int param_6)"
 ignore,	   0x5FCC50,	0x0,		0x0,		"PCX_Image_draw_region_to_location",		"void (__fastcall *) (PCX_Image * this, int edx, PCX_Image * canvas, int src_x, int src_y, int dest_x, int dest_y, int width, int height)"
@@ -976,4 +987,3 @@ ignore,	   0x4BF660,	0x4C6C10,	0x4BF6F0,	"City_draw_citizens",				"void (__fastc
 ignore,	   0x4B9F60,	0x4C15D0,	0x4B9FF0,	"City_add_population",				"void (__fastcall *) (City * this, int edx, int num, int race_id)"
 ignore,	   0x670234,	0x68D2E0,	0x670234,	"Tile_m27_Check_Shield_Bonus",			"bool (__fastcall *) (Tile * this)"
 ignore,	   0x5f3448,	0x6032DF,	0x5F3378,	"CHECK_SHIELD_BONUS_TO_CAN_SPAWN_RES_RETURN",	"int"
-
