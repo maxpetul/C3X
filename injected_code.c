@@ -2186,7 +2186,7 @@ bool
 read_pollution_spawn_effect (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
-	if      (slice_matches_str (&trimmed, "default"                            )) { *out_val = PSE_DEFAULT;                                  return true; }
+	if      (slice_matches_str (&trimmed, "standard"                           )) { *out_val = PSE_STANDARD;                                 return true; }
 	else if (slice_matches_str (&trimmed, "reduce-population"                  )) { *out_val = PSE_REDUCE_POPULATION;                        return true; }
 	else if (slice_matches_str (&trimmed, "reduce-population-and-pollute-tile" )) { *out_val = PSE_REDUCE_POPULATION_AND_POLLUTE_TILE;       return true; }
 	else
@@ -19546,7 +19546,7 @@ patch_init_floating_point ()
 	base_config.distribution_hub_yield_division_mode = DHYDM_FLAT;
 	base_config.ai_distribution_hub_build_strategy = ADHBS_BY_CITY_COUNT;
 	base_config.ai_auto_build_great_wall_strategy = AAGWS_ALL_BORDERS;
-	base_config.pollution_spawn_effect = PSE_DEFAULT;
+	base_config.pollution_spawn_effect = PSE_STANDARD;
 	base_config.great_wall_auto_build_wonder_improv_id = -1;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
@@ -26306,7 +26306,7 @@ void __fastcall
 patch_City_update_spawn_pollution (City * this)
 {
 	enum pollution_spawn_effect effect = is->current_config.pollution_spawn_effect;
-	if (effect == PSE_DEFAULT) {
+	if (effect == PSE_STANDARD) {
 		City_update_spawn_pollution (this);
 		return;
 	} else if (effect == PSE_REDUCE_POPULATION_AND_POLLUTE_TILE)

@@ -228,7 +228,7 @@ enum ai_auto_build_great_wall_strategy {
 };
 
 enum pollution_spawn_effect {
-	PSE_DEFAULT = 0,
+	PSE_STANDARD = 0,
 	PSE_REDUCE_POPULATION,
 	PSE_REDUCE_POPULATION_AND_POLLUTE_TILE
 };
