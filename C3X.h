@@ -227,6 +227,12 @@ enum ai_auto_build_great_wall_strategy {
 	AAGWS_OTHER_CIV_BORDERED_ONLY
 };
 
+enum pollution_spawn_effect {
+	PSE_DEFAULT = 0,
+	PSE_REDUCE_POPULATION,
+	PSE_REDUCE_POPULATION_AND_POLLUTE_TILE
+};
+
 enum perfume_kind {
 	PK_PRODUCTION = 0,
 	PK_TECHNOLOGY,
@@ -327,6 +333,7 @@ struct c3x_config {
 	bool dont_end_units_turn_after_airdrop;
 	bool allow_airdrop_without_airport;
 	bool enable_negative_pop_pollution;
+	enum pollution_spawn_effect pollution_spawn_effect;
 	bool enable_pollution_from_free_improvements;
 	enum retreat_rules land_retreat_rules;
 	enum retreat_rules sea_retreat_rules;
@@ -669,6 +676,7 @@ enum c3x_label {
 	CL_OBSOLETED_BY,
 	CL_NO_STEALTH_ATTACK,
 	CL_DODGED_SAM,
+	CL_POLLUTION_REDUCES_POP,
 	CL_PREVIEW,
 	CL_CITY_TOO_CLOSE_BUTTON_TOOLTIP,
 	CL_TOTAL_CITIES,
