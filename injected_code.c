@@ -692,7 +692,9 @@ reset_to_base_config ()
 	for (int n = 0; n < ARRAY_LEN (cc->limit_units_per_tile); n++)
 		cc->limit_units_per_tile[n] = 0;
 
+	is->war_weariness_kill_victim_type_id = -1;
 	table_deinit (&cc->exclude_types_from_units_per_tile_limit);
+	table_deinit (&cc->exclude_types_from_units_war_weariness);
 
 	for (int n = 0; n < COUNT_PERFUME_KINDS; n++)
 		stable_deinit (&cc->perfume_specs[n]);
@@ -2861,6 +2863,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->great_wall_auto_build_wonder_improv_id = -1;
 				} else if (slice_matches_str (&p.key, "exclude_types_from_units_per_tile_limit")) {
 					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->exclude_types_from_units_per_tile_limit))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "exclude_types_from_units_war_weariness")) {
+					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->exclude_types_from_units_war_weariness))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "limit_defensive_retreat_on_water_to_types")) {
 					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->limit_defensive_retreat_on_water_to_types))
@@ -30568,6 +30573,14 @@ patch_Unit_can_move_after_zoc (Unit * this, int edx, int neighbor_index, int par
 		AMV_1;
 }
 
+void __fastcall
+patch_Unit_score_kill (Unit * this, int edx, Unit * victim, bool was_attacking)
+{
+	is->war_weariness_kill_victim_type_id = unit_has_valid_type_id (victim) ? victim->Body.UnitTypeID : -1;
+	Unit_score_kill (this, __, victim, was_attacking);
+	is->war_weariness_kill_victim_type_id = -1;
+}
+
 // Checks unit's HP after it was possibly hit by ZoC and deals with the consequences if it's dead. Does nothing if config option to make ZoC lethal
 // isn't set or if interceptor is NULL. Returns true if the unit was killed, false otherwise.
 bool
@@ -30583,7 +30596,7 @@ check_life_after_zoc (Unit * unit, Unit * interceptor)
 		    ((p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class != interceptor_type->Unit_Class) ||
 		     (interceptor_type->Bombard_Strength >= Unit_get_attack_strength (interceptor))))
 			is->do_not_enslave_units = true;
-		Unit_score_kill (interceptor, __, unit, false);
+		patch_Unit_score_kill (interceptor, __, unit, false);
 		is->do_not_enslave_units = false;
 
 		if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (&p_bic_data->fighter, __, interceptor, unit, true))
@@ -31437,18 +31450,28 @@ patch_Unit_get_defense_strength (Unit * this)
 }
 
 void __fastcall
+patch_Leader_add_recent_war_weariness_for_kill (Leader * this, int victim_civ_id, int amount, int victim_civ_offset, int our_civ_id)
+{
+	if ((is->war_weariness_kill_victim_type_id >= 0) &&
+	    itable_look_up_or (&is->current_config.exclude_types_from_units_war_weariness, is->war_weariness_kill_victim_type_id, 0))
+		return;
+
+	Leader_add_recent_war_weariness (this, __, victim_civ_id, amount, victim_civ_offset, our_civ_id);
+}
+
+void __fastcall
 patch_Unit_score_kill_by_defender (Unit * this, int edx, Unit * victim, bool was_attacking)
 {
 	// This function is called when the defender wins in combat. If the attacker was actually killed by defensive bombardment, then award credit
 	// for that kill to the defensive bombarder not the defender in combat.
 	if (is->dbe.defender_was_destroyed) {
 		is->do_not_enslave_units = is->current_config.prevent_enslaving_by_bombardment;
-		Unit_score_kill (is->dbe.bombarder, __, victim, was_attacking);
+		patch_Unit_score_kill (is->dbe.bombarder, __, victim, was_attacking);
 		is->do_not_enslave_units = false;
 		p_bic_data->fighter.play_animations = is->dbe.saved_animation_setting;
 
 	} else
-		Unit_score_kill (this, __, victim, was_attacking);
+		patch_Unit_score_kill (this, __, victim, was_attacking);
 }
 
 void __fastcall
