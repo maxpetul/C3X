@@ -708,6 +708,29 @@ parse_bracketed_block (char ** p_cursor, struct string_slice * out)
 }
 
 int
+parse_until_punctuation (char ** p_cursor, struct string_slice * out, char punct)
+{
+	char * cur = *p_cursor;
+	struct string_slice unused;
+	char * str_start = cur;
+	while (1) {
+		if (*cur == punct) {
+			break;
+		} else if (*cur == '"') {
+			if (! parse_string (&cur, &unused))
+				return 0;
+		} else if (*cur == '\0')
+			return 0;
+		else
+			cur++;
+	}
+	out->str = str_start;
+	out->len = cur - str_start;
+	*p_cursor = cur;
+	return 1;
+}
+
+int
 parse_csv_value (char ** p_cursor, char ** out_val, int * out_len)
 {
 	char * tr_val = *p_cursor,

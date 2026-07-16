@@ -77,10 +77,31 @@ struct unit_type_limit {
 	int cities_per;
 };
 
+/* ToC-26: Represents a named group of unit types that share a combined build limit.
+   Stored by pointer in unit_limit_groups (keyed by group name) and in unit_type_to_group
+   (keyed by unit_type_id).  The group struct is owned by unit_limit_groups; unit_type_to_group
+   holds non-owning pointers into it. */
+struct unit_limit_group {
+    int * unit_type_ids;        // Array of unit type IDs belonging to this group
+    int   count;                // Number of IDs in the array
+    struct unit_type_limit limit; // The shared limit value for this group
+    bool  has_limit;            // True once a limit has been assigned via unit_limits
+}; // END ToC-26
+
 struct work_area_improvement {
 	short improv_id;
 	int work_area_radius_limit;
 	int work_area_radius_bonus;
+};
+
+struct unit_visibility_rule {
+	struct table unit_ids; // Table mapping unit type IDs to 1's; used as a hash set
+	enum UnitTypeClasses unit_class;
+
+	int base_visibility;
+	int terrain_bonus_multiplier;
+	int fortification_bonus;
+	bool fortification_bonus_continent_lock;
 };
 
 enum retreat_rules {
@@ -178,6 +199,25 @@ enum day_night_cycle_mode {
 	DNCM_SPECIFIED
 };
 
+enum seasonal_cycle_mode {
+	SCM_OFF = 0,
+	SCM_TIMER,
+	SCM_USER_SEASON,
+	SCM_EVERY_TURN,
+	SCM_ON_DAY_NIGHT_HOUR,
+	SCM_SPECIFIED
+};
+
+enum cycle_season {
+	CS_SUMMER = 0,
+	CS_FALL,
+	CS_WINTER,
+	CS_SPRING,
+	COUNT_CYCLE_SEASONS
+};
+
+char const * const cycle_season_names[COUNT_CYCLE_SEASONS] = {"Summer", "Fall", "Winter", "Spring"};
+
 enum distribution_hub_yield_division_mode {
 	DHYDM_FLAT = 0,
 	DHYDM_SCALE_BY_CITY_COUNT
@@ -191,6 +231,12 @@ enum ai_distribution_hub_build_strategy {
 enum ai_auto_build_great_wall_strategy {
 	AAGWS_ALL_BORDERS = 0,
 	AAGWS_OTHER_CIV_BORDERED_ONLY
+};
+
+enum pollution_spawn_effect {
+	PSE_STANDARD = 0,
+	PSE_REDUCE_POPULATION,
+	PSE_REDUCE_POPULATION_AND_POLLUTE_TILE
 };
 
 enum perfume_kind {
@@ -228,7 +274,7 @@ struct counter_rule {
 	char * district_name;     // Resolved after district configs are loaded
 	unsigned int self_experience_mask;  // 0 = no restriction
 	unsigned int enemy_experience_mask; // 0 = no restriction
-	bool   ignore_defensive_bonuses; // true = the first side ignores the second side's defensive bonuses when attacking
+	bool   ignore_defensive_bonuses; // true = defender receives no defensive bonuses
 
 	// Effects (percent values, 100 = no change)
 	int    self_atk_pct;
@@ -293,6 +339,8 @@ struct c3x_config {
 	bool dont_end_units_turn_after_airdrop;
 	bool allow_airdrop_without_airport;
 	bool enable_negative_pop_pollution;
+	enum pollution_spawn_effect pollution_spawn_effect;
+	bool enable_pollution_from_free_improvements;
 	enum retreat_rules land_retreat_rules;
 	enum retreat_rules sea_retreat_rules;
 	bool allow_defensive_retreat_on_water;
@@ -316,6 +364,7 @@ struct c3x_config {
 	bool include_stealth_attack_cancel_option;
 	bool intercept_recon_missions;
 	bool charge_one_move_for_recon_and_interception;
+	int steal_plans_duration;
 	bool polish_precision_striking;
 	bool enable_stealth_attack_via_bombardment;
 	bool immunize_aircraft_against_bombardment;
@@ -327,6 +376,7 @@ struct c3x_config {
 	bool charm_flag_triggers_ptw_like_targeting;
 	bool city_icons_show_unit_effects_not_trade;
 	bool ignore_king_ability_for_defense_priority;
+	bool prefer_less_expensive_defenders;
 	bool show_untradable_techs_on_trade_screen;
 	bool disallow_useless_bombard_vs_airfields;
 	enum line_drawing_override draw_lines_using_gdi_plus;
@@ -363,6 +413,10 @@ struct c3x_config {
 	struct leader_era_alias_list * leader_era_alias_lists;
 	int count_leader_era_alias_lists;
 	struct table unit_limits; // Maps unit type names (strings) to pointers to limit objects (struct unit_type_limit *)
+	// ToC-26: Group-based unit limits. unit_limit_groups maps group name strings to struct unit_limit_group*.
+	// unit_type_to_group maps unit_type_id (int) to struct unit_limit_group* for O(1) runtime lookup.
+	struct table unit_limit_groups;
+	struct table unit_type_to_group; // END ToC-26
 	bool allow_upgrades_in_any_city;
 	bool do_not_generate_volcanos;
 	bool do_not_pollute_impassable_tiles;
@@ -374,6 +428,8 @@ struct c3x_config {
 	int chance_for_nukes_to_destroy_max_one_hp_units;
 	bool allow_sale_of_aqueducts_and_hospitals;
 	bool no_cross_shore_detection;
+	int radar_tower_detection_distance;
+	int outpost_detection_distance;
 	int city_work_radius;
 	bool auto_zoom_city_screen_for_large_work_areas;
 	enum work_area_limit work_area_limit;
@@ -466,6 +522,12 @@ struct c3x_config {
 	int elapsed_minutes_per_day_night_hour_transition;
 	int fixed_hours_per_turn_for_day_night_cycle;
 	int pinned_hour_for_day_night_cycle;
+	int seasonal_cycle_mode;
+	int enabled_seasons_mask;
+	int pinned_season_for_seasonal_cycle;
+	int elapsed_minutes_per_season_transition;
+	int fixed_turns_per_season;
+	int transition_season_on_day_night_hour;
 
 	bool enable_natural_wonders;
 	bool add_natural_wonders_to_scenarios_if_none;
@@ -531,6 +593,20 @@ struct c3x_config {
 	int ai_auto_build_great_wall_strategy;
 
 	bool enable_city_work_radii_highlights;
+
+	bool enable_alternate_view_distance_logic; //enable the whole system or not
+	bool terrain_visibility_euclidean; //whether the upper bound should be determined by a euclidean metric than a chebyshev one.
+	int base_visibility_range; //should default to 1
+	int terrain_visibility_see_height[14]; //most tiles are 1, mountains+volcanoes are 2
+	int terrain_visibility_seen_height[14]; //most tiles are 0, forest+jungle+hills are 1, mountains+volcanoes are 2
+	int terrain_visibility_bonus[14]; //most tiles are 0, hills+mountains+volcanoes are 1
+	bool terrain_visibility_bonus_can_stack; //whether seeing hills and being on a hill provides double the bonus
+	bool terrain_visibility_flat_bonus[14]; //water tiles provide height bonus to tiles being seen across them [ie +2] / adjacent tiles always seen
+	int terrain_visibility_flat_bonus_limit; //maximum size of the flat bonus, in tiles
+	bool terrain_visibility_flat_bonus_can_stack; //whether flat bonus and regular bonus can both apply at once
+	struct unit_visibility_rule * unit_visibility_rule_list; //should default to naval unit type has +1 range in fortification with continent lock
+	int c_unit_visibility_rules;
+	//tiles blocked by obstructions are visible if *either* intermediate tile is not blocking in height.
 };
 
 enum stackable_command {
@@ -545,6 +621,7 @@ enum stackable_command {
 	SC_CLEAN_POLLUTION,
 	SC_ROAD,
 	SC_RAILROAD,
+	SC_SKIP_TURN,
 	SC_FORTIFY,
 	SC_UPGRADE,
 	SC_DISBAND,
@@ -575,6 +652,7 @@ struct sc_button_info {
 	/* Clean Pol. */ { .command = UCV_Clear_Pollution, .kind = SCK_TERRAFORM, .tile_sheet_column = 6, .tile_sheet_row = 3 },
 	/* Road */       { .command = UCV_Build_Road     , .kind = SCK_TERRAFORM, .tile_sheet_column = 6, .tile_sheet_row = 2 },
 	/* Railroad */   { .command = UCV_Build_Railroad , .kind = SCK_TERRAFORM, .tile_sheet_column = 7, .tile_sheet_row = 2 },
+	/* Skip Turn */  { .command = UCV_Skip_Turn      , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 0, .tile_sheet_row = 0 },
 	/* Fortify */    { .command = UCV_Fortify        , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 2, .tile_sheet_row = 0 },
 	/* Upgrade */    { .command = UCV_Upgrade_Unit   , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 7, .tile_sheet_row = 1 },
 	/* Disband */    { .command = UCV_Disband        , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 3, .tile_sheet_row = 0 },
@@ -605,6 +683,7 @@ enum c3x_label {
 	CL_OBSOLETED_BY,
 	CL_NO_STEALTH_ATTACK,
 	CL_DODGED_SAM,
+	CL_POLLUTION_REDUCES_POP,
 	CL_PREVIEW,
 	CL_CITY_TOO_CLOSE_BUTTON_TOOLTIP,
 	CL_TOTAL_CITIES,
@@ -787,6 +866,11 @@ enum district_ai_build_strategy {
 	DABS_TILE_IMPROVEMENT = 1
 };
 
+enum district_type {
+	DT_DISTRICT = 0,
+	DT_TILE_IMPROVEMENT = 1
+};
+
 struct district_config {
 	enum Unit_Command_Values command;
 	char const * name;
@@ -815,12 +899,15 @@ struct district_config {
 	bool vary_img_by_culture;
 	enum district_render_strategy render_strategy;
 	enum district_ai_build_strategy ai_build_strategy;
+	enum district_type type;
 	bool is_dynamic;
 	bool align_to_coast;
 	bool draw_over_resources;
+	bool subsumes_tile_resource;
 	bool allow_irrigation_from;
 	bool auto_add_road;
 	bool auto_add_railroad;
+	bool consumes_worker;
 	int custom_width;
 	int custom_height;
 	int x_offset;
@@ -986,7 +1073,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 5, .img_column_count = 4, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
 		.culture_bonus = 1, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 25,
-		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0, .auto_add_road = true
 
 	},
 	{
@@ -1111,11 +1198,14 @@ struct parsed_district_definition {
 	bool vary_img_by_culture;
 	enum district_render_strategy render_strategy;
 	enum district_ai_build_strategy ai_build_strategy;
+	enum district_type type;
 	bool align_to_coast;
 	bool draw_over_resources;
+	bool subsumes_tile_resource;
 	bool allow_irrigation_from;
 	bool auto_add_road;
 	bool auto_add_railroad;
+	bool consumes_worker;
 	bool impassable;
 	bool impassable_to_wheeled;
 	int custom_width;
@@ -1166,8 +1256,10 @@ struct parsed_district_definition {
 	bool has_vary_img_by_culture;
 	bool has_render_strategy;
 	bool has_ai_build_strategy;
+	bool has_type;
 	bool has_align_to_coast;
 	bool has_draw_over_resources;
+	bool has_subsumes_tile_resource;
 	bool has_custom_width;
 	bool has_custom_height;
 	bool has_x_offset;
@@ -1215,6 +1307,7 @@ struct parsed_district_definition {
 	bool has_allow_irrigation_from;
 	bool has_auto_add_road;
 	bool has_auto_add_railroad;
+	bool has_consumes_worker;
 	bool has_impassable;
 	bool has_impassable_to_wheeled;
 };
@@ -1642,6 +1735,10 @@ struct injected_state {
 	// after founding feature so it may not be set if that feature is not activated or applicable. Defaults to -1.
 	int turn_no_of_last_founding_for_settler_perfume[32];
 
+	// Maps pairs of spying and target civ IDs to the turn on which their stolen plans visibility expires. Keys are (spying ID << 5) | target ID.
+	struct table steal_plans_expiration_turns;
+	int steal_plans_success_roll;
+
 	// Stores the byte offsets into the c3x_config struct of all boolean/integer config options, accessible using the options' names as
 	// strings. Used when reading in a config INI file.
 	struct table boolean_config_offsets;
@@ -1882,6 +1979,12 @@ struct injected_state {
 	} unit_display_override, unit_display_override_2;
 	bool combat_unit_display_override_active;
 	struct unit_display_override saved_combat_unit_display_override;
+	struct unit_display_override post_combat_defender_display_override;
+	int post_combat_defender_display_attacker_id;
+	bool bombard_target_display_override_active;
+	struct unit_display_override saved_bombard_target_display_override;
+	struct unit_display_override saved_bombard_target_display_override_2;
+	struct unit_display_override current_bombard_target_display_override;
 
 	// Set in patch_Fighter_get_odds_for_main_combat_loop, read by patch_Unit_get_attack/defense_strength.
 	// Stores counter multipliers for the current combat. Active only during Fighter_get_combat_odds call.
@@ -1893,6 +1996,21 @@ struct injected_state {
 		int    defender_def_pct;  // Defender defense multiplier (combines forward enemy-def and reverse self-def)
 		bool   ignore_defensive_bonuses; // Counter rule makes the defender receive no defensive bonuses
 	} counter_combat_ctx;
+	// Set while Fighter::begin is choosing a defender so Fighter::prefer_first_defender_1 can apply counter-adjusted strengths.
+	struct counter_defender_selection_context {
+		bool   active;
+		Unit * attacker;
+		int    tile_x;
+		int    tile_y;
+	} counter_defender_selection_ctx;
+	// Set while the base army-member selector is ranking attacking members. This
+	// lets get_attack_strength expose counter-adjusted values without replacing
+	// the base selector's HP-band logic.
+	struct counter_army_attacker_selection_context {
+		bool   active;
+		Unit * army;
+		Unit * defender;
+	} counter_army_attacker_selection_ctx;
 
 	struct combat_odds_hud_state {
 		bool active;
@@ -1997,6 +2115,13 @@ struct injected_state {
 	int penciled_in_upgrade_count;
 	int penciled_in_upgrade_capacity;
 
+	// ToC-27: Set to true while patch_City_can_build_upgrade_type is running. When true,
+	// patch_City_can_build_unit skips its unit-type limit check so that upgrades to group-limited
+	// types are not blocked at the City_can_build level. patch_Unit_can_upgrade re-applies the
+	// limit with full source-type context, allowing same-group upgrades (net-zero count change)
+	// while still blocking over-limit production and cross-group upgrade attempts.
+	bool checking_upgrade_type_eligibility; // END ToC-27
+
 	// While in Leader::do_capture_city, the city in question is stored in this var. Otherwise it's NULL.
 	City * currently_capturing_city;
 
@@ -2054,10 +2179,14 @@ struct injected_state {
 	// Day-Night cycle data
 	int current_day_night_cycle;
 	bool day_night_cycle_unstarted; // If current_day_night_cycle has not been set, f.e. because it's the first turn of a new game.
+	int current_seasonal_cycle;
+	bool seasonal_cycle_unstarted;
+	int turns_in_current_season;
 	bool day_night_cycle_img_proxies_indexed;
 	LARGE_INTEGER last_day_night_cycle_update_time;
+	LARGE_INTEGER last_seasonal_cycle_update_time;
 
-	struct table day_night_sprite_proxy_by_hour[24];
+	struct table * day_night_sprite_proxy_by_season_and_hour;
 
 	struct wonder_district_image_set {
 		Sprite img;
@@ -2150,7 +2279,7 @@ struct injected_state {
 		Sprite Abandoned_Maritime_District_Image;
 		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
 		struct natural_wonder_district_image_set Natural_Wonder_Images[MAX_NATURAL_WONDER_DISTRICT_TYPES];
-	} day_night_cycle_imgs[24];
+	} * cycle_imgs;
 
 	// Districts
 	enum init_state dc_img_state;

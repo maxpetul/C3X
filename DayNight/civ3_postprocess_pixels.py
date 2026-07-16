@@ -228,6 +228,9 @@ def walk_and_fix(data_dir: str, noon_folder: str,
     annotations_abs = os.path.normpath(os.path.join(data_dir, "Annotations"))
     targets = []
 
+    def is_hour_folder_name(name: str) -> bool:
+        return len(name) == 4 and name.isdigit()
+
     if only_hour is not None:
         hour_name = f"{only_hour:04d}"
         hour_abs = os.path.normpath(os.path.join(data_dir, hour_name))
@@ -241,11 +244,15 @@ def walk_and_fix(data_dir: str, noon_folder: str,
             if not os.path.isdir(sub): continue
             if os.path.normcase(sub) == os.path.normcase(noon_abs): continue
             if os.path.normcase(sub) == os.path.normcase(annotations_abs): continue
+            if not is_hour_folder_name(name): continue
             targets.append(sub)
 
     total_changed = 0
     for root in targets:
-        for dirpath, _, filenames in os.walk(root):
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d.lower() != "annotations"]
+            if os.path.basename(dirpath).lower() == "annotations":
+                continue
             for fname in filenames:
                 if not fname.lower().endswith(".pcx"):
                     continue
