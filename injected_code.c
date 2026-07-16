@@ -31450,13 +31450,13 @@ patch_Unit_get_defense_strength (Unit * this)
 }
 
 void __fastcall
-patch_Leader_add_recent_war_weariness_in_score_kill (Leader * this, int victim_civ_id, int amount, int victim_civ_offset, int our_civ_id)
+patch_Leader_add_recent_war_weariness_in_score_kill (Leader * this, int edx, int victim_civ_id, int amount)
 {
 	if ((is->war_weariness_kill_victim_type_id >= 0) &&
 	    itable_look_up_or (&is->current_config.exclude_types_from_units_war_weariness, is->war_weariness_kill_victim_type_id, 0))
 		return;
 
-	Leader_add_recent_war_weariness (this, __, victim_civ_id, amount, victim_civ_offset, our_civ_id);
+	Leader_add_recent_war_weariness (this, __, victim_civ_id, amount);
 }
 
 void __fastcall
