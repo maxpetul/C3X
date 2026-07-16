@@ -883,14 +883,14 @@ typedef enum leader_contact_flags
   LCF_HAVE_MILITARY_MAP = 0x40,
 } LeaderContactFlags;
 
-typedef enum diplomatic_mood
+typedef enum ai_diplo_mood
 {
-  DM_GRACIOUS = 0,
-  DM_POLITE,
-  DM_CAUTIOUS,
-  DM_ANGRY,
-  DM_FURIOUS
-} DiplomaticMood;
+  AIDM_GRACIOUS = 0,
+  AIDM_POLITE,
+  AIDM_CAUTIOUS,
+  AIDM_ANGRY,
+  AIDM_FURIOUS
+} AIDiploMood;
 
 enum Game_Render_Flags
 {
@@ -2710,8 +2710,8 @@ struct Unit_vtable
   int m12;
   int (__fastcall * get_sea_id) (Unit *);
   byte (__fastcall * ai_is_good_army_addition) (Unit *, __, Unit *);
-  byte (__fastcall * is_enemy_of_civ) (Unit *, __, int, byte);
-  byte (__fastcall * is_enemy_of_unit) (Unit *, __, Unit *, int);
+  bool (__fastcall * is_enemy_of_civ) (Unit * this, __, int other_civ_id, bool include_plotting);
+  bool (__fastcall * is_enemy_of_unit) (Unit * this, __, Unit * other, bool include_plotting);
   void (__fastcall * upgrade_checking_ga_and_strat) (Unit *);
   int m18;
   int (__fastcall * Move) (Unit *, int, int, char);
@@ -3304,8 +3304,8 @@ struct Leader_vtable
   int m19;
   int m20;
   int (__fastcall * ai_eval_technology) (Leader * this, int edx, int id, byte param_2, byte param_3);
-  int m22;
-  int m23;
+  int (__fastcall * ai_choose_research) (Leader * this, int edx, bool param_1);
+  int (__fastcall * ai_eval_map_trade) (Leader * this, int edx, int from_civ_id, bool territory_only);
   int m24;
   int m25;
   int m26;
@@ -3316,7 +3316,7 @@ struct Leader_vtable
   int m31;
   int m32;
   int (__fastcall * get_attitude_toward) (Leader * this, int edx, int civ_id, int param_2);
-  DiplomaticMood (__fastcall * get_diplomatic_mood_toward) (Leader * this, int edx, int civ_id, int param_2);
+  AIDiploMood (__fastcall * get_diplomatic_mood_toward) (Leader * this, int edx, int civ_id, int param_2);
   int m35;
   int m36;
   int m37;
