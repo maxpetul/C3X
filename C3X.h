@@ -459,6 +459,7 @@ struct c3x_config {
 	bool measure_turn_times;
 
 	bool use_offensive_artillery_ai;
+	bool enable_diplo_demands_between_ai_players;
 	bool dont_escort_unflagged_units;
 	int ai_build_artillery_ratio;
 	int ai_artillery_value_damage_percent;
