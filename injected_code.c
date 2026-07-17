@@ -21257,19 +21257,13 @@ patch_rand_int_for_ai_ai_negotiation (void * this, int edx, int lim)
 	return 0;
 }
 
-void __fastcall
-patch_Leader_ai_negotiate_with_other_ai (Leader * this, int edx, int other_civ_id)
+bool
+try_ai_demand_from_other_ai (Leader * this, int other_civ_id)
 {
-	// Preserve the base game's 1-in-4 chance and random-number consumption for normal AI negotiation.
-	if (rand_int (p_rand_object, __, 4) == 0) {
-		Leader_ai_negotiate_with_other_ai (this, __, other_civ_id);
-		return;
-	}
-
-	if ((! is->current_config.enable_diplo_demands_between_ai_players) || this->At_War[other_civ_id] ||
+	if (this->At_War[other_civ_id] ||
 	    ((! is_online_game ()) && (this->field_B30[other_civ_id] > 0)) ||
 	    (! Leader_ai_would_meet_with (this, __, other_civ_id)))
-		return;
+		return false;
 
 	TradeOfferList demands = {(void *)((int)p_trade_offer_vtable - 4), 0, NULL, NULL};
 	TradeOfferList no_offers = {(void *)((int)p_trade_offer_vtable - 4), 0, NULL, NULL};
@@ -21330,6 +21324,20 @@ done:
 		show_ai_demand_popup (this, recipient, &demands, accepted, war_declared);
 	TradeOfferList_clear (&demands);
 	TradeOfferList_clear (&no_offers);
+	return made_demand;
+}
+
+void __fastcall
+patch_Leader_ai_negotiate_with_other_ai (Leader * this, int edx, int other_civ_id)
+{
+	if (is->current_config.enable_diplo_demands_between_ai_players &&
+	    try_ai_demand_from_other_ai (this, other_civ_id))
+		return;
+
+	// If no demand was made, preserve the base game's 1-in-4 chance and random-number consumption
+	// for normal AI negotiation.
+	if (rand_int (p_rand_object, __, 4) == 0)
+		Leader_ai_negotiate_with_other_ai (this, __, other_civ_id);
 }
 
 void __fastcall
