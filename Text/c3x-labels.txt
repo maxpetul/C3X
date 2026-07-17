@@ -174,3 +174,9 @@ Seafaring
 ; Main-screen combat odds HUD
 Win rate:
 Damage rate:
+vs
+Attack
+Defense
+Bombard
+Ignores defensive bonuses
+No counter effect

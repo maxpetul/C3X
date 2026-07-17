@@ -137,6 +137,12 @@ enum combat_odds_hud_mode {
 	COHM_BOMBARD
 };
 
+enum combat_win_rate_display_mode {
+	CWRDM_OFF = 0,
+	CWRDM_COMPACT,
+	CWRDM_DETAILED
+};
+
 enum no_ai_patrol_override {
 	NAPO_ZERO = 0,
 	NAPO_ONE,
@@ -274,7 +280,7 @@ struct counter_rule {
 	char * district_name;     // Resolved after district configs are loaded
 	unsigned int self_experience_mask;  // 0 = no restriction
 	unsigned int enemy_experience_mask; // 0 = no restriction
-	bool   ignore_defensive_bonuses; // true = defender receives no defensive bonuses
+	bool   ignore_defensive_bonuses; // Forward match only: defender receives no defensive bonuses
 
 	// Effects (percent values, 100 = no change)
 	int    self_atk_pct;
@@ -283,6 +289,13 @@ struct counter_rule {
 	int    enemy_def_pct;
 	int    self_bombard_pct;
 	int    enemy_bombard_pct;
+};
+
+struct counter_effect_summary {
+	int attacker_atk_pct;
+	int defender_def_pct;
+	int bombard_pct;
+	bool ignore_defensive_bonuses;
 };
 
 struct c3x_config {
@@ -403,7 +416,7 @@ struct c3x_config {
 	bool remove_land_artillery_target_restrictions;
 	bool allow_bombard_of_other_improvs_on_occupied_airfield;
 	bool show_total_city_count;
-	bool show_combat_odds_on_main_screen;
+	enum combat_win_rate_display_mode combat_win_rate_display_mode;
 	bool strengthen_forbidden_palace_ocn_effect;
 	int extra_unit_maintenance_per_shields;
 	enum special_zone_of_control_rules special_zone_of_control_rules;
@@ -775,6 +788,12 @@ enum c3x_label {
 	// Main-screen combat odds HUD
 	CL_COMBAT_WIN_CHANCE,
 	CL_BOMBARD_DAMAGE_CHANCE,
+	CL_COMBAT_VS,
+	CL_COUNTER_ATTACK,
+	CL_COUNTER_DEFENSE,
+	CL_COUNTER_BOMBARD,
+	CL_COUNTER_IGNORES_DEFENSIVE_BONUSES,
+	CL_COUNTER_NO_EFFECT,
 
 	COUNT_C3X_LABELS
 };
@@ -2017,11 +2036,15 @@ struct injected_state {
 		enum combat_odds_hud_mode mode;
 		int tile_x, tile_y;
 		int attacker_unit_id, target_unit_id;
+		int attacker_unit_type_id, target_unit_type_id;
 		int percent_basis_points;
+		struct counter_effect_summary counter_effects;
 		char text[64];
 	} combat_odds_hud;
-	PCX_Image combat_odds_hud_backdrop;
-	enum init_state combat_odds_hud_backdrop_state;
+	PCX_Image combat_odds_hud_compact_backdrop;
+	enum init_state combat_odds_hud_compact_backdrop_state;
+	PCX_Image combat_odds_hud_detailed_backdrop;
+	enum init_state combat_odds_hud_detailed_backdrop_state;
 
 	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
 	Unit * zoc_interceptor;

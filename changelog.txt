@@ -1,3 +1,4 @@
+- Add compact and detailed combat win rate HUD modes under combat_win_rate_display_mode, with detailed mode showing active unit counter effects
 - Allow multiple unit types to be limited together as a group, see unit_limit_groups config option
 - Districts may work like tile improvements in that cities must work their tiles to receive their yields
   - See the 'type' and 'ai_build_strategy' options in the districts config
