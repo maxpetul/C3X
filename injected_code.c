@@ -21269,8 +21269,8 @@ try_ai_demand_from_other_ai (Leader * this, int other_civ_id, int demand_rate)
 	if ((demand_rate < 100) && (rand_int (p_rand_object, __, 100) >= demand_rate))
 		return false;
 
-	TradeOfferList demands = {(void *)((int)p_trade_offer_vtable - 4), 0, NULL, NULL};
-	TradeOfferList no_offers = {(void *)((int)p_trade_offer_vtable - 4), 0, NULL, NULL};
+	TradeOfferList demands = {p_trade_offer_list_vtable, 0, NULL, NULL};
+	TradeOfferList no_offers = {p_trade_offer_list_vtable, 0, NULL, NULL};
 	Leader * recipient = &leaders[other_civ_id];
 	bool made_demand = false;
 	bool accepted = false;

@@ -117,6 +117,7 @@ repl vptr, 0x66DD28,	0x68AE08,	0x66DD28,	"impl_ai_is_good_army_addition",		"bool
 repl vptr, 0x666578,	0x6835CC,	0x666578,	"PopupForm_set_text_key_and_flags",		"void (__fastcall *) (PopupForm * this, int edx, char * script_path, char * text_key, int param_3, int param_4, int param_5, int param_6)"
 define,    0xA35200,	0xA57A00,	0xA351C0,	"p_diplo_form",					"DiploForm *"
 define,    0x649A8B,	0x6683E1,	0x6499CF,	"new",						"void * (__cdecl *) (unsigned num_bytes)"
+define,    0x666AC0,	0x683B18,	0x666AC0,	"p_trade_offer_list_vtable",			"void *"
 define,    0x666AC4,	0x683B1C,	0x666AC4,	"p_trade_offer_vtable",				"TradeOfferVTable *"
 define,    0x440EE0,	0x442CD0,	0x440F60,	"Leader_consider_trade",			"DiploMessage (__fastcall *) (Leader * this, int edx, TradeOfferList * receiving, TradeOfferList * paying, int other_party_civ_id, byte param_4, bool param_5, byte param_6, byte param_7, int * out_advantage, int * param_9, int * param_10)"
 repl vptr, 0x66CBB0,	0x689C9C,	0x66CBB0,	"Leader_ai_negotiate_with_other_ai",		"void (__fastcall *) (Leader * this, int edx, int other_civ_id)"
