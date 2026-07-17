@@ -19281,7 +19281,7 @@ patch_init_floating_point ()
 		{"aggressively_penalize_bankruptcy"                      , false, offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
 		{"no_penalty_exception_for_agri_fresh_water_city_tiles"  , false, offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
 		{"use_offensive_artillery_ai"                            , true , offsetof (struct c3x_config, use_offensive_artillery_ai)},
-		{"enable_diplo_demands_between_ai_players"               , false, offsetof (struct c3x_config, enable_diplo_demands_between_ai_players)},
+		{"show_ai_demand_info_popup"                             , false, offsetof (struct c3x_config, show_ai_demand_info_popup)},
 		{"dont_escort_unflagged_units"                           , false, offsetof (struct c3x_config, dont_escort_unflagged_units)},
 		{"replace_leader_unit_ai"                                , true , offsetof (struct c3x_config, replace_leader_unit_ai)},
 		{"fix_ai_army_composition"                               , true , offsetof (struct c3x_config, fix_ai_army_composition)},
@@ -19438,6 +19438,7 @@ patch_init_floating_point ()
 		{"ai_build_artillery_ratio"                          ,    16,  offsetof (struct c3x_config, ai_build_artillery_ratio)},
 		{"ai_artillery_value_damage_percent"                 ,    50,  offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
 		{"ai_build_bomber_ratio"                             ,    70,  offsetof (struct c3x_config, ai_build_bomber_ratio)},
+		{"diplo_demand_rate_between_ai_players"              ,     0,  offsetof (struct c3x_config, diplo_demand_rate_between_ai_players)},
 		{"max_ai_naval_escorts"                              ,     3,  offsetof (struct c3x_config, max_ai_naval_escorts)},
 		{"ai_worker_requirement_percent"                     ,   150,  offsetof (struct c3x_config, ai_worker_requirement_percent)},
 		{"chance_for_nukes_to_destroy_max_one_hp_units"      ,   100,  offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
@@ -21258,11 +21259,13 @@ patch_rand_int_for_ai_ai_negotiation (void * this, int edx, int lim)
 }
 
 bool
-try_ai_demand_from_other_ai (Leader * this, int other_civ_id)
+try_ai_demand_from_other_ai (Leader * this, int other_civ_id, int demand_rate)
 {
 	if (this->At_War[other_civ_id] ||
 	    ((! is_online_game ()) && (this->field_B30[other_civ_id] > 0)) ||
 	    (! Leader_ai_would_meet_with (this, __, other_civ_id)))
+		return false;
+	if ((demand_rate < 100) && (rand_int (p_rand_object, __, 100) >= demand_rate))
 		return false;
 
 	TradeOfferList demands = {(void *)((int)p_trade_offer_vtable - 4), 0, NULL, NULL};
@@ -21320,7 +21323,8 @@ try_ai_demand_from_other_ai (Leader * this, int other_civ_id)
 	}
 
 done:
-	if (made_demand)
+	if (made_demand && is->current_config.show_ai_demand_info_popup &&
+	    ((*p_debug_mode_bits & 0xC) != 0))
 		show_ai_demand_popup (this, recipient, &demands, accepted, war_declared);
 	TradeOfferList_clear (&demands);
 	TradeOfferList_clear (&no_offers);
@@ -21330,8 +21334,9 @@ done:
 void __fastcall
 patch_Leader_ai_negotiate_with_other_ai (Leader * this, int edx, int other_civ_id)
 {
-	if (is->current_config.enable_diplo_demands_between_ai_players &&
-	    try_ai_demand_from_other_ai (this, other_civ_id))
+	int demand_rate = clamp (0, 100, is->current_config.diplo_demand_rate_between_ai_players);
+	if ((demand_rate > 0) &&
+	    try_ai_demand_from_other_ai (this, other_civ_id, demand_rate))
 		return;
 
 	// If no demand was made, preserve the base game's 1-in-4 chance and random-number consumption
