@@ -2130,7 +2130,9 @@ struct injected_state {
 	bool do_not_enslave_units;
 
 	// Set by patch_Unit_score_kill while Unit::score_kill is running so the war weariness call inside can inspect the victim type.
-	int war_weariness_kill_victim_type_id;
+	// war_weariness_fight_context is used for similar purposes but specific to Fighter_fight
+	int war_weariness_subject_unit_type_id;
+	Fighter * war_weariness_fight_context;
 
 	// If limit_unit_loading_to_one_transport_per_turn is on, maps unit IDs to the ID of the transport unit they're tied to for the current turn.
 	struct table unit_transport_ties;

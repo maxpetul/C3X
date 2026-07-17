@@ -692,7 +692,7 @@ reset_to_base_config ()
 	for (int n = 0; n < ARRAY_LEN (cc->limit_units_per_tile); n++)
 		cc->limit_units_per_tile[n] = 0;
 
-	is->war_weariness_kill_victim_type_id = -1;
+	is->war_weariness_subject_unit_type_id = -1;
 	table_deinit (&cc->exclude_types_from_units_per_tile_limit);
 	table_deinit (&cc->exclude_types_from_units_war_weariness);
 
@@ -29412,6 +29412,7 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 	// Unit::score_kill will be called if the bombarder destroys its target, and that is the only way score_kill can be called while this method
 	// is running. So if we're configured to stop enslaving from bombard, turn off enslaving while it's running.
 	is->do_not_enslave_units = is->current_config.prevent_enslaving_by_bombardment;
+	is->war_weariness_subject_unit_type_id = unit_has_valid_type_id (unit) ? unit->Body.UnitTypeID : -1;
 
 	// Check if we're going to do PTW-like targeting, if not fall back on the base game's do_bombard_tile method. We'll also fall back on that
 	// method in the case where we're in an online game and the bombard can't happen b/c the tile is occupied by another battle. In that case, no
@@ -29438,6 +29439,7 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 		Fighter_do_bombard_tile (this, __, unit, neighbor_index, mp_tile_x, mp_tile_y);
 
 	is->do_not_enslave_units = false;
+	is->war_weariness_subject_unit_type_id = -1;
 }
 
 bool __fastcall
@@ -30576,9 +30578,25 @@ patch_Unit_can_move_after_zoc (Unit * this, int edx, int neighbor_index, int par
 void __fastcall
 patch_Unit_score_kill (Unit * this, int edx, Unit * victim, bool was_attacking)
 {
-	is->war_weariness_kill_victim_type_id = unit_has_valid_type_id (victim) ? victim->Body.UnitTypeID : -1;
+	is->war_weariness_subject_unit_type_id = unit_has_valid_type_id (victim) ? victim->Body.UnitTypeID : -1;
 	Unit_score_kill (this, __, victim, was_attacking);
-	is->war_weariness_kill_victim_type_id = -1;
+	is->war_weariness_subject_unit_type_id = -1;
+}
+
+void __fastcall
+patch_Fighter_do_cruise_missile_strike (Fighter * this, int edx, Unit * unit, int neighbor_index)
+{
+	is->war_weariness_subject_unit_type_id = unit_has_valid_type_id (unit) ? unit->Body.UnitTypeID : -1;
+	Fighter_do_cruise_missile_strike (this, __, unit, neighbor_index);
+	is->war_weariness_subject_unit_type_id = -1;
+}
+
+void __fastcall
+patch_Fighter_damage_by_defensive_bombard (Fighter * this, int edx, Unit * bombarder, Unit * defender)
+{
+	is->war_weariness_subject_unit_type_id = unit_has_valid_type_id (defender) ? defender->Body.UnitTypeID : -1;
+	Fighter_damage_by_defensive_bombard (this, __, bombarder, defender);
+	is->war_weariness_subject_unit_type_id = -1;
 }
 
 // Checks unit's HP after it was possibly hit by ZoC and deals with the consequences if it's dead. Does nothing if config option to make ZoC lethal
@@ -30853,7 +30871,7 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 	}
 
 	int damage_before = defender->Body.Damage;
-	Fighter_damage_by_defensive_bombard (this, __, bombarder, defender);
+	patch_Fighter_damage_by_defensive_bombard (this, __, bombarder, defender);
 	int damage_after = defender->Body.Damage;
 
 	is->dbe.bombarder = bombarder;
@@ -31387,6 +31405,7 @@ patch_Fighter_fight (Fighter * this, int edx, Unit * attacker,
 	is->saved_combat_unit_display_override = is->unit_display_override;
 	is->combat_unit_display_override_active = true;
 	is->unit_display_override_2 = (struct unit_display_override) {-1, -1, -1};
+	is->war_weariness_fight_context = this;
 
 	Unit * defender_for_fight = defender_or_null;
 	int defender_tile_x = 0,
@@ -31415,6 +31434,7 @@ patch_Fighter_fight (Fighter * this, int edx, Unit * attacker,
 	is->combat_unit_display_override_active = saved_combat_udo_active;
 	is->dbe = (struct defensive_bombard_event) {0};
 	is->counter_combat_ctx.active = false;
+	is->war_weariness_fight_context = NULL;
 	return tr;
 }
 
@@ -31450,13 +31470,33 @@ patch_Unit_get_defense_strength (Unit * this)
 }
 
 void __fastcall
-patch_Leader_add_recent_war_weariness_in_score_kill (Leader * this, int edx, int victim_civ_id, int amount)
+patch_Leader_add_recent_war_weariness_for_unit_type_context (Leader * this, int edx, int victim_civ_id, int amount)
 {
-	if ((is->war_weariness_kill_victim_type_id >= 0) &&
-	    itable_look_up_or (&is->current_config.exclude_types_from_units_war_weariness, is->war_weariness_kill_victim_type_id, 0))
+	if ((is->war_weariness_subject_unit_type_id >= 0) &&
+	    itable_look_up_or (&is->current_config.exclude_types_from_units_war_weariness, is->war_weariness_subject_unit_type_id, 0))
 		return;
 
 	Leader_add_recent_war_weariness (this, __, victim_civ_id, amount);
+}
+
+void __fastcall
+patch_Leader_add_recent_war_weariness_for_fight_attacker (Leader * this, int edx, int victim_civ_id, int amount)
+{
+	if (unit_has_valid_type_id (is->war_weariness_fight_context->attacker)) {
+		is->war_weariness_subject_unit_type_id = is->war_weariness_fight_context->attacker->Body.UnitTypeID;
+	}
+	patch_Leader_add_recent_war_weariness_for_unit_type_context (this, __, victim_civ_id, amount);
+	is->war_weariness_subject_unit_type_id = -1;
+}
+
+void __fastcall
+patch_Leader_add_recent_war_weariness_for_fight_defender (Leader * this, int edx, int victim_civ_id, int amount)
+{
+	if (unit_has_valid_type_id (is->war_weariness_fight_context->defender)) {
+		is->war_weariness_subject_unit_type_id = is->war_weariness_fight_context->defender->Body.UnitTypeID;
+	}
+	patch_Leader_add_recent_war_weariness_for_unit_type_context (this, __, victim_civ_id, amount);
+	is->war_weariness_subject_unit_type_id = -1;
 }
 
 void __fastcall
