@@ -21244,7 +21244,7 @@ show_ai_demand_popup (Leader * demander, Leader * recipient, TradeOfferList * de
 	if (accepted)
 		snprintf (line, sizeof line, "^Outcome: accepted");
 	else if (war_declared)
-		snprintf (line, sizeof line, "^Outcome: refused; %s declared war", Leader_get_civ_formal_name (recipient));
+		snprintf (line, sizeof line, "^Outcome: refused; %s declared war", Leader_get_civ_formal_name (demander));
 	else
 		snprintf (line, sizeof line, "^Outcome: refused");
 	PopupForm_add_text (popup, __, line, false);
@@ -21316,9 +21316,9 @@ try_ai_demand_from_other_ai (Leader * this, int other_civ_id, int demand_rate)
 		Leader_apply_trade (this, __, other_civ_id, &demands, &no_offers);
 	} else {
 		this->reputations[other_civ_id].field_20++;
-		if (Leader_ai_roll_to_declare_after_provocation (recipient, __, this->ID) &&
-		    ((recipient->Contacts[this->ID] & 4) == 0)) {
-			Leader_declare_war (recipient, __, this->ID, 0);
+		if (Leader_ai_roll_to_declare_after_provocation (this, __, other_civ_id) &&
+		    ((this->Contacts[other_civ_id] & 4) == 0)) {
+			Leader_declare_war (this, __, other_civ_id, 0);
 			war_declared = true;
 		}
 	}
