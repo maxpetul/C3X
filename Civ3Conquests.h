@@ -879,6 +879,7 @@ enum FLIC_Chuck_Types
 typedef enum leader_contact_flags
 {
   LCF_HAVE_CONTACT = 0x1,
+  LCF_TRESPASS_WARNING_PENDING = 0x4,
   LCF_PLOTTING_WAR = 0x20,
   LCF_HAVE_MILITARY_MAP = 0x40,
 } LeaderContactFlags;
@@ -4245,10 +4246,10 @@ struct Reputation
 	int caught_spy;
 	int field_14;
 	int tribute;
-	int field_1C;
-	int field_20;
+	int observed_military_aggression;
+	int diplomatic_threats;
 	int gift;
-	int field_28;
+	int refused_tribute_demands;
 	int icbm;
 	int icbm_other;
 	int war_damage_memory; // Combat damage taken by 'us' (the Leader object) from this player in the reputations array. Decays over time.
@@ -4300,7 +4301,9 @@ struct Leader
   int science_slider;
   int gold_slider;
   Reputation reputations[32];
-  int field_B30[96];
+  int ai_diplomacy_cooldown[32];
+  int war_diplomacy_cooldown[32];
+  int demand_concession_budget[32];
   int war_weariness[32];
   char At_War[32];
   char field_D50[32];

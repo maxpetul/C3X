@@ -21263,7 +21263,7 @@ bool
 try_ai_demand_from_other_ai (Leader * this, int other_civ_id, int demand_rate)
 {
 	if (this->At_War[other_civ_id] ||
-	    ((! is_online_game ()) && (this->field_B30[other_civ_id] > 0)) ||
+	    ((! is_online_game ()) && (this->ai_diplomacy_cooldown[other_civ_id] > 0)) ||
 	    (! Leader_ai_would_meet_with (this, __, other_civ_id)))
 		return false;
 	if ((demand_rate < 100) && (rand_int (p_rand_object, __, 100) >= demand_rate))
@@ -21299,7 +21299,7 @@ try_ai_demand_from_other_ai (Leader * this, int other_civ_id, int demand_rate)
 		goto done;
 
 	made_demand = true;
-	this->field_B30[other_civ_id] = 0x20;
+	this->ai_diplomacy_cooldown[other_civ_id] = 0x20;
 	// The recipient remembers being subjected to a demand. The demander separately records the
 	// acceptance or refusal below; both counters feed into the base game's attitude calculation.
 	recipient->reputations[this->ID].tribute++;
@@ -21309,15 +21309,15 @@ try_ai_demand_from_other_ai (Leader * this, int other_civ_id, int demand_rate)
 	                       &recipients_advantage, NULL, NULL);
 	accepted = Leader_would_yield_to_demand (recipient, __, this->ID, recipients_advantage);
 	if (accepted) {
-		this->reputations[other_civ_id].field_1C++;
+		this->reputations[other_civ_id].gift++;
 		// Apply both halves just as the diplo screen does when a human accepts a demand. The recipient
 		// pays the demanded items and the demander receives them.
 		Leader_apply_trade (recipient, __, this->ID, &no_offers, &demands);
 		Leader_apply_trade (this, __, other_civ_id, &demands, &no_offers);
 	} else {
-		this->reputations[other_civ_id].field_20++;
+		this->reputations[other_civ_id].refused_tribute_demands++;
 		if (Leader_ai_roll_to_declare_after_provocation (this, __, other_civ_id) &&
-		    ((this->Contacts[other_civ_id] & 4) == 0)) {
+		    ! (this->Relation_Treaties[other_civ_id] & 4)) { // check mutual protection pact
 			Leader_declare_war (this, __, other_civ_id, 0);
 			war_declared = true;
 		}
