@@ -471,6 +471,7 @@ struct c3x_config {
 	bool enable_caravan_unit_ai;
 	int max_ai_naval_escorts;
 	int ai_worker_requirement_percent;
+	bool remove_human_player_bias_from_ai_war_planning;
 
 	bool remove_unit_limit;
 	bool remove_city_improvement_limit;

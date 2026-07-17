@@ -19282,6 +19282,7 @@ patch_init_floating_point ()
 		{"no_penalty_exception_for_agri_fresh_water_city_tiles"  , false, offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
 		{"use_offensive_artillery_ai"                            , true , offsetof (struct c3x_config, use_offensive_artillery_ai)},
 		{"show_ai_demand_info_popup"                             , false, offsetof (struct c3x_config, show_ai_demand_info_popup)},
+		{"remove_human_player_bias_from_ai_war_planning"         , false, offsetof (struct c3x_config, remove_human_player_bias_from_ai_war_planning)},
 		{"dont_escort_unflagged_units"                           , false, offsetof (struct c3x_config, dont_escort_unflagged_units)},
 		{"replace_leader_unit_ai"                                , true , offsetof (struct c3x_config, replace_leader_unit_ai)},
 		{"fix_ai_army_composition"                               , true , offsetof (struct c3x_config, fix_ai_army_composition)},
@@ -21343,6 +21344,32 @@ patch_Leader_ai_negotiate_with_other_ai (Leader * this, int edx, int other_civ_i
 	// for normal AI negotiation.
 	if (rand_int (p_rand_object, __, 4) == 0)
 		Leader_ai_negotiate_with_other_ai (this, __, other_civ_id);
+}
+
+bool __fastcall
+patch_Leader_cannot_plot_war_against (Leader * this, int edx, int civ_id)
+{
+	if (! is->current_config.remove_human_player_bias_from_ai_war_planning)
+		return Leader_cannot_plot_war_against (this, __, civ_id);
+
+	int saved_human_player_bits = *p_human_player_bits;
+	*p_human_player_bits = *p_player_bits;
+	bool result = Leader_cannot_plot_war_against (this, __, civ_id);
+	*p_human_player_bits = saved_human_player_bits;
+	return result;
+}
+
+int __fastcall
+patch_Leader_ai_eval_war_target (Leader * this, int edx, int civ_id)
+{
+	if (! is->current_config.remove_human_player_bias_from_ai_war_planning)
+		return Leader_ai_eval_war_target (this, __, civ_id);
+
+	int saved_human_player_bits = *p_human_player_bits;
+	*p_human_player_bits = *p_player_bits;
+	int result = Leader_ai_eval_war_target (this, __, civ_id);
+	*p_human_player_bits = saved_human_player_bits;
+	return result;
 }
 
 void __fastcall

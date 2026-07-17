@@ -120,6 +120,8 @@ define,    0x649A8B,	0x6683E1,	0x6499CF,	"new",						"void * (__cdecl *) (unsign
 define,    0x666AC4,	0x683B1C,	0x666AC4,	"p_trade_offer_vtable",				"TradeOfferVTable *"
 define,    0x440EE0,	0x442CD0,	0x440F60,	"Leader_consider_trade",			"DiploMessage (__fastcall *) (Leader * this, int edx, TradeOfferList * receiving, TradeOfferList * paying, int other_party_civ_id, byte param_4, bool param_5, byte param_6, byte param_7, int * out_advantage, int * param_9, int * param_10)"
 repl vptr, 0x66CBB0,	0x689C9C,	0x66CBB0,	"Leader_ai_negotiate_with_other_ai",		"void (__fastcall *) (Leader * this, int edx, int other_civ_id)"
+inlead,    0x439410,	0x43AF90,	0x439490,	"Leader_cannot_plot_war_against",		"bool (__fastcall *) (Leader * this, int edx, int civ_id)"
+inlead,    0x439510,	0x43B090,	0x439590,	"Leader_ai_eval_war_target",			"int (__fastcall *) (Leader * this, int edx, int civ_id)"
 repl call, 0x447649,	0x449496,	0x4476C9,	"rand_int_for_ai_ai_negotiation",		""
 define,    0x43B880,	0x43D4B0,	0x43B900,	"Leader_demand_items",				"bool (__fastcall *) (Leader * this, int edx, TradeOfferList * demands, TradeOfferList * other_offers, int from_civ_id)"
 define,    0x440E90,	0x442C80,	0x440F10,	"Leader_would_yield_to_demand",			"bool (__fastcall *) (Leader * this, int edx, int from_civ_id, int our_advantage)"
