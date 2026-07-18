@@ -6786,6 +6786,22 @@ pick_missing_district_for_improvement (City * city, struct district_building_pre
 	return fallback;
 }
 
+void
+district_set_tile_flags_safely (Tile * tile, int layer, int flags, int tile_x, int tile_y)
+{
+	int restore_tile_count = -1;
+
+	if ((is->saved_tile_count >= 0) &&
+	    (p_bic_data->Map.TileCount != is->saved_tile_count)) {
+		restore_tile_count = p_bic_data->Map.TileCount;
+		p_bic_data->Map.TileCount = is->saved_tile_count;
+	}
+
+	tile->vtable->m56_Set_Tile_Flags (tile, __, layer, flags, tile_x, tile_y);
+
+	if ((restore_tile_count >= 0) && (is->saved_tile_count >= 0))
+		p_bic_data->Map.TileCount = restore_tile_count;
+}
 
 bool
 district_is_complete(Tile * tile, int district_id)
@@ -6857,14 +6873,14 @@ district_is_complete(Tile * tile, int district_id)
 		if (cfg->auto_add_road) {
 			bool has_road = tile->vtable->m25_Check_Roads (tile, __, 0) != 0;
 			if (! has_road)
-				tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_ROAD, tile_x, tile_y); 
+				district_set_tile_flags_safely (tile, 0, TILE_FLAG_ROAD, tile_x, tile_y);
 		}
 
 		if (cfg->auto_add_railroad) {
 			bool has_railroad = tile->vtable->m23_Check_Railroads (tile, __, 0) != 0;
 			if (! has_railroad) {
 				if ((territory_owner >= 0) && patch_Leader_can_do_worker_job (&leaders[territory_owner], __, WJ_Build_Railroad, tile_x, tile_y, 0)) {
-					tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_RAILROAD, tile_x, tile_y); 
+					district_set_tile_flags_safely (tile, 0, TILE_FLAG_RAILROAD, tile_x, tile_y);
 				}
 			}
 		}
