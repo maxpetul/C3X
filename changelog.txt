@@ -1,3 +1,7 @@
+- Allow for custom combat bonuses or maluses to be applied based on unit type, combat role (attack, defense, or bombard), terrain, city/district, and experience level
+  - Option enable_unit_counters gates overall feature, counter_rules lists custom rules
+- Make unit view distance and terrain visibility rules configurable, see "Visibility" section in config for details
+- Enable tile graphics to cycle over seasons in addition to days, see "Seasonal Cycle" config section for details
 - Allow multiple unit types to be limited together as a group, see unit_limit_groups config option
 - Districts may work like tile improvements in that cities must work their tiles to receive their yields
   - See the 'type' and 'ai_build_strategy' options in the districts config
@@ -6,6 +10,7 @@
 - Option diplo_demand_rate_between_ai_players that enables AI players to demand tribute from each other and controls how often they do so
   - Can see details about each AI-to-AI demand in debug mode with show_ai_demand_info_popup option
 - Options to allow radar towers and outposts to detect invisible units within given distances, named radar_tower_detection_distance and outpost_detection_distance
+- Option prefer_less_expensive_defenders to change how the game chooses between two defenders with the same strength and king flags
 - Option to configure the duration of the "Steal Plans" espionage mission, named steal_plans_duration
 - Enable stack skip turn
 - Option remove_human_player_bias_from_ai_war_planning causes AI players to ignore whether or not a prospective target is a human player when plotting war
