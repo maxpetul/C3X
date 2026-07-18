@@ -34378,10 +34378,10 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							remaining_bytes -= (int)sizeof(int) * 2;
 
 							char name_buf[101];
-							memcpy (name_buf, cursor, sizeof name_buf);
+							memcpy (name_buf, cursor, sizeof ((struct named_tile_entry *)0)->name);
 							name_buf[(sizeof name_buf) - 1] = '\0';
-							cursor += sizeof name_buf;
-							remaining_bytes -= sizeof name_buf;
+							cursor += sizeof ((struct named_tile_entry *)0)->name;
+							remaining_bytes -= sizeof ((struct named_tile_entry *)0)->name;
 							ints = (int *)cursor;
 
 							if (name_buf[0] == '\0')
