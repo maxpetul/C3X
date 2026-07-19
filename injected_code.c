@@ -693,6 +693,7 @@ reset_to_base_config ()
 		cc->limit_units_per_tile[n] = 0;
 
 	is->war_weariness_subject_unit_type_id = -1;
+	is->war_weariness_fight_context = NULL;
 	table_deinit (&cc->exclude_types_from_units_per_tile_limit);
 	table_deinit (&cc->exclude_types_from_units_war_weariness);
 
@@ -31482,9 +31483,9 @@ patch_Leader_add_recent_war_weariness_for_unit_type_context (Leader * this, int 
 void __fastcall
 patch_Leader_add_recent_war_weariness_for_fight_attacker (Leader * this, int edx, int victim_civ_id, int amount)
 {
-	if (unit_has_valid_type_id (is->war_weariness_fight_context->attacker)) {
-		is->war_weariness_subject_unit_type_id = is->war_weariness_fight_context->attacker->Body.UnitTypeID;
-	}
+	Fighter * context = is->war_weariness_fight_context;
+	is->war_weariness_subject_unit_type_id =
+		((context != NULL) && unit_has_valid_type_id (context->attacker)) ? context->attacker->Body.UnitTypeID : -1;
 	patch_Leader_add_recent_war_weariness_for_unit_type_context (this, __, victim_civ_id, amount);
 	is->war_weariness_subject_unit_type_id = -1;
 }
@@ -31492,9 +31493,9 @@ patch_Leader_add_recent_war_weariness_for_fight_attacker (Leader * this, int edx
 void __fastcall
 patch_Leader_add_recent_war_weariness_for_fight_defender (Leader * this, int edx, int victim_civ_id, int amount)
 {
-	if (unit_has_valid_type_id (is->war_weariness_fight_context->defender)) {
-		is->war_weariness_subject_unit_type_id = is->war_weariness_fight_context->defender->Body.UnitTypeID;
-	}
+	Fighter * context = is->war_weariness_fight_context;
+	is->war_weariness_subject_unit_type_id =
+		((context != NULL) && unit_has_valid_type_id (context->defender)) ? context->defender->Body.UnitTypeID : -1;
 	patch_Leader_add_recent_war_weariness_for_unit_type_context (this, __, victim_civ_id, amount);
 	is->war_weariness_subject_unit_type_id = -1;
 }
