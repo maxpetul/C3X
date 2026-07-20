@@ -999,3 +999,4 @@ ignore,	   0x4BF660,	0x4C6C10,	0x4BF6F0,	"City_draw_citizens",				"void (__fastc
 ignore,	   0x4B9F60,	0x4C15D0,	0x4B9FF0,	"City_add_population",				"void (__fastcall *) (City * this, int edx, int num, int race_id)"
 ignore,	   0x670234,	0x68D2E0,	0x670234,	"Tile_m27_Check_Shield_Bonus",			"bool (__fastcall *) (Tile * this)"
 ignore,	   0x5f3448,	0x6032DF,	0x5F3378,	"CHECK_SHIELD_BONUS_TO_CAN_SPAWN_RES_RETURN",	"int"
+inlead,	   0x61B320,	0x0,	    0x0,	    "Context_Menu_draw_item",			"void (__fastcall *) (Context_Menu * this, int edx, int item_index, int redraw)"

@@ -147,6 +147,10 @@ Currently configured districts from
 Name Tile
 Rename
 
+; Distribution hub right-click menu
+Distribute to All Cities
+Distribute to Specific Cities
+
 ; This appears instead of the above actions on units that have been loaded into another (except an army).
 Transported
 
