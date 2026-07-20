@@ -31,10 +31,22 @@
   ;                               How to find index from visual order (top-left=0, then row-major):
   ;                                 - default: pcx_index = visual_index
   ;                                 - deltaRivers.pcx & mtnRivers.pcx: these are combined within the game and may take trial-and-error to find index.
+  ;
+  ;                               Example PCX animation of a river segment:
+  ;                                 #Animation
+  ;                                 name                    = DeltaRivers_12
+  ;                                 ini_path                = Terrain\DeltaRivers\DeltaRivers_12.INI
+  ;                                 type                    = pcx
+  ;                                 pcx_file                = deltaRivers.pcx
+  ;                                 pcx_index               = 12
+  ;                                 y_offset                = 12
+  ;                                 x_offset                = -65
+  ;                                 show_in_day_night_hours = 7-17
+  ;                                 frame_time_seconds      = 0.15
   ;  - terrain_types            : Comma-delimited terrain types. Required if type = terrain.
   ;                               Valid values: desert, plains, grassland, jungle, tundra, floodplain, swamp, hills, mountains,
   ;                                             forest, volcano, snow-forest, snow-mountains, snow-volcano, coast, sea, ocean, land
-  ;                               Singular/plural forms are both accepted (for example, volcano/volcanoes).
+  ;                               Singular/plural forms are both accepted (for example, volcano/volcanos).
   ;                               "land" means any non-water tile.
   ;  - adjacent_to              : Text. Optional adjacency requirements.
   ;                               Comma-delimited values using:
@@ -81,6 +93,14 @@ show_in_seasons         = winter
 show_in_day_night_hours = 7-17
 
 #Animation
+name                    = Snow_night
+ini_path                = Terrain\Snow\Snow_night.INI
+type                    = terrain
+terrain_types           = mountains, snow-mountains, volcanoes, snow-volcanoes
+show_in_seasons         = winter
+show_in_day_night_hours = 18-6
+
+#Animation
 name                    = Whales
 ini_path                = Resources\Whale\Whale.INI
 type                    = resource
@@ -108,7 +128,6 @@ show_in_day_night_hours = 18-6
 
 #Animation
 name                    = Cattle
-;ini_path                = Resources\MilkCow\MilkCow.INI
 ini_path                = Resources\Cow\black_and_white_cow.INI
 type                    = resource
 resource_type           = Cattle
@@ -118,7 +137,7 @@ show_in_day_night_hours = 7-17
 
 #Animation
 name                    = Cattle_night
-ini_path                = Resources\MilkCow\MilkCow_night.INI
+ini_path                = Resources\Cow\black_and_white_cow_night.INI
 type                    = resource
 resource_type           = Cattle
 direction               = southeast
@@ -141,24 +160,21 @@ direction               = southeast
 show_in_day_night_hours = 18-6
 
 #Animation
-name                    = Ivory
+name                    = Elephant
 ini_path                = Resources\Elephant\Elephant.ini
 type                    = resource
 resource_type           = Ivory
 direction               = southwest
 frame_time_seconds      = 0.17
-show_in_day_night_hours = 7-17
 
 #Animation
 name                    = Fish
 ini_path                = Resources\Fish\Fish.INI
 type                    = resource
 resource_type           = Fish
-direction               = southeast
-show_in_day_night_hours = 7-17
-frame_time_seconds      = 0.13
-y_offset                = -20
-x_offset                = -15
+frame_time_seconds      = 0.11
+y_offset                = -14
+x_offset                = -2
 
 #Animation
 name                    = DestructInitial
@@ -182,3 +198,19 @@ y_offset                = 45
 ;x_offset                = -65
 ;show_in_day_night_hours = 7-17
 ;frame_time_seconds      = 0.15
+
+#Animation
+name                    = Furs
+ini_path                = Resources\Fox\Fox.ini
+type                    = resource
+resource_type           = Furs
+direction               = southwest
+show_in_day_night_hours = 7-17
+
+#Animation
+name                    = Furs_night
+ini_path                = Resources\Fox\Fox_night.ini
+type                    = resource
+resource_type           = Furs
+direction               = southwest
+show_in_day_night_hours = 18-6

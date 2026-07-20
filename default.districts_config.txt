@@ -14,7 +14,11 @@
                                          1 for single image, 5 for culture variants (AMER, EURO, ROMAN, MIDEAST, ASIAN). Order matters.
   ;  - img_column_count                : Number. Overrides the number of sprite columns per image (derived from dependent_improvs if omitted).
   ;  - render_strategy                 : "by-count" | "by-building". Whether the PCX files show all buildings together, or one building per column. (default: "by-count")
+  ;  - type                            : "district" | "tile-improvement". Districts apply to all cities in range and make their tile unworkable;
+                                         tile improvements apply only to the city working the tile and leave the tile workable. (default: "district")
+  ;  - ai_build_strategy               : "district" | "tile-improvement". If "tile-improvement", the AI may build many. (default: "district")
   ;  - draw_over_resources             : 0 or 1. If a resource is also on the tile, draw the district on top. (default: 0)
+  ;  - subsumes_tile_resource          : 0 or 1. If 1, suppresses any default resource on tile once the district is complete. (default: 0)
   ;  - vary_img_by_era                 : 0 or 1. If 1, each PCX image must have 4 rows, 1 for each era.
   ;  - vary_img_by_culture             : 0 or 1. If 1, img_paths should list 5 files (AMER, EURO, ROMAN, MIDEAST, ASIAN).
   ;  - btn_tile_sheet_row              : Number. Row index in the district button tile sheet (0-based).
@@ -42,7 +46,6 @@
   ;  - buildable_by_civ_cultures       : Comma-separated culture names (e.g., EURO, ASIAN).
   ;  - buildable_by_war_allies         : 0 or 1. Can build if war allied with a civ that can build it.
   ;  - buildable_by_pact_allies        : 0 or 1. Can build if mutual defense pact allied with a civ that can build it.
-  ;  - ai_build_strategy               : "district" | "tile-improvement". If "tile_improvement", the AI may build many. (default: "district")
   ;  - defense_bonus_percent           : Number, with optional "Name: bonus" entries (Name = building or tile type, each added to base bonus if true. Negative values allowed).
   ;  - culture_bonus                   : Number, with optional "Name: bonus" entries (same pattern as defense_bonus_percent).
   ;  - science_bonus                   : Number, with optional "Name: bonus" entries.
@@ -64,6 +67,7 @@
   ;  - align_to_coast                  : 0 or 1. Aligns art to coastline, slightly adjusting x & y pixels. (default: 0)
   ;  - auto_add_road                   : 0 or 1. Auto-add road on completion. (default: 0)
   ;  - auto_add_railroad               : 0 or 1. Auto-add railroad on completion. (default: 0)
+  ;  - consumes_worker                 : 0 or 1. If 1, consume one worker on the tile when construction completes. (default: 0)
   ;  - impassable                      : 0 or 1. If 1, completed district tile is impassable to units. (default: 0)
   ;  - impassable_to_wheeled           : 0 or 1. If 1, completed district tile is impassable to wheeled units unless connected by road. (default: 0)
   ;  - allow_irrigation_from           : 0 or 1. District can act as an irrigation source. (default: 0)
