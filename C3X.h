@@ -11,7 +11,7 @@ typedef unsigned char byte;
 #include "Civ3Conquests.h"
 
 #define MOD_VERSION 2700
-#define MOD_PREVIEW_VERSION 2
+#define MOD_PREVIEW_VERSION 0
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -20,8 +20,8 @@ typedef unsigned char byte;
 #define USED_SPECIAL_DISTRICT_TYPES 11
 #define MAX_DYNAMIC_DISTRICT_TYPES 22
 #define COUNT_DISTRICT_TYPES (COUNT_SPECIAL_DISTRICT_TYPES + MAX_DYNAMIC_DISTRICT_TYPES)
-#define MAX_WONDER_DISTRICT_TYPES 32
-#define MAX_NATURAL_WONDER_DISTRICT_TYPES 32
+#define MAX_WONDER_DISTRICT_TYPES 64
+#define MAX_NATURAL_WONDER_DISTRICT_TYPES 64
 #define MAX_DISTRICT_VARIANT_COUNT 5
 #define MAX_DISTRICT_ERA_COUNT 4
 #define MAX_DISTRICT_COLUMN_COUNT 10
@@ -77,6 +77,17 @@ struct unit_type_limit {
 	int per_city;
 	int cities_per;
 };
+
+/* ToC-26: Represents a named group of unit types that share a combined build limit.
+   Stored by pointer in unit_limit_groups (keyed by group name) and in unit_type_to_group
+   (keyed by unit_type_id).  The group struct is owned by unit_limit_groups; unit_type_to_group
+   holds non-owning pointers into it. */
+struct unit_limit_group {
+    int * unit_type_ids;        // Array of unit type IDs belonging to this group
+    int   count;                // Number of IDs in the array
+    struct unit_type_limit limit; // The shared limit value for this group
+    bool  has_limit;            // True once a limit has been assigned via unit_limits
+}; // END ToC-26
 
 struct work_area_improvement {
 	short improv_id;
@@ -340,6 +351,10 @@ struct c3x_config {
 	struct leader_era_alias_list * leader_era_alias_lists;
 	int count_leader_era_alias_lists;
 	struct table unit_limits; // Maps unit type names (strings) to pointers to limit objects (struct unit_type_limit *)
+	// ToC-26: Group-based unit limits. unit_limit_groups maps group name strings to struct unit_limit_group*.
+	// unit_type_to_group maps unit_type_id (int) to struct unit_limit_group* for O(1) runtime lookup.
+	struct table unit_limit_groups;
+	struct table unit_type_to_group; // END ToC-26
 	bool allow_upgrades_in_any_city;
 	bool do_not_generate_volcanos;
 	bool do_not_pollute_impassable_tiles;
@@ -762,6 +777,11 @@ enum district_ai_build_strategy {
 	DABS_TILE_IMPROVEMENT = 1
 };
 
+enum district_type {
+	DT_DISTRICT = 0,
+	DT_TILE_IMPROVEMENT = 1
+};
+
 struct district_config {
 	enum Unit_Command_Values command;
 	char const * name;
@@ -790,12 +810,15 @@ struct district_config {
 	bool vary_img_by_culture;
 	enum district_render_strategy render_strategy;
 	enum district_ai_build_strategy ai_build_strategy;
+	enum district_type type;
 	bool is_dynamic;
 	bool align_to_coast;
 	bool draw_over_resources;
+	bool subsumes_tile_resource;
 	bool allow_irrigation_from;
 	bool auto_add_road;
 	bool auto_add_railroad;
+	bool consumes_worker;
 	int custom_width;
 	int custom_height;
 	int x_offset;
@@ -1051,7 +1074,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 5, .img_column_count = 4, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
 		.culture_bonus = 1, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 25,
-		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0, .auto_add_road = true
 
 	},
 	{
@@ -1176,11 +1199,14 @@ struct parsed_district_definition {
 	bool vary_img_by_culture;
 	enum district_render_strategy render_strategy;
 	enum district_ai_build_strategy ai_build_strategy;
+	enum district_type type;
 	bool align_to_coast;
 	bool draw_over_resources;
+	bool subsumes_tile_resource;
 	bool allow_irrigation_from;
 	bool auto_add_road;
 	bool auto_add_railroad;
+	bool consumes_worker;
 	bool impassable;
 	bool impassable_to_wheeled;
 	int custom_width;
@@ -1231,8 +1257,10 @@ struct parsed_district_definition {
 	bool has_vary_img_by_culture;
 	bool has_render_strategy;
 	bool has_ai_build_strategy;
+	bool has_type;
 	bool has_align_to_coast;
 	bool has_draw_over_resources;
+	bool has_subsumes_tile_resource;
 	bool has_custom_width;
 	bool has_custom_height;
 	bool has_x_offset;
@@ -1280,6 +1308,7 @@ struct parsed_district_definition {
 	bool has_allow_irrigation_from;
 	bool has_auto_add_road;
 	bool has_auto_add_railroad;
+	bool has_consumes_worker;
 	bool has_impassable;
 	bool has_impassable_to_wheeled;
 };
@@ -2076,6 +2105,13 @@ struct injected_state {
 	int penciled_in_upgrade_count;
 	int penciled_in_upgrade_capacity;
 
+	// ToC-27: Set to true while patch_City_can_build_upgrade_type is running. When true,
+	// patch_City_can_build_unit skips its unit-type limit check so that upgrades to group-limited
+	// types are not blocked at the City_can_build level. patch_Unit_can_upgrade re-applies the
+	// limit with full source-type context, allowing same-group upgrades (net-zero count change)
+	// while still blocking over-limit production and cross-group upgrade attempts.
+	bool checking_upgrade_type_eligibility; // END ToC-27
+
 	// While in Leader::do_capture_city, the city in question is stored in this var. Otherwise it's NULL.
 	City * currently_capturing_city;
 
@@ -2166,8 +2202,6 @@ struct injected_state {
 		SpriteList LM_Terrain_Images[9];
 		Sprite City_Images[80];
 		Sprite Destroyed_City_Images[3];
-		Sprite Resources[36];
-		Sprite ResourcesShadows[36];
 		Sprite Terrain_Buldings_Barbarian_Camp;
 		Sprite Terrain_Buldings_Mines;
 		Sprite Victory_Image;
@@ -2233,6 +2267,8 @@ struct injected_state {
 		Sprite Abandoned_Maritime_District_Image;
 		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
 		struct natural_wonder_district_image_set Natural_Wonder_Images[MAX_NATURAL_WONDER_DISTRICT_TYPES];
+		Sprite * Resources;
+		int ResourceCount;
 	} * cycle_imgs;
 
 	// Districts
@@ -2445,6 +2481,9 @@ struct district_button_image_set {
 	Unit ** extra_capture_despawns;
 	int count_extra_capture_despawns;
 	int extra_capture_despawns_capacity;
+
+	// While Civilopedia_Article::m01_Draw_UNIT is running, this variable is set to the relevant unit type. Otherwise it's NULL.
+	UnitType * drawing_pedia_for_unit_type;
 
 	// ==========
 	// }

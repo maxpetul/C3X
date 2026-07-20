@@ -124,8 +124,12 @@ process_art_set() {
   echo "Processing art set in $data_dir"
 
   mkdir -p "$data_dir/$NOON_SUBFOLDER"
+  find "$data_dir/$NOON_SUBFOLDER" -maxdepth 1 -type f -iname '*_lights.pcx' -delete || true
+
   shopt -s nullglob
-  local -a annotation_files=("$annotation_dir"/*)
+  shopt -s nocaseglob
+  local -a annotation_files=("$annotation_dir"/*_lights.pcx)
+  shopt -u nocaseglob
   shopt -u nullglob
   if (( ${#annotation_files[@]} == 0 )); then
     echo "No annotation files found in $annotation_dir" >&2
@@ -185,18 +189,18 @@ process_art_set() {
   if [[ -n "${ONLY_HOUR}" ]]; then
     # Only the specified hour
     if [[ -d "$data_dir/$ONLY_HOUR" ]]; then
-      find "$data_dir/$ONLY_HOUR" -maxdepth 1 -type f -iname '*_lights.pcx' -delete || true
+      find "$data_dir/$ONLY_HOUR" -type f -iname '*_lights.pcx' -delete || true
     fi
     # Also clean the noon folder
     if [[ -d "$data_dir/$NOON_SUBFOLDER" ]]; then
-      find "$data_dir/$NOON_SUBFOLDER" -maxdepth 1 -type f -iname '*_lights.pcx' -delete || true
+      find "$data_dir/$NOON_SUBFOLDER" -type f -iname '*_lights.pcx' -delete || true
     fi
   else
     # All hour-named subfolders under data_dir (e.g., 0000, 0100, ..., 2400)
     # Do not touch the external $annotation_dir.
     while IFS= read -r -d '' hour_dir; do
-      find "${hour_dir}" -maxdepth 1 -type f -iname '*_lights.pcx' -delete || true
-    done < <(find "$data_dir" -mindepth 1 -maxdepth 1 -type d -regex '.*/[0-9]{4}$' -print0)
+      find "${hour_dir}" -type f -iname '*_lights.pcx' -delete || true
+    done < <(find "$data_dir" -mindepth 1 -maxdepth 1 -type d -name '[0-9][0-9][0-9][0-9]' -print0)
   fi
 }
 
@@ -214,18 +218,40 @@ ensure_season_noon_folder() {
   local season_dir="$1"
   local summer_noon_dir="$2"
   local season_noon_dir="$season_dir/$NOON_SUBFOLDER"
-
-  if [[ -d "$season_noon_dir" ]]; then
-    return
-  fi
+  local copied_count=0
+  local src
+  local target
 
   if [[ ! -d "$summer_noon_dir" ]]; then
     echo "Missing $NOON_SUBFOLDER and no summer source found for $season_dir" >&2
     return
   fi
 
-  cp -R "$summer_noon_dir" "$season_noon_dir"
-  echo "Copied missing $NOON_SUBFOLDER for $season_dir from $summer_noon_dir"
+  if [[ "$season_noon_dir" == "$summer_noon_dir" ]]; then
+    return
+  fi
+
+  mkdir -p "$season_noon_dir"
+
+  shopt -s nullglob
+  for src in "$summer_noon_dir"/*; do
+    if [[ ! -f "$src" ]]; then
+      continue
+    fi
+    if [[ "${src,,}" == *_lights.pcx ]]; then
+      continue
+    fi
+    target="$season_noon_dir/$(basename "$src")"
+    if [[ ! -e "$target" ]]; then
+      cp "$src" "$target"
+      copied_count=$((copied_count + 1))
+    fi
+  done
+  shopt -u nullglob
+
+  if (( copied_count > 0 )); then
+    echo "Filled $copied_count missing $NOON_SUBFOLDER files in $season_noon_dir from $summer_noon_dir"
+  fi
 }
 
 ensure_season_annotations() {
