@@ -52,6 +52,9 @@ Obsoleted By
 ; Pops up on the map when a bomber gets intercepted by enemy AA buildings but dodges the damage
 We were chased off by enemy air defenses.
 
+; Pops up on the map when pollution reduces a city's population instead of spawning on a tile.
+Pollution reduces population of
+
 ; As in a "preview" version of the mod. Used on the mod info popup.
 Preview
 
