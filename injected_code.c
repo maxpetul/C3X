@@ -6786,7 +6786,6 @@ pick_missing_district_for_improvement (City * city, struct district_building_pre
 	return fallback;
 }
 
-
 bool
 district_is_complete(Tile * tile, int district_id)
 {
@@ -6830,6 +6829,11 @@ district_is_complete(Tile * tile, int district_id)
 		return false;
 	}
 
+	// Defer setting complete flag until after Trade Net recomputation is done, as auto-adding 
+	// roads/railroads may trigger Trade Net updates that in turn depends on the non-artificial tile count being present
+	if (is->saved_tile_count >= 0)
+		return false;
+
 	// Mark as completed and run one-time side effects
 	inst->state = DS_COMPLETED;
 	inst->completed_turn = *p_current_turn_no;
@@ -6857,14 +6861,14 @@ district_is_complete(Tile * tile, int district_id)
 		if (cfg->auto_add_road) {
 			bool has_road = tile->vtable->m25_Check_Roads (tile, __, 0) != 0;
 			if (! has_road)
-				tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_ROAD, tile_x, tile_y); 
+				tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_ROAD, tile_x, tile_y);
 		}
 
 		if (cfg->auto_add_railroad) {
 			bool has_railroad = tile->vtable->m23_Check_Railroads (tile, __, 0) != 0;
 			if (! has_railroad) {
 				if ((territory_owner >= 0) && patch_Leader_can_do_worker_job (&leaders[territory_owner], __, WJ_Build_Railroad, tile_x, tile_y, 0)) {
-					tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_RAILROAD, tile_x, tile_y); 
+					tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_RAILROAD, tile_x, tile_y);
 				}
 			}
 		}
@@ -19281,6 +19285,8 @@ patch_init_floating_point ()
 		{"aggressively_penalize_bankruptcy"                      , false, offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
 		{"no_penalty_exception_for_agri_fresh_water_city_tiles"  , false, offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
 		{"use_offensive_artillery_ai"                            , true , offsetof (struct c3x_config, use_offensive_artillery_ai)},
+		{"show_ai_demand_info_popup"                             , false, offsetof (struct c3x_config, show_ai_demand_info_popup)},
+		{"remove_human_player_bias_from_ai_war_planning"         , false, offsetof (struct c3x_config, remove_human_player_bias_from_ai_war_planning)},
 		{"dont_escort_unflagged_units"                           , false, offsetof (struct c3x_config, dont_escort_unflagged_units)},
 		{"replace_leader_unit_ai"                                , true , offsetof (struct c3x_config, replace_leader_unit_ai)},
 		{"fix_ai_army_composition"                               , true , offsetof (struct c3x_config, fix_ai_army_composition)},
@@ -19437,6 +19443,7 @@ patch_init_floating_point ()
 		{"ai_build_artillery_ratio"                          ,    16,  offsetof (struct c3x_config, ai_build_artillery_ratio)},
 		{"ai_artillery_value_damage_percent"                 ,    50,  offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
 		{"ai_build_bomber_ratio"                             ,    70,  offsetof (struct c3x_config, ai_build_bomber_ratio)},
+		{"diplo_demand_rate_between_ai_players"              ,     0,  offsetof (struct c3x_config, diplo_demand_rate_between_ai_players)},
 		{"max_ai_naval_escorts"                              ,     3,  offsetof (struct c3x_config, max_ai_naval_escorts)},
 		{"ai_worker_requirement_percent"                     ,   150,  offsetof (struct c3x_config, ai_worker_requirement_percent)},
 		{"chance_for_nukes_to_destroy_max_one_hp_units"      ,   100,  offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
@@ -21182,6 +21189,191 @@ patch_DiploForm_m68_Show_Dialog (DiploForm * this, int edx, int param_1, void * 
 	}
 
 	return DiploForm_m68_Show_Dialog (this, __, param_1, param_2, param_3);
+}
+
+enum ai_demand_item_kind {
+	AI_DEMAND_MAP = 3,
+	AI_DEMAND_CONTACT = 4,
+	AI_DEMAND_STRATEGIC_RESOURCE = 5,
+	AI_DEMAND_LUXURY_RESOURCE = 6,
+	AI_DEMAND_GOLD = 7,
+	AI_DEMAND_TECHNOLOGY = 8,
+};
+
+void
+show_ai_demand_popup (Leader * demander, Leader * recipient, TradeOfferList * demands, bool accepted, bool war_declared)
+{
+	PopupForm * popup = get_popup_form ();
+	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
+
+	char line[256];
+	snprintf (line, sizeof line, "^%s demanded tribute from %s:",
+	          Leader_get_civ_formal_name (demander), Leader_get_civ_formal_name (recipient));
+	PopupForm_add_text (popup, __, line, false);
+
+	for (TradeOffer * offer = demands->first; offer != NULL; offer = offer->next) {
+		switch (offer->kind) {
+			case AI_DEMAND_MAP:
+				snprintf (line, sizeof line, "^- %s map", offer->param_1 ? "Territory" : "World");
+				break;
+			case AI_DEMAND_CONTACT:
+				if ((offer->param_1 >= 0) && (offer->param_1 < 32))
+					snprintf (line, sizeof line, "^- Contact with %s", Leader_get_civ_noun (&leaders[offer->param_1]));
+				else
+					snprintf (line, sizeof line, "^- Contact with player %d", offer->param_1);
+				break;
+			case AI_DEMAND_STRATEGIC_RESOURCE:
+			case AI_DEMAND_LUXURY_RESOURCE:
+				if ((offer->param_1 >= 0) && (offer->param_1 < p_bic_data->ResourceTypeCount))
+					snprintf (line, sizeof line, "^- %s", p_bic_data->ResourceTypes[offer->param_1].Name);
+				else
+					snprintf (line, sizeof line, "^- Resource %d", offer->param_1);
+				break;
+			case AI_DEMAND_GOLD:
+				snprintf (line, sizeof line, offer->param_1 ? "^- %d gold" : "^- %d gold per turn", offer->param_2);
+				break;
+			case AI_DEMAND_TECHNOLOGY:
+				if ((offer->param_1 >= 0) && (offer->param_1 < p_bic_data->AdvanceCount))
+					snprintf (line, sizeof line, "^- %s", p_bic_data->Advances[offer->param_1].Name);
+				else
+					snprintf (line, sizeof line, "^- Technology %d", offer->param_1);
+				break;
+			default:
+				snprintf (line, sizeof line, "^- Item %d (%d, %d)", offer->kind, offer->param_1, offer->param_2);
+				break;
+		}
+		PopupForm_add_text (popup, __, line, false);
+	}
+
+	if (accepted)
+		snprintf (line, sizeof line, "^Outcome: accepted");
+	else if (war_declared)
+		snprintf (line, sizeof line, "^Outcome: refused; %s declared war", Leader_get_civ_formal_name (demander));
+	else
+		snprintf (line, sizeof line, "^Outcome: refused");
+	PopupForm_add_text (popup, __, line, false);
+	patch_show_popup (popup, __, 0, 0);
+}
+
+int __fastcall
+patch_rand_int_for_ai_ai_negotiation (void * this, int edx, int lim)
+{
+	// The intercepted call is the base game's 1-in-4 gate before ai_negotiate_with_other_ai. Always
+	// pass it so every eligible pairing reaches our vtable patch, which performs that roll instead.
+	return 0;
+}
+
+bool
+try_ai_demand_from_other_ai (Leader * this, int other_civ_id, int demand_rate)
+{
+	if (this->At_War[other_civ_id] ||
+	    ((! is_online_game ()) && (this->ai_diplomacy_cooldown[other_civ_id] > 0)) ||
+	    (! Leader_ai_would_meet_with (this, __, other_civ_id)))
+		return false;
+	if ((demand_rate < 100) && (rand_int (p_rand_object, __, 100) >= demand_rate))
+		return false;
+
+	TradeOfferList demands = {p_trade_offer_list_vtable, 0, NULL, NULL};
+	TradeOfferList no_offers = {p_trade_offer_list_vtable, 0, NULL, NULL};
+	Leader * recipient = &leaders[other_civ_id];
+	bool made_demand = false;
+	bool accepted = false;
+	bool war_declared = false;
+
+	// This is the same sequence of demand gates used by Leader::impl_begin_turn for demands against
+	// human players. demand_items also assembles the offer list in exactly the same way.
+	if (! Leader_demand_items (this, __, &demands, &no_offers, other_civ_id))
+		goto done;
+	if (32 - this->power_rank > 2 * (32 - recipient->power_rank))
+		goto done;
+	if (rand_int (p_rand_object, __, 32 - this->power_rank) != 0)
+		goto done;
+	if (this->reputations[other_civ_id].war_damage_memory > recipient->reputations[this->ID].war_damage_memory)
+		goto done;
+
+	int attitude_roll_size = -this->vtable->get_attitude_toward (this, __, other_civ_id, 0);
+	if (attitude_roll_size < 1)
+		attitude_roll_size = 1;
+	if (rand_int (p_rand_object, __, attitude_roll_size) != 0)
+		goto done;
+
+	Race * race = &p_bic_data->Races[this->RaceID];
+	int aggression = race->vtable->get_effective_aggression_level (race);
+	if (rand_int (p_rand_object, __, 2 - aggression) != 0)
+		goto done;
+
+	made_demand = true;
+	this->ai_diplomacy_cooldown[other_civ_id] = 0x20;
+	// The recipient remembers being subjected to a demand. The demander separately records the
+	// acceptance or refusal below; both counters feed into the base game's attitude calculation.
+	recipient->reputations[this->ID].tribute++;
+
+	int recipients_advantage = 0;
+	Leader_consider_trade (recipient, __, &no_offers, &demands, this->ID, 0, true, 0, 0,
+	                       &recipients_advantage, NULL, NULL);
+	accepted = Leader_would_yield_to_demand (recipient, __, this->ID, recipients_advantage);
+	if (accepted) {
+		this->reputations[other_civ_id].gift++;
+		// Apply both halves just as the diplo screen does when a human accepts a demand. The recipient
+		// pays the demanded items and the demander receives them.
+		Leader_apply_trade (recipient, __, this->ID, &no_offers, &demands);
+		Leader_apply_trade (this, __, other_civ_id, &demands, &no_offers);
+	} else {
+		this->reputations[other_civ_id].refused_tribute_demands++;
+		if (Leader_ai_roll_to_declare_after_provocation (this, __, other_civ_id) &&
+		    ! (this->Relation_Treaties[other_civ_id] & 4)) { // check mutual protection pact
+			Leader_declare_war (this, __, other_civ_id, 0);
+			war_declared = true;
+		}
+	}
+
+done:
+	if (made_demand && is->current_config.show_ai_demand_info_popup &&
+	    ((*p_debug_mode_bits & 0xC) != 0))
+		show_ai_demand_popup (this, recipient, &demands, accepted, war_declared);
+	TradeOfferList_clear (&demands);
+	TradeOfferList_clear (&no_offers);
+	return made_demand;
+}
+
+void __fastcall
+patch_Leader_ai_negotiate_with_other_ai (Leader * this, int edx, int other_civ_id)
+{
+	int demand_rate = clamp (0, 100, is->current_config.diplo_demand_rate_between_ai_players);
+	if ((demand_rate > 0) &&
+	    try_ai_demand_from_other_ai (this, other_civ_id, demand_rate))
+		return;
+
+	// If no demand was made, preserve the base game's 1-in-4 chance and random-number consumption
+	// for normal AI negotiation.
+	if (rand_int (p_rand_object, __, 4) == 0)
+		Leader_ai_negotiate_with_other_ai (this, __, other_civ_id);
+}
+
+bool __fastcall
+patch_Leader_cannot_plot_war_against (Leader * this, int edx, int civ_id)
+{
+	if (! is->current_config.remove_human_player_bias_from_ai_war_planning)
+		return Leader_cannot_plot_war_against (this, __, civ_id);
+
+	int saved_human_player_bits = *p_human_player_bits;
+	*p_human_player_bits = *p_player_bits;
+	bool result = Leader_cannot_plot_war_against (this, __, civ_id);
+	*p_human_player_bits = saved_human_player_bits;
+	return result;
+}
+
+int __fastcall
+patch_Leader_ai_eval_war_target (Leader * this, int edx, int civ_id)
+{
+	if (! is->current_config.remove_human_player_bias_from_ai_war_planning)
+		return Leader_ai_eval_war_target (this, __, civ_id);
+
+	int saved_human_player_bits = *p_human_player_bits;
+	*p_human_player_bits = *p_player_bits;
+	int result = Leader_ai_eval_war_target (this, __, civ_id);
+	*p_human_player_bits = saved_human_player_bits;
+	return result;
 }
 
 void __fastcall
@@ -34190,10 +34382,10 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							remaining_bytes -= (int)sizeof(int) * 2;
 
 							char name_buf[101];
-							memcpy (name_buf, cursor, sizeof name_buf);
+							memcpy (name_buf, cursor, sizeof ((struct named_tile_entry *)0)->name);
 							name_buf[(sizeof name_buf) - 1] = '\0';
-							cursor += sizeof name_buf;
-							remaining_bytes -= sizeof name_buf;
+							cursor += sizeof ((struct named_tile_entry *)0)->name;
+							remaining_bytes -= sizeof ((struct named_tile_entry *)0)->name;
 							ints = (int *)cursor;
 
 							if (name_buf[0] == '\0')

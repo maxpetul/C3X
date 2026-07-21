@@ -459,6 +459,8 @@ struct c3x_config {
 	bool measure_turn_times;
 
 	bool use_offensive_artillery_ai;
+	int diplo_demand_rate_between_ai_players;
+	bool show_ai_demand_info_popup;
 	bool dont_escort_unflagged_units;
 	int ai_build_artillery_ratio;
 	int ai_artillery_value_damage_percent;
@@ -469,6 +471,7 @@ struct c3x_config {
 	bool enable_caravan_unit_ai;
 	int max_ai_naval_escorts;
 	int ai_worker_requirement_percent;
+	bool remove_human_player_bias_from_ai_war_planning;
 
 	bool remove_unit_limit;
 	bool remove_city_improvement_limit;
