@@ -2297,7 +2297,7 @@ struct injected_state {
 	LARGE_INTEGER last_day_night_cycle_update_time;
 	LARGE_INTEGER last_seasonal_cycle_update_time;
 
-	struct table * day_night_sprite_proxy_by_season_and_hour;
+	struct table day_night_cycle_sprite_proxies;
 
 	struct wonder_district_image_set {
 		Sprite img;

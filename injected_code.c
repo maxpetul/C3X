@@ -6811,7 +6811,6 @@ pick_missing_district_for_improvement (City * city, struct district_building_pre
 	return fallback;
 }
 
-
 bool
 district_is_complete(Tile * tile, int district_id)
 {
@@ -6855,6 +6854,11 @@ district_is_complete(Tile * tile, int district_id)
 		return false;
 	}
 
+	// Defer setting complete flag until after Trade Net recomputation is done, as auto-adding
+	// roads/railroads may trigger Trade Net updates that in turn depends on the non-artificial tile count being present
+	if (is->saved_tile_count >= 0)
+		return false;
+
 	// Mark as completed and run one-time side effects
 	inst->state = DS_COMPLETED;
 	inst->completed_turn = *p_current_turn_no;
@@ -6882,14 +6886,14 @@ district_is_complete(Tile * tile, int district_id)
 		if (cfg->auto_add_road) {
 			bool has_road = tile->vtable->m25_Check_Roads (tile, __, 0) != 0;
 			if (! has_road)
-				tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_ROAD, tile_x, tile_y); 
+				tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_ROAD, tile_x, tile_y);
 		}
 
 		if (cfg->auto_add_railroad) {
 			bool has_railroad = tile->vtable->m23_Check_Railroads (tile, __, 0) != 0;
 			if (! has_railroad) {
 				if ((territory_owner >= 0) && patch_Leader_can_do_worker_job (&leaders[territory_owner], __, WJ_Build_Railroad, tile_x, tile_y, 0)) {
-					tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_RAILROAD, tile_x, tile_y); 
+					tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_RAILROAD, tile_x, tile_y);
 				}
 			}
 		}
@@ -18916,49 +18920,41 @@ Sprite *
 get_cycle_sprite_proxy(Sprite *s) {
 	if (is->current_config.day_night_cycle_mode == DNCM_OFF && is->current_config.seasonal_cycle_mode == SCM_OFF)
 		return NULL;
-	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
-		return NULL;
 
 	int v;
-	if (itable_look_up (is->day_night_sprite_proxy_by_season_and_hour, (int)s, &v))
+	if (itable_look_up (&is->day_night_cycle_sprite_proxies, (int)s, &v))
 		return (Sprite *)v;
 	return NULL;
 }
 
 void
-insert_spritelist_proxies(SpriteList *ss, SpriteList *ps, int season, int hour, int len1, int len2) {
-	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
-		return;
+insert_spritelist_proxies(SpriteList *ss, SpriteList *ps, int len1, int len2) {
 	for (int i = 0; i < len1; i++) {
 		for (int j = 0; j < len2; j++) {
 			Sprite *s = &ss[i].field_0[j];
 			Sprite *p = &ps[i].field_0[j];
 			if (s && p) {
-				itable_insert(is->day_night_sprite_proxy_by_season_and_hour, (int)s, (int)p);
+				itable_insert(&is->day_night_cycle_sprite_proxies, (int)s, (int)p);
 			}
 		}
 	}
 }
 
 void
-insert_sprite_proxies(Sprite *ss, Sprite *ps, int season, int hour, int len) {
-	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
-		return;
+insert_sprite_proxies(Sprite *ss, Sprite *ps, int len) {
 	for (int i = 0; i < len; i++) {
 		Sprite *s = &ss[i];
 		Sprite *p = &ps[i];
 		if (s && p) {
-			itable_insert(is->day_night_sprite_proxy_by_season_and_hour, (int)s, (int)p);
+			itable_insert(&is->day_night_cycle_sprite_proxies, (int)s, (int)p);
 		}
 	}
 }
 
 void
-insert_sprite_proxy(Sprite *s, Sprite *p, int season, int hour) {
-	if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
-		return;
+insert_sprite_proxy(Sprite *s, Sprite *p) {
 	if (s && p) {
-		itable_insert(is->day_night_sprite_proxy_by_season_and_hour, (int)s, (int)p);
+		itable_insert(&is->day_night_cycle_sprite_proxies, (int)s, (int)p);
 	}
 }
 
@@ -18970,13 +18966,6 @@ allocate_day_night_cycle_runtime_storage ()
 		if (is->cycle_imgs == NULL)
 			return false;
 		memset (is->cycle_imgs, 0, sizeof is->cycle_imgs[0]);
-	}
-
-	if (is->day_night_sprite_proxy_by_season_and_hour == NULL) {
-		is->day_night_sprite_proxy_by_season_and_hour = malloc (sizeof is->day_night_sprite_proxy_by_season_and_hour[0]);
-		if (is->day_night_sprite_proxy_by_season_and_hour == NULL)
-			return false;
-		memset (is->day_night_sprite_proxy_by_season_and_hour, 0, sizeof is->day_night_sprite_proxy_by_season_and_hour[0]);
 	}
 
 	return true;
@@ -19087,77 +19076,75 @@ deinit_day_night_cycle_img_set (struct day_night_cycle_img_set * set)
 
 void
 build_sprite_proxies(Map_Renderer *mr) {
-	if (is->cycle_imgs == NULL || is->day_night_sprite_proxy_by_season_and_hour == NULL)
+	if (is->cycle_imgs == NULL)
 		return;
 
-	int season = (is->current_config.seasonal_cycle_mode != SCM_OFF)   ? clamp (0, 3, is->current_seasonal_cycle) : CS_SUMMER;
-	int h      = (is->current_config.day_night_cycle_mode != DNCM_OFF) ? clamp (0, 23, is->current_day_night_cycle) : 12;
 	struct day_night_cycle_img_set * set = is->cycle_imgs;
 
-	insert_sprite_proxies(city_sprites, set->City_Images, season, h, 80);
-	insert_sprite_proxies(destroyed_city_sprites, set->Destroyed_City_Images, season, h, 3);
+	insert_sprite_proxies(city_sprites, set->City_Images, 80);
+	insert_sprite_proxies(destroyed_city_sprites, set->Destroyed_City_Images, 3);
 	if ((mr->Resources != NULL) && (set->Resources != NULL)) {
 		int resource_count = ((int *)mr->Resources)[-1];
 		if (resource_count > set->ResourceCount)
 			resource_count = set->ResourceCount;
-		insert_sprite_proxies(mr->Resources, set->Resources, season, h, resource_count);
+		insert_sprite_proxies(mr->Resources, set->Resources, resource_count);
 	}
-	insert_spritelist_proxies(mr->Std_Terrain_Images, set->Std_Terrain_Images, season, h, 9, 81);
-	insert_spritelist_proxies(mr->LM_Terrain_Images, set->LM_Terrain_Images, season, h, 9, 81);
-	insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &set->Terrain_Buldings_Barbarian_Camp, season, h);
-	insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &set->Terrain_Buldings_Mines, season, h);
-	insert_sprite_proxy(&mr->Victory_Image, &set->Victory_Image, season, h);
-	insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &set->Terrain_Buldings_Radar, season, h);
-	insert_sprite_proxies(mr->Flood_Plains_Images, set->Flood_Plains_Images, season, h, 16);
-	insert_sprite_proxies(mr->Polar_Icecaps_Images, set->Polar_Icecaps_Images, season, h, 32);
-	insert_sprite_proxies(mr->Roads_Images, set->Roads_Images, season, h, 256);
-	insert_sprite_proxies(mr->Railroads_Images, set->Railroads_Images, season, h, 272);
-	insert_sprite_proxies(mr->Terrain_Buldings_Airfields, set->Terrain_Buldings_Airfields, season, h, 2);
-	insert_sprite_proxies(mr->Terrain_Buldings_Camp, set->Terrain_Buldings_Camp, season, h, 4);
-	insert_sprite_proxies(mr->Terrain_Buldings_Fortress, set->Terrain_Buldings_Fortress, season, h, 4);
-	insert_sprite_proxies(mr->Terrain_Buldings_Barricade, set->Terrain_Buldings_Barricade, season, h, 4);
-	insert_sprite_proxies(mr->Goody_Huts_Images, set->Goody_Huts_Images, season, h, 8);
-	insert_sprite_proxies(mr->Terrain_Buldings_Outposts, set->Terrain_Buldings_Outposts, season, h, 3);
-	insert_sprite_proxies(mr->Pollution, set->Pollution, season, h, 25);
-	insert_sprite_proxies(mr->Craters, set->Craters, season, h, 25);
-	insert_sprite_proxies(mr->Tnt_Images, set->Tnt_Images, season, h, 18);
-	insert_sprite_proxies(mr->Waterfalls_Images, set->Waterfalls_Images, season, h, 4);
-	insert_sprite_proxies(mr->LM_Terrain, set->LM_Terrain, season, h, 7);
-	insert_sprite_proxies(mr->Marsh_Large, set->Marsh_Large, season, h, 8);
-	insert_sprite_proxies(mr->Marsh_Small, set->Marsh_Small, season, h, 10);
-	insert_sprite_proxies(mr->Volcanos_Images, set->Volcanos_Images, season, h, 16);
-	insert_sprite_proxies(mr->Volcanos_Forests_Images, set->Volcanos_Forests_Images, season, h, 16);
-	insert_sprite_proxies(mr->Volcanos_Jungles_Images, set->Volcanos_Jungles_Images, season, h, 16);
-	insert_sprite_proxies(mr->Volcanos_Snow_Images, set->Volcanos_Snow_Images, season, h, 16);
-	insert_sprite_proxies(mr->Grassland_Forests_Large, set->Grassland_Forests_Large, season, h, 8);
-	insert_sprite_proxies(mr->Plains_Forests_Large, set->Plains_Forests_Large, season, h, 8);
-	insert_sprite_proxies(mr->Tundra_Forests_Large, set->Tundra_Forests_Large, season, h, 8);
-	insert_sprite_proxies(mr->Grassland_Forests_Small, set->Grassland_Forests_Small, season, h, 10);
-	insert_sprite_proxies(mr->Plains_Forests_Small, set->Plains_Forests_Small, season, h, 10);
-	insert_sprite_proxies(mr->Tundra_Forests_Small, set->Tundra_Forests_Small, season, h, 10);
-	insert_sprite_proxies(mr->Grassland_Forests_Pines, set->Grassland_Forests_Pines, season, h, 12);
-	insert_sprite_proxies(mr->Plains_Forests_Pines, set->Plains_Forests_Pines, season, h, 12);
-	insert_sprite_proxies(mr->Tundra_Forests_Pines, set->Tundra_Forests_Pines, season, h, 12);
-	insert_sprite_proxies(mr->Irrigation_Desert_Images, set->Irrigation_Desert_Images, season, h, 16);
-	insert_sprite_proxies(mr->Irrigation_Plains_Images, set->Irrigation_Plains_Images, season, h, 16);
-	insert_sprite_proxies(mr->Irrigation_Images, set->Irrigation_Images, season, h, 16);
-	insert_sprite_proxies(mr->Irrigation_Tundra_Images, set->Irrigation_Tundra_Images, season, h, 16);
-	insert_sprite_proxies(mr->Grassland_Jungles_Large, set->Grassland_Jungles_Large, season, h, 8);
-	insert_sprite_proxies(mr->Grassland_Jungles_Small, set->Grassland_Jungles_Small, season, h, 12);
-	insert_sprite_proxies(mr->Mountains_Images, set->Mountains_Images, season, h, 16);
-	insert_sprite_proxies(mr->Mountains_Forests_Images, set->Mountains_Forests_Images, season, h, 16);
-	insert_sprite_proxies(mr->Mountains_Jungles_Images, set->Mountains_Jungles_Images, season, h, 16);
-	insert_sprite_proxies(mr->Mountains_Snow_Images, set->Mountains_Snow_Images, season, h, 16);
-	insert_sprite_proxies(mr->Hills_Images, set->Hills_Images, season, h, 16);
-	insert_sprite_proxies(mr->Hills_Forests_Images, set->Hills_Forests_Images, season, h, 16);
-	insert_sprite_proxies(mr->Hills_Jungle_Images, set->Hills_Jungle_Images, season, h, 16);
-	insert_sprite_proxies(mr->Delta_Rivers_Images, set->Delta_Rivers_Images, season, h, 16);
-	insert_sprite_proxies(mr->Mountain_Rivers_Images, set->Mountain_Rivers_Images, season, h, 16);
-	insert_sprite_proxies(mr->LM_Mountains_Images, set->LM_Mountains_Images, season, h, 16);
-	insert_sprite_proxies(mr->LM_Forests_Large_Images, set->LM_Forests_Large_Images, season, h, 8);
-	insert_sprite_proxies(mr->LM_Forests_Small_Images, set->LM_Forests_Small_Images, season, h, 10);
-	insert_sprite_proxies(mr->LM_Forests_Pines_Images, set->LM_Forests_Pines_Images, season, h, 12);
-	insert_sprite_proxies(mr->LM_Hills_Images, set->LM_Hills_Images, season, h, 16);
+	insert_spritelist_proxies(mr->Std_Terrain_Images, set->Std_Terrain_Images, 9, 81);
+	insert_spritelist_proxies(mr->LM_Terrain_Images, set->LM_Terrain_Images, 9, 81);
+	insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &set->Terrain_Buldings_Barbarian_Camp);
+	insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &set->Terrain_Buldings_Mines);
+	insert_sprite_proxy(&mr->Victory_Image, &set->Victory_Image);
+	insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &set->Terrain_Buldings_Radar);
+	insert_sprite_proxies(mr->Flood_Plains_Images, set->Flood_Plains_Images, 16);
+	insert_sprite_proxies(mr->Polar_Icecaps_Images, set->Polar_Icecaps_Images, 32);
+	insert_sprite_proxies(mr->Roads_Images, set->Roads_Images, 256);
+	insert_sprite_proxies(mr->Railroads_Images, set->Railroads_Images, 272);
+	insert_sprite_proxies(mr->Terrain_Buldings_Airfields, set->Terrain_Buldings_Airfields, 2);
+	insert_sprite_proxies(mr->Terrain_Buldings_Camp, set->Terrain_Buldings_Camp, 4);
+	insert_sprite_proxies(mr->Terrain_Buldings_Fortress, set->Terrain_Buldings_Fortress, 4);
+	insert_sprite_proxies(mr->Terrain_Buldings_Barricade, set->Terrain_Buldings_Barricade, 4);
+	insert_sprite_proxies(mr->Goody_Huts_Images, set->Goody_Huts_Images, 8);
+	insert_sprite_proxies(mr->Terrain_Buldings_Outposts, set->Terrain_Buldings_Outposts, 3);
+	insert_sprite_proxies(mr->Pollution, set->Pollution, 25);
+	insert_sprite_proxies(mr->Craters, set->Craters, 25);
+	insert_sprite_proxies(mr->Tnt_Images, set->Tnt_Images, 18);
+	insert_sprite_proxies(mr->Waterfalls_Images, set->Waterfalls_Images, 4);
+	insert_sprite_proxies(mr->LM_Terrain, set->LM_Terrain, 7);
+	insert_sprite_proxies(mr->Marsh_Large, set->Marsh_Large, 8);
+	insert_sprite_proxies(mr->Marsh_Small, set->Marsh_Small, 10);
+	insert_sprite_proxies(mr->Volcanos_Images, set->Volcanos_Images, 16);
+	insert_sprite_proxies(mr->Volcanos_Forests_Images, set->Volcanos_Forests_Images, 16);
+	insert_sprite_proxies(mr->Volcanos_Jungles_Images, set->Volcanos_Jungles_Images, 16);
+	insert_sprite_proxies(mr->Volcanos_Snow_Images, set->Volcanos_Snow_Images, 16);
+	insert_sprite_proxies(mr->Grassland_Forests_Large, set->Grassland_Forests_Large, 8);
+	insert_sprite_proxies(mr->Plains_Forests_Large, set->Plains_Forests_Large, 8);
+	insert_sprite_proxies(mr->Tundra_Forests_Large, set->Tundra_Forests_Large, 8);
+	insert_sprite_proxies(mr->Grassland_Forests_Small, set->Grassland_Forests_Small, 10);
+	insert_sprite_proxies(mr->Plains_Forests_Small, set->Plains_Forests_Small, 10);
+	insert_sprite_proxies(mr->Tundra_Forests_Small, set->Tundra_Forests_Small, 10);
+	insert_sprite_proxies(mr->Grassland_Forests_Pines, set->Grassland_Forests_Pines, 12);
+	insert_sprite_proxies(mr->Plains_Forests_Pines, set->Plains_Forests_Pines, 12);
+	insert_sprite_proxies(mr->Tundra_Forests_Pines, set->Tundra_Forests_Pines, 12);
+	insert_sprite_proxies(mr->Irrigation_Desert_Images, set->Irrigation_Desert_Images, 16);
+	insert_sprite_proxies(mr->Irrigation_Plains_Images, set->Irrigation_Plains_Images, 16);
+	insert_sprite_proxies(mr->Irrigation_Images, set->Irrigation_Images, 16);
+	insert_sprite_proxies(mr->Irrigation_Tundra_Images, set->Irrigation_Tundra_Images, 16);
+	insert_sprite_proxies(mr->Grassland_Jungles_Large, set->Grassland_Jungles_Large, 8);
+	insert_sprite_proxies(mr->Grassland_Jungles_Small, set->Grassland_Jungles_Small, 12);
+	insert_sprite_proxies(mr->Mountains_Images, set->Mountains_Images, 16);
+	insert_sprite_proxies(mr->Mountains_Forests_Images, set->Mountains_Forests_Images, 16);
+	insert_sprite_proxies(mr->Mountains_Jungles_Images, set->Mountains_Jungles_Images, 16);
+	insert_sprite_proxies(mr->Mountains_Snow_Images, set->Mountains_Snow_Images, 16);
+	insert_sprite_proxies(mr->Hills_Images, set->Hills_Images, 16);
+	insert_sprite_proxies(mr->Hills_Forests_Images, set->Hills_Forests_Images, 16);
+	insert_sprite_proxies(mr->Hills_Jungle_Images, set->Hills_Jungle_Images, 16);
+	insert_sprite_proxies(mr->Delta_Rivers_Images, set->Delta_Rivers_Images, 16);
+	insert_sprite_proxies(mr->Mountain_Rivers_Images, set->Mountain_Rivers_Images, 16);
+	insert_sprite_proxies(mr->LM_Mountains_Images, set->LM_Mountains_Images, 16);
+	insert_sprite_proxies(mr->LM_Forests_Large_Images, set->LM_Forests_Large_Images, 8);
+	insert_sprite_proxies(mr->LM_Forests_Small_Images, set->LM_Forests_Small_Images, 10);
+	insert_sprite_proxies(mr->LM_Forests_Pines_Images, set->LM_Forests_Pines_Images, 12);
+	insert_sprite_proxies(mr->LM_Hills_Images, set->LM_Hills_Images, 16);
 
 	if (is->current_config.enable_districts) {
 		for (int dc = 0; dc < is->district_count; dc++) {
@@ -19177,31 +19164,31 @@ build_sprite_proxies(Map_Renderer *mr) {
 					for (int col = 0; col < column_count; col++) {
 						Sprite * base = &is->district_img_sets[dc].imgs[variant_i][era][col];
 						Sprite * proxy = &set->District_Images[dc][variant_i][era][col];
-						insert_sprite_proxy (base, proxy, season, h);
+						insert_sprite_proxy (base, proxy);
 					}
 				}
 			}
 		}
 
-		insert_sprite_proxy (&is->abandoned_district_img, &set->Abandoned_District_Image, season, h);
-		insert_sprite_proxy (&is->abandoned_maritime_district_img, &set->Abandoned_Maritime_District_Image, season, h);
+		insert_sprite_proxy (&is->abandoned_district_img, &set->Abandoned_District_Image);
+		insert_sprite_proxy (&is->abandoned_maritime_district_img, &set->Abandoned_Maritime_District_Image);
 
 		if (is->current_config.enable_wonder_districts) {
 			for (int wi = 0; wi < is->wonder_district_count; wi++) {
-				insert_sprite_proxy (&is->wonder_district_img_sets[wi].img, &set->Wonder_District_Images[wi].img, season, h);
-				insert_sprite_proxy (&is->wonder_district_img_sets[wi].construct_img, &set->Wonder_District_Images[wi].construct_img, season, h);
+				insert_sprite_proxy (&is->wonder_district_img_sets[wi].img, &set->Wonder_District_Images[wi].img);
+				insert_sprite_proxy (&is->wonder_district_img_sets[wi].construct_img, &set->Wonder_District_Images[wi].construct_img);
 
 				if (is->wonder_district_img_sets[wi].alt_dir_img.vtable != NULL)
-					insert_sprite_proxy (&is->wonder_district_img_sets[wi].alt_dir_img, &set->Wonder_District_Images[wi].alt_dir_img, season, h);
+					insert_sprite_proxy (&is->wonder_district_img_sets[wi].alt_dir_img, &set->Wonder_District_Images[wi].alt_dir_img);
 				if (is->wonder_district_img_sets[wi].alt_dir_construct_img.vtable != NULL)
-					insert_sprite_proxy (&is->wonder_district_img_sets[wi].alt_dir_construct_img, &set->Wonder_District_Images[wi].alt_dir_construct_img, season, h);
+					insert_sprite_proxy (&is->wonder_district_img_sets[wi].alt_dir_construct_img, &set->Wonder_District_Images[wi].alt_dir_construct_img);
 			}
 		}
 	}
 
 	if (is->current_config.enable_natural_wonders && (is->natural_wonder_count > 0)) {
 		for (int ni = 0; ni < is->natural_wonder_count; ni++)
-			insert_sprite_proxy (&is->natural_wonder_img_sets[ni].img, &set->Natural_Wonder_Images[ni].img, season, h);
+			insert_sprite_proxy (&is->natural_wonder_img_sets[ni].img, &set->Natural_Wonder_Images[ni].img);
 	}
 	is->day_night_cycle_img_proxies_indexed = true;
 }
@@ -19243,10 +19230,10 @@ init_day_night_and_seasonal_images()
 void
 deindex_day_night_image_proxies()
 {
-	if (!is->day_night_cycle_img_proxies_indexed || is->day_night_sprite_proxy_by_season_and_hour == NULL)
+	if (!is->day_night_cycle_img_proxies_indexed)
 		return;
 
-	table_deinit (is->day_night_sprite_proxy_by_season_and_hour);
+	table_deinit (&is->day_night_cycle_sprite_proxies);
 	is->day_night_cycle_img_proxies_indexed = false;
 }
 
@@ -20019,7 +20006,7 @@ patch_init_floating_point ()
 	is->seasonal_cycle_unstarted = true;
 	is->turns_in_current_season = 0;
 	is->day_night_cycle_img_proxies_indexed = false;
-	is->day_night_sprite_proxy_by_season_and_hour = NULL;
+	is->day_night_cycle_sprite_proxies = (struct table) {0};
 	is->cycle_imgs = NULL;
 	is->tile_animation_selected_hour = -1;
 	is->tile_animation_selected_season = -1;
@@ -23789,13 +23776,9 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 	    (is->current_config.seasonal_cycle_mode != SCM_OFF)) {
 		if (! allocate_day_night_cycle_runtime_storage ()) {
 			is->day_night_cycle_img_state = IS_INIT_FAILED;
-			pop_up_in_game_error ("Could not allocate memory for day/night cycle sprite proxies.");
+			pop_up_in_game_error ("Could not allocate memory for day/night cycle images.");
 		}
 	} else {
-		if (is->day_night_sprite_proxy_by_season_and_hour != NULL) {
-			free (is->day_night_sprite_proxy_by_season_and_hour);
-			is->day_night_sprite_proxy_by_season_and_hour = NULL;
-		}
 		if (is->cycle_imgs != NULL) {
 			free (is->cycle_imgs);
 			is->cycle_imgs = NULL;
@@ -34336,7 +34319,6 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 
 			} else if (match_save_chunk_name (&cursor, "current_day_night_cycle")) {
 				is->current_day_night_cycle = *((int *)cursor)++;
-				is->day_night_cycle_unstarted = false;
 
 				// The day/night cycle sprite proxies will have been cleared in patch_load_scenario. They will not necessarily be set
 				// up again in the usual way because Map_Renderer::load_images is not necessarily called when loading a save. The game
@@ -34344,7 +34326,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				// only the standard graphics; I didn't test). After all mod save chunks have been read, we reload the exact saved
 				// hour/season art in one pass.
 
-				// Because we've restored current_day_night_cycle from the save, set that is is not the first turn so the cycle
+				// Because we've restored current_day_night_cycle from the save, set that it is not the first turn so the cycle
 				// doesn't get restarted.
 				is->day_night_cycle_unstarted = false;
 
