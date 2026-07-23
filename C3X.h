@@ -289,6 +289,7 @@ struct c3x_config {
 	int limit_units_per_tile[3]; // Limits for land, sea, and air units respectively
 	bool exclude_cities_from_units_per_tile_limit;
 	struct table exclude_types_from_units_per_tile_limit;
+	struct table exclude_types_from_units_war_weariness;
 	bool enable_free_buildings_from_small_wonders;
 	bool enable_stack_unit_commands;
 	bool skip_repeated_tile_improv_replacement_asks;
@@ -2130,6 +2131,11 @@ struct injected_state {
 
 	// Normally false. When true, calls to Unit::score_kill will not enslave.
 	bool do_not_enslave_units;
+
+	// Set by patch_Unit_score_kill while Unit::score_kill is running so the war weariness call inside can inspect the victim type.
+	// war_weariness_fight_context is used for similar purposes but specific to Fighter_fight
+	int war_weariness_subject_unit_type_id;
+	Fighter * war_weariness_fight_context;
 
 	// If limit_unit_loading_to_one_transport_per_turn is on, maps unit IDs to the ID of the transport unit they're tied to for the current turn.
 	struct table unit_transport_ties;
