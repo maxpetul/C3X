@@ -6884,7 +6884,7 @@ district_is_complete(Tile * tile, int district_id)
 		return false;
 	}
 
-	// Defer setting complete flag until after Trade Net recomputation is done, as auto-adding 
+	// Defer setting complete flag until after Trade Net recomputation is done, as auto-adding
 	// roads/railroads may trigger Trade Net updates that in turn depends on the non-artificial tile count being present
 	if (is->saved_tile_count >= 0)
 		return false;
@@ -34472,12 +34472,6 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 			} else if (match_save_chunk_name (&cursor, "current_day_night_cycle")) {
 				is->current_day_night_cycle = *((int *)cursor)++;
 
-				// The day/night cycle sprite proxies will have been cleared in patch_load_scenario. They will not necessarily be set
-				// up again in the usual way because Map_Renderer::load_images is not necessarily called when loading a save. The game
-				// skips reloading all graphics when loading a save while in-game with another that uses the same graphics (possibly
-				// only the standard graphics; I didn't test). After all mod save chunks have been read, we reload the exact saved
-				// hour/season art in one pass.
-
 				// Because we've restored current_day_night_cycle from the save, set that it is not the first turn so the cycle
 				// doesn't get restarted.
 				is->day_night_cycle_unstarted = false;
@@ -43313,6 +43307,9 @@ tile_animation_scheduler_tick ()
 			continue;
 		int tile_x, tile_y;
 		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
+		if (! Main_Screen_Form_is_tile_on_screen (p_main_screen_form, __, tile_x, tile_y, 0, 0))
+			continue;
+			
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile == NULL) || (tile == p_null_tile))
 			continue;
