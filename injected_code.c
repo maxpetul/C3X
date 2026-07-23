@@ -42675,6 +42675,9 @@ tile_animation_scheduler_tick ()
 			continue;
 		int tile_x, tile_y;
 		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
+		if (! Main_Screen_Form_is_tile_on_screen (p_main_screen_form, __, tile_x, tile_y, 0, 0))
+			continue;
+			
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile == NULL) || (tile == p_null_tile))
 			continue;
