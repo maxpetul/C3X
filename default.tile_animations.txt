@@ -46,7 +46,7 @@
   ;  - terrain_types            : Comma-delimited terrain types. Required if type = terrain.
   ;                               Valid values: desert, plains, grassland, jungle, tundra, floodplain, swamp, hills, mountains,
   ;                                             forest, volcano, snow-forest, snow-mountains, snow-volcano, coast, sea, ocean, land
-  ;                               Singular/plural forms are both accepted (for example, volcano/volcanos).
+  ;                               Singular/plural forms are both accepted (for example, volcano/volcanoes).
   ;                               "land" means any non-water tile.
   ;  - adjacent_to              : Text. Optional adjacency requirements.
   ;                               Comma-delimited values using:
@@ -145,7 +145,7 @@ show_in_day_night_hours = 18-6
 
 #Animation
 name                    = Horses
-ini_path                = Resources\HorsePainted\HorsePainted.INI
+ini_path                = Resources\Horse\HorseLightBrown.INI
 type                    = resource
 resource_type           = Horses
 direction               = southeast
@@ -153,7 +153,7 @@ show_in_day_night_hours = 7-17
 
 #Animation
 name                    = Horses_night
-ini_path                = Resources\HorsePainted\HorsePainted_night.INI
+ini_path                = Resources\Horse\HorseLightBrown_night.INI
 type                    = resource
 resource_type           = Horses
 direction               = southeast
@@ -166,6 +166,16 @@ type                    = resource
 resource_type           = Ivory
 direction               = southwest
 frame_time_seconds      = 0.17
+show_in_day_night_hours = 7-17
+
+#Animation
+name                    = Elephant_night
+ini_path                = Resources\Elephant\Elephant_night.ini
+type                    = resource
+resource_type           = Ivory
+direction               = southwest
+frame_time_seconds      = 0.17
+show_in_day_night_hours = 18-6
 
 #Animation
 name                    = Fish
@@ -191,3 +201,4 @@ type                    = resource
 resource_type           = Furs
 direction               = southwest
 show_in_day_night_hours = 18-6
+
