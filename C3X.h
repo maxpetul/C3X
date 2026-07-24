@@ -19,8 +19,8 @@ typedef unsigned char byte;
 #define USED_SPECIAL_DISTRICT_TYPES 11
 #define MAX_DYNAMIC_DISTRICT_TYPES 22
 #define COUNT_DISTRICT_TYPES (COUNT_SPECIAL_DISTRICT_TYPES + MAX_DYNAMIC_DISTRICT_TYPES)
-#define MAX_WONDER_DISTRICT_TYPES 32
-#define MAX_NATURAL_WONDER_DISTRICT_TYPES 32
+#define MAX_WONDER_DISTRICT_TYPES 64
+#define MAX_NATURAL_WONDER_DISTRICT_TYPES 64
 #define MAX_DISTRICT_VARIANT_COUNT 5
 #define MAX_DISTRICT_ERA_COUNT 4
 #define MAX_DISTRICT_COLUMN_COUNT 10
@@ -479,6 +479,8 @@ struct c3x_config {
 	bool measure_turn_times;
 
 	bool use_offensive_artillery_ai;
+	int diplo_demand_rate_between_ai_players;
+	bool show_ai_demand_info_popup;
 	bool dont_escort_unflagged_units;
 	int ai_build_artillery_ratio;
 	int ai_artillery_value_damage_percent;
@@ -489,6 +491,7 @@ struct c3x_config {
 	bool enable_caravan_unit_ai;
 	int max_ai_naval_escorts;
 	int ai_worker_requirement_percent;
+	bool remove_human_player_bias_from_ai_war_planning;
 
 	bool remove_unit_limit;
 	bool remove_city_improvement_limit;
@@ -2209,7 +2212,7 @@ struct injected_state {
 	LARGE_INTEGER last_day_night_cycle_update_time;
 	LARGE_INTEGER last_seasonal_cycle_update_time;
 
-	struct table * day_night_sprite_proxy_by_season_and_hour;
+	struct table day_night_cycle_sprite_proxies;
 
 	struct wonder_district_image_set {
 		Sprite img;
@@ -2235,8 +2238,6 @@ struct injected_state {
 		SpriteList LM_Terrain_Images[9];
 		Sprite City_Images[80];
 		Sprite Destroyed_City_Images[3];
-		Sprite Resources[36];
-		Sprite ResourcesShadows[36];
 		Sprite Terrain_Buldings_Barbarian_Camp;
 		Sprite Terrain_Buldings_Mines;
 		Sprite Victory_Image;
@@ -2302,6 +2303,8 @@ struct injected_state {
 		Sprite Abandoned_Maritime_District_Image;
 		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
 		struct natural_wonder_district_image_set Natural_Wonder_Images[MAX_NATURAL_WONDER_DISTRICT_TYPES];
+		Sprite * Resources;
+		int ResourceCount;
 	} * cycle_imgs;
 
 	// Districts
