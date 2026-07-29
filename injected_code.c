@@ -38546,11 +38546,15 @@ patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int vi
 		}
 
 		// Resources that should be drawn below district are already drawn, skip in that case
-		if (is->district_configs[inst->district_id].draw_over_resources) 
+		if (is->district_configs[inst->district_id].draw_over_resources)
 			return;
 
 		draw_district_generated_resource_on_tile (this, tile, inst, tile_x, tile_y, map_renderer, pixel_x, pixel_y, visible_to_civ_id);
+		return;
 	}
+
+	if (! suppress_static_resource)
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 }
 
 void __fastcall
