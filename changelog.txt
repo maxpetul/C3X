@@ -1,3 +1,6 @@
+* RELEASE 27C
+- Can limit AI players to making one demand each per turn with limit_ai_to_one_demand_per_turn
+
 * RELEASE 27B
 - Allow for custom combat bonuses or maluses to be applied based on unit type, combat role (attack, defense, or bombard), terrain, city/district, and experience level
   - Option enable_unit_counters gates overall feature, counter_rules lists custom rules
@@ -10,7 +13,6 @@
 - Allow districts to suppress resources on their tiles, option subsumes_tile_resource in districts config
 - Option diplo_demand_rate_between_ai_players that enables AI players to demand tribute from each other and controls how often they do so
   - Can see details about each AI-to-AI demand in debug mode with show_ai_demand_info_popup option
-  - Can limit AI players to making one demand each per turn with limit_ai_to_one_demand_per_turn
 - Options to allow radar towers and outposts to detect invisible units within given distances, named radar_tower_detection_distance and outpost_detection_distance
 - Option prefer_less_expensive_defenders to change how the game chooses between two defenders with the same strength and king flags
 - Option to configure the duration of the "Steal Plans" espionage mission, named steal_plans_duration
