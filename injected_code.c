@@ -31407,7 +31407,7 @@ counter_attack_crosses_river (Unit * attacker, Unit * defender, Tile * def_tile)
 		&p_bic_data->Map, __,
 		defender->Body.X, defender->Body.Y,
 		attacker->Body.X, attacker->Body.Y,
-		8);
+		9); // The limit is exclusive; include DIR_N (neighbor index 8).
 
 	return (def_to_atk > 0) && (def_to_atk <= 8) &&
 	       counter_tile_has_river_edge (def_tile, (enum direction)def_to_atk);
@@ -32261,7 +32261,7 @@ set_fighter_context_for_combat_odds_hud (Fighter * fighter,
 {
 	int attack_direction = Map_compute_neighbor_index (
 		&p_bic_data->Map, __, attacker->Body.X, attacker->Body.Y,
-		defender_x, defender_y, 8);
+		defender_x, defender_y, 9); // The limit is exclusive; include DIR_N.
 	if ((attack_direction <= 0) || (attack_direction > 8))
 		return false;
 
@@ -32407,7 +32407,7 @@ build_attack_combat_odds_hud_state (Main_Screen_Form * main_screen_form,
 		return false;
 
 	int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __,
-		attacker->Body.X, attacker->Body.Y, tile_x, tile_y, 8);
+		attacker->Body.X, attacker->Body.Y, tile_x, tile_y, 9); // Include DIR_N.
 	if ((neighbor_index <= 0) || (neighbor_index > 8))
 		return false;
 	AdjacentMoveValidity move_validity = patch_Unit_can_move_to_adjacent_tile (
