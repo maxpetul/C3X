@@ -263,6 +263,7 @@ int count_utilized_neighborhoods_in_city_radius (City * city);
 char * copy_trimmed_string_or_null (struct string_slice const * slice, int remove_quotes);
 bool city_has_resource_r (City * city, int resource_id, int max_generated_resource_id);
 void load_tile_animation_configs ();
+bool tile_has_matching_custom_animation_for_draw (Tile * tile, int tile_x, int tile_y);
 bool tile_has_matching_resource_animation_for_draw (Tile * tile, int tile_x, int tile_y);
 bool tile_has_matching_resource_animation_for_draw_with_resource (Tile * tile, int tile_x, int tile_y, int resource_id, int * out_effect_id);
 void tile_animation_scheduler_tick ();
@@ -3802,6 +3803,22 @@ patch_Leader_is_tile_visible (Leader * this, int edx, int x, int y)
 		return true;
 	else
 		return false;
+}
+
+void __fastcall
+patch_Leader_reveal_tile (Leader * this, int edx, int x, int y)
+{
+	if (is->current_config.enable_custom_animations &&
+	    (this->ID == p_main_screen_form->Player_CivID) &&
+	    ((*p_debug_mode_bits & 0xC) == 0) &&
+	    tile_has_matching_custom_animation_for_draw (tile_at (x, y), x, y)) {
+
+		// Match vanilla reveal path's flag setting process for checking for cities, huts, roads, and railroads.
+		// This ensures that a newly revealed tile with an animation immediately shows it.
+		*(bool *)(p_main_screen_form->animator.field_18E4 + 10) = true;
+	}
+
+	Leader_reveal_tile (this, __, x, y);
 }
 
 bool __fastcall
@@ -31060,16 +31077,6 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 	is->move_spend_override_unit = NULL;
 	is->move_spend_override_value = 0;
 
-	bool redraw_after_move = false;
-	if (is->current_config.enable_custom_animations) {
-		FOR_TILES_AROUND (tai, 21, this->Body.X, this->Body.Y) {
-			if (tile_has_matching_resource_animation_for_draw (tai.tile, tai.tile_x, tai.tile_y)) {
-				redraw_after_move = true;
-				break;
-			}
-		}
-	}
-
 	bool const allow_worker_coast = is->current_config.enable_districts && is->current_config.workers_can_enter_coast && is_worker (this);
 	bool const allow_bridge_walk = is->current_config.enable_districts &&
 		is->current_config.enable_bridge_districts &&
@@ -31169,21 +31176,6 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 			}
 		}
 	}
-
-	if (is->current_config.enable_custom_animations) {
-		FOR_TILES_AROUND (tai, 21, this->Body.X, this->Body.Y) {
-			if (tile_has_matching_resource_animation_for_draw (tai.tile, tai.tile_x, tai.tile_y)) {
-				redraw_after_move = true;
-				break;
-			}
-		}
-	}
-
-	// We have to call the draw method directly since the game doesn't necessarily fully redraw newly (un)revealed 
-	// tiles in all cases. This avoids situations where a newly revealed tile shows both the static resource overlay 
-	// and the animated one on top of it during a turn.
-	if (redraw_after_move)
-		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 
 	is->temporarily_disallow_lethal_zoc = false;
 	is->moving_unit_to_adjacent_tile = false;
@@ -41825,6 +41817,31 @@ tile_animation_rule_matches_tile (struct tile_animation_config const * cfg, Tile
 	(void)for_draw;
 	return tile_animation_matches_time_filters (cfg) &&
 		tile_animation_rule_matches_tile_base (cfg, tile, tile_x, tile_y);
+}
+
+bool
+tile_has_matching_custom_animation_for_draw (Tile * tile, int tile_x, int tile_y)
+{
+	if (! is->current_config.enable_custom_animations)
+		return false;
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (tile_has_matching_resource_animation_for_draw (tile, tile_x, tile_y))
+		return true;
+
+	if (tile_animation_cache_needs_rebuild ())
+		rebuild_tile_animation_rule_match_cache ();
+
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+		if ((cfg == NULL) || (! cfg->in_use) || (cfg->type == TAT_RESOURCE))
+			continue;
+		if (tile_animation_rule_matches_tile (cfg, tile, tile_x, tile_y, true))
+			return true;
+	}
+
+	return false;
 }
 
 bool
