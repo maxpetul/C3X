@@ -593,6 +593,87 @@ read_int (struct string_slice const * s, int * out_val)
 }
 
 int
+read_float (struct string_slice const * s, float * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if (trimmed.len <= 0)
+		return 0;
+
+	char * str = extract_slice (&trimmed);
+	if (str == NULL)
+		return 0;
+
+	char * cur = str;
+	int sign = 1;
+	if (*cur == '-') {
+		sign = -1;
+		cur++;
+	} else if (*cur == '+')
+		cur++;
+
+	double parsed = 0.0;
+	int saw_digit = 0;
+	while ((*cur >= '0') && (*cur <= '9')) {
+		saw_digit = 1;
+		parsed = parsed * 10.0 + (double)(*cur - '0');
+		cur++;
+	}
+
+	if (*cur == '.') {
+		double place = 0.1;
+		cur++;
+		while ((*cur >= '0') && (*cur <= '9')) {
+			saw_digit = 1;
+			parsed += (double)(*cur - '0') * place;
+			place *= 0.1;
+			cur++;
+		}
+	}
+
+	if (! saw_digit) {
+		free (str);
+		return 0;
+	}
+
+	if ((*cur == 'e') || (*cur == 'E')) {
+		cur++;
+		int exp_sign = 1;
+		if (*cur == '-') {
+			exp_sign = -1;
+			cur++;
+		} else if (*cur == '+')
+			cur++;
+
+		int exp = 0;
+		int saw_exp_digit = 0;
+		while ((*cur >= '0') && (*cur <= '9')) {
+			saw_exp_digit = 1;
+			exp = exp * 10 + (*cur - '0');
+			cur++;
+		}
+		if (! saw_exp_digit) {
+			free (str);
+			return 0;
+		}
+
+		while (exp > 0) {
+			if (exp_sign > 0)
+				parsed *= 10.0;
+			else
+				parsed *= 0.1;
+			exp--;
+		}
+	}
+
+	skip_horiz_space (&cur);
+	int ok = (*cur == '\0');
+	if (ok)
+		*out_val = (float)(sign * parsed);
+	free (str);
+	return ok;
+}
+
+int
 read_i31b (struct string_slice const * s, i31b * out_i31b_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
@@ -662,6 +743,18 @@ parse_int (char ** p_cursor, int * out)
 	char * cur = *p_cursor;
 	struct string_slice ss;
 	if (parse_string (&cur, &ss) && read_int (&ss, out)) {
+		*p_cursor = cur;
+		return 1;
+	} else
+		return 0;
+}
+
+int
+parse_float (char ** p_cursor, float * out)
+{
+	char * cur = *p_cursor;
+	struct string_slice ss;
+	if (parse_string (&cur, &ss) && read_float (&ss, out)) {
 		*p_cursor = cur;
 		return 1;
 	} else
