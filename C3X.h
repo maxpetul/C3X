@@ -382,7 +382,6 @@ struct c3x_config {
 	bool show_territory_colors_on_water_tiles_in_minimap;
 	bool convert_some_popups_into_online_mp_messages;
 	bool enable_debug_mode_switch;
-	bool patch_view_all_tile_animations_in_debug_mode;
 	bool accentuate_cities_on_minimap;
 	enum minimap_doubling_mode double_minimap_size;
 	bool allow_multipage_civilopedia_descriptions;
