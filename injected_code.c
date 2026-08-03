@@ -273,6 +273,7 @@ void reset_tile_animation_runtime_state ();
 bool tile_animation_matches_time_filters (struct tile_animation_config const * cfg);
 bool tile_animation_cache_needs_rebuild ();
 bool is_custom_tile_animation_effect (int effect_id);
+void clear_active_custom_resource_animation (Tile * tile);
 void clear_active_custom_tile_animation_if_different (Tile * tile, int effect_id);
 void clear_tile_animation_pcx_matches_in_cache ();
 void register_tile_animation_pcx_draw_for_current_tile (Sprite * sprite);
@@ -38130,6 +38131,8 @@ draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, stru
 	if (district_resource < 0) {
 		if (base_resource >= 0)
 			Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		else
+			clear_active_custom_resource_animation (tile);
 		return;
 	}
 
@@ -38194,6 +38197,8 @@ draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, stru
 		}
 		return;
 	}
+	if (base_resource < 0)
+		clear_active_custom_resource_animation (tile);
 
 	int tile_height   = tile_width >> 1;
 	int sprite_width  = sprite->Width;
@@ -38527,7 +38532,8 @@ patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int vi
 			clear_active_custom_tile_animation_if_different (tile, resource_animation_effect_id);
 			if (tile->Body.active_tile_effect == NULL)
 				patch_Tile_spawn_animated_effect (tile, __, resource_animation_effect_id, draw_tile_x, draw_tile_y, true, DIR_SW);
-		}
+		} else
+			clear_active_custom_resource_animation (tile);
 	}
 
 	if ((tile == NULL) || (tile == p_null_tile)) {
@@ -42732,6 +42738,18 @@ get_tile_animation_for_effect (int effect_id)
 	if ((idx < 0) || (idx >= is->tile_animation_count))
 		return NULL;
 	return &is->tile_animation_configs[idx];
+}
+
+void
+clear_active_custom_resource_animation (Tile * tile)
+{
+	if ((tile == NULL) || (tile == p_null_tile) || (tile->Body.active_tile_effect == NULL))
+		return;
+
+	int active_effect_id = tile->Body.active_tile_effect->V[2];
+	struct tile_animation_config * cfg = get_tile_animation_for_effect (active_effect_id);
+	if ((cfg != NULL) && (cfg->type == TAT_RESOURCE))
+		Tile_clear_animated_effect (tile);
 }
 
 void
