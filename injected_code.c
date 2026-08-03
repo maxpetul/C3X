@@ -2569,6 +2569,33 @@ struct config_parsing {
 	int displayed_error_message;
 };
 
+struct config_key_value {
+	// These slices point into config_parsing.text, which remains alive until both lists are processed.
+	struct string_slice key;
+	struct string_slice value;
+	char * cursor_after_value;
+};
+
+struct config_key_value_list {
+	struct config_key_value * items;
+	int count;
+	int capacity;
+};
+
+void
+append_config_key_value (struct config_key_value_list * list, struct string_slice const * key, struct string_slice const * value, char * cursor_after_value)
+{
+	reserve (sizeof list->items[0], (void **)&list->items, &list->capacity, list->count);
+	list->items[list->count++] = (struct config_key_value){ .key = *key, .value = *value, .cursor_after_value = cursor_after_value };
+}
+
+bool
+is_high_priority_config_key (struct string_slice const * key)
+{
+	// Group definitions must be available when settings that refer to those groups are processed.
+	return slice_matches_str (key, "unit_limit_groups");
+}
+
 enum config_parse_error {
 	CPE_GENERIC,
 	CPE_BAD_VALUE,
@@ -2664,7 +2691,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 	int parsed_unit_type_limit_count = 0;
 
 	struct config_parsing p = { .file_path = full_path, .text = text, .cursor = text, .key = {0}, .displayed_error_message = 0 };
-	struct error_line * unrecognized_lines = NULL;
+	struct config_key_value_list key_value_lists[2] = {0}; // High priority, then normal priority
+	// First pass: split the file into key/value slices without interpreting the values.
 	while (1) {
 		skip_horiz_space (&p.cursor);
 		if (*p.cursor == '\0')
@@ -2676,10 +2704,30 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		else if (*p.cursor == '[')
 			skip_to_line_end (&p.cursor); // Skip section line
 		else if (parse_string (&p.cursor, &p.key) && skip_punctuation (&p.cursor, '=')) { // Parse key and equals sign
-
 			struct string_slice value;
 			if (parse_string (&p.cursor, &value) || parse_bracketed_block (&p.cursor, &value)) { // Parse value
-				int ival, offset, recog_err_offset;
+				int priority = is_high_priority_config_key (&p.key) ? 0 : 1;
+				append_config_key_value (&key_value_lists[priority], &p.key, &value, p.cursor);
+			} else { // Failed to parse value
+				handle_config_error (&p, CPE_BAD_VALUE);
+				skip_to_line_end (&p.cursor);
+			}
+		} else { // Failed to categorize line
+			handle_config_error (&p, CPE_GENERIC);
+			skip_to_line_end (&p.cursor);
+		}
+	}
+
+	struct error_line * unrecognized_lines = NULL;
+	// Second pass: process high-priority entries first, preserving file order within each list.
+	for (int priority = 0; priority < ARRAY_LEN (key_value_lists); priority++) {
+		struct config_key_value_list * list = &key_value_lists[priority];
+		for (int item_index = 0; item_index < list->count; item_index++) {
+			struct config_key_value * item = &list->items[item_index];
+			p.key = item->key;
+			p.cursor = item->cursor_after_value;
+			struct string_slice value = item->value;
+			int ival, offset, recog_err_offset;
 
 				// if key is for a boolean option
 				if (stable_look_up_slice (&is->boolean_config_offsets, &p.key, &offset)) {
@@ -2994,7 +3042,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 				} else if (slice_matches_str (&p.key, "move_trade_net_object")) {
-					; // No nothing. This setting no longer serves any purpose.
+					; // Do nothing. This setting no longer serves any purpose.
 				} else if (slice_matches_str (&p.key, "use_civ4_style_best_defender")) {
 					; // Obsolete. Counter rules now always affect normal defender selection when enable_unit_counters is on.
 
@@ -3039,15 +3087,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					handle_config_error (&p, CPE_BAD_KEY);
 				}
 
-			} else { // Failed to parse value
-				handle_config_error (&p, CPE_BAD_VALUE);
-				skip_to_line_end (&p.cursor);
 			}
-
-		} else { // Failed to categorize line
-			handle_config_error (&p, CPE_GENERIC);
-			skip_to_line_end (&p.cursor);
-		}
+		free (list->items);
 	}
 
 	// If seasonal cycle mode is on "day_night_hour" but day/night cycle mode is off, disable seasonal cycle mode and show a warning
