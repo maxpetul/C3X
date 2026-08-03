@@ -2171,20 +2171,33 @@ read_enabled_seasons_mask (struct string_slice const * s, int * out_val)
 }
 
 bool
-read_pinned_season_for_seasonal_cycle (struct string_slice const * s, int * out_val)
+read_cycle_season_value (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
-	if      (slice_matches_str (&trimmed, "summer")) { *out_val = CS_SUMMER; return true; }
-	else if (slice_matches_str (&trimmed, "Summer")) { *out_val = CS_SUMMER; return true; }
-	else if (slice_matches_str (&trimmed, "fall"  )) { *out_val = CS_FALL;   return true; }
-	else if (slice_matches_str (&trimmed, "Fall"  )) { *out_val = CS_FALL;   return true; }
-	else if (slice_matches_str (&trimmed, "autumn")) { *out_val = CS_FALL;   return true; }
-	else if (slice_matches_str (&trimmed, "autumn")) { *out_val = CS_FALL;   return true; }
-	else if (slice_matches_str (&trimmed, "winter")) { *out_val = CS_WINTER; return true; }
-	else if (slice_matches_str (&trimmed, "Winter")) { *out_val = CS_WINTER; return true; }
-	else if (slice_matches_str (&trimmed, "spring")) { *out_val = CS_SPRING; return true; }
-	else if (slice_matches_str (&trimmed, "Spring")) { *out_val = CS_SPRING; return true; }
-	return false;
+	if (trimmed.len <= 0)
+		return false;
+
+	char * text = extract_slice (&trimmed);
+	if (text == NULL)
+		return false;
+
+	bool found = true;
+	if      (_stricmp (text, "summer") == 0) *out_val = CS_SUMMER;
+	else if (_stricmp (text, "fall"  ) == 0) *out_val = CS_FALL;
+	else if (_stricmp (text, "autumn") == 0) *out_val = CS_FALL;
+	else if (_stricmp (text, "winter") == 0) *out_val = CS_WINTER;
+	else if (_stricmp (text, "spring") == 0) *out_val = CS_SPRING;
+	else
+		found = false;
+
+	free (text);
+	return found;
+}
+
+bool
+read_pinned_season_for_seasonal_cycle (struct string_slice const * s, int * out_val)
+{
+	return read_cycle_season_value (s, out_val);
 }
 
 bool
@@ -42512,14 +42525,9 @@ parse_tile_animation_season_list (struct string_slice const * value, unsigned in
 		struct string_slice token = { .str = start, .len = cursor - start };
 		token = trim_string_slice (&token, 1);
 
-		if (slice_matches_str (&token, "spring"))
-			mask |= 1u << CS_SPRING;
-		else if (slice_matches_str (&token, "summer"))
-			mask |= 1u << CS_SUMMER;
-		else if (slice_matches_str (&token, "fall"))
-			mask |= 1u << CS_FALL;
-		else if (slice_matches_str (&token, "winter"))
-			mask |= 1u << CS_WINTER;
+		int season;
+		if (read_cycle_season_value (&token, &season))
+			mask |= 1u << season;
 		else {
 			free (text);
 			return false;
