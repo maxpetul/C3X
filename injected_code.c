@@ -2558,12 +2558,6 @@ read_barbarian_activity_override (struct string_slice const * s, enum barbarian_
 	return found;
 }
 
-bool
-read_tile_animation_direction_value (struct string_slice const * s, enum direction * out_dir)
-{
-	return read_direction_value (s, out_dir);
-}
-
 int
 read_units_per_tile_limit (struct string_slice const * s, int * out_limits)
 {
@@ -38092,7 +38086,7 @@ draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, stru
 	}
 
 	int anim_civ_id = visible_to_civ_id;
-	if (((anim_civ_id < 0) || (anim_civ_id >= 32)) && (p_main_screen_form != NULL))
+	if ((anim_civ_id < 0) || (anim_civ_id >= 32))
 		anim_civ_id = p_main_screen_form->Player_CivID;
 
 	bool tile_visible_for_animation = false;
@@ -38502,7 +38496,7 @@ patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int vi
 	bool suppress_static_resource = false;
 	int resource_animation_effect_id = -1;
 	int anim_civ_id = visible_to_civ_id;
-	if (((anim_civ_id < 0) || (anim_civ_id >= 32)) && (p_main_screen_form != NULL))
+	if ((anim_civ_id < 0) || (anim_civ_id >= 32))
 		anim_civ_id = p_main_screen_form->Player_CivID;
 	bool tile_visible_for_animation = false;
 	if (is->current_config.enable_custom_animations &&
@@ -41186,7 +41180,6 @@ void
 clear_tile_animation_pcx_sprite_lookup ()
 {
 	table_deinit (&is->tile_animation_pcx_sprite_lookup);
-	is->tile_animation_pcx_sprite_lookup = (struct table) {0};
 }
 
 void
@@ -41194,7 +41187,6 @@ clear_tile_animation_pcx_rule_lookup ()
 {
 	// Rule lookup maps packed (pcx_file_id, pcx_index) -> rule-mask row index.
 	table_deinit (&is->tile_animation_pcx_rule_key_to_index);
-	is->tile_animation_pcx_rule_key_to_index = (struct table) {0};
 	is->tile_animation_pcx_rule_key_count = 0;
 	memset (is->tile_animation_pcx_rule_masks, 0, sizeof is->tile_animation_pcx_rule_masks);
 }
@@ -41664,8 +41656,6 @@ free_tile_animation_selected_matrix ()
 void
 clear_stale_custom_tile_animation_effects ()
 {
-	if (p_main_screen_form == NULL)
-		return;
 	if (! is->tile_animation_selected_valid || (is->tile_animation_selected_next_index == NULL))
 		return;
 
@@ -41789,6 +41779,10 @@ tile_animation_rule_matches_tile (struct tile_animation_config const * cfg, Tile
 	if ((cfg == NULL) || (! cfg->in_use) || (tile == NULL) || (tile == p_null_tile))
 		return false;
 
+	if (! for_draw)
+		return tile_animation_matches_time_filters (cfg) &&
+			tile_animation_rule_matches_tile_base (cfg, tile, tile_x, tile_y);
+
 	if (cfg->type == TAT_COASTAL_WAVE) {
 		enum direction dir = DIR_ZERO;
 		if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &dir))
@@ -41809,12 +41803,10 @@ tile_animation_rule_matches_tile (struct tile_animation_config const * cfg, Tile
 				int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
 				unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
 				bool selected = (tile_mask[animation_index / 32] & (1u << (animation_index % 32))) != 0;
-				if (for_draw)
-					return selected;
+				return selected;
 			}
 	}
 
-	(void)for_draw;
 	return tile_animation_matches_time_filters (cfg) &&
 		tile_animation_rule_matches_tile_base (cfg, tile, tile_x, tile_y);
 }
@@ -42371,7 +42363,7 @@ handle_tile_animation_definition_key (struct parsed_tile_animation_definition * 
 		}
 	} else if (slice_matches_str (key, "direction")) {
 		enum direction dir;
-		if (read_tile_animation_direction_value (value, &dir)) {
+		if (read_direction_value (value, &dir)) {
 			def->direction = dir;
 			def->has_direction = true;
 		} else
@@ -42668,7 +42660,7 @@ tile_animation_scheduler_tick ()
 	// running the scheduler in that window can overrun those buffers.
 	if (is->saved_tile_count >= 0)
 		return;
-	if ((p_main_screen_form == NULL) || p_main_screen_form->is_now_loading_game)
+	if (p_main_screen_form->is_now_loading_game)
 		return;
 	if (is->tile_animation_count <= 0)
 		return;
