@@ -1,3 +1,7 @@
+* RELEASE 27C
+- Can limit AI players to making one demand each per turn with limit_ai_to_one_demand_per_turn
+
+* RELEASE 27B
 - Allow for custom combat bonuses or maluses to be applied based on unit type, combat role (attack, defense, or bombard), terrain, city/district, and experience level
   - Option enable_unit_counters gates overall feature, counter_rules lists custom rules
 - Enable terrain and resource animations

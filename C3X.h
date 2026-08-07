@@ -9,7 +9,7 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
-#define MOD_VERSION 2700
+#define MOD_VERSION 2702
 #define MOD_PREVIEW_VERSION 0
 
 #define COUNT_TILE_HIGHLIGHTS 11
@@ -460,6 +460,7 @@ struct c3x_config {
 
 	bool use_offensive_artillery_ai;
 	int diplo_demand_rate_between_ai_players;
+	bool limit_ai_to_one_demand_per_turn;
 	bool show_ai_demand_info_popup;
 	bool dont_escort_unflagged_units;
 	int ai_build_artillery_ratio;
@@ -1768,6 +1769,11 @@ struct injected_state {
 	bool must_recompute_resources_for_mill_inputs;
 
 	bool is_placing_scenario_things; // Set to true only while Map::place_scenario_things is running
+
+	// While an AI Leader::begin_turn is running, identifies the one player that AI may demand from, or -1 if there was no eligible player. The
+	// active flag distinguishes that state from times outside begin_turn, when demands are not limited by these fields.
+	bool ai_demand_target_selection_active;
+	int ai_demand_target_civ_id;
 
 	bool paused_for_popup; // Set to true while a popup, map message, or the diplo screen is open
 	long long time_spent_paused_during_popup; // Tracks time spent waiting for the three things above

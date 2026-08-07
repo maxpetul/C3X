@@ -19553,6 +19553,7 @@ patch_init_floating_point ()
 		{"aggressively_penalize_bankruptcy"                      , false, offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
 		{"no_penalty_exception_for_agri_fresh_water_city_tiles"  , false, offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
 		{"use_offensive_artillery_ai"                            , true , offsetof (struct c3x_config, use_offensive_artillery_ai)},
+		{"limit_ai_to_one_demand_per_turn"                       , false, offsetof (struct c3x_config, limit_ai_to_one_demand_per_turn)},
 		{"show_ai_demand_info_popup"                             , false, offsetof (struct c3x_config, show_ai_demand_info_popup)},
 		{"remove_human_player_bias_from_ai_war_planning"         , false, offsetof (struct c3x_config, remove_human_player_bias_from_ai_war_planning)},
 		{"dont_escort_unflagged_units"                           , false, offsetof (struct c3x_config, dont_escort_unflagged_units)},
@@ -19883,6 +19884,7 @@ patch_init_floating_point ()
 	is->keep_tnx_cache = false;
 	is->must_recompute_resources_for_mill_inputs = false;
 	is->is_placing_scenario_things = false;
+	is->ai_demand_target_selection_active = false;
 	is->paused_for_popup = false;
 	is->time_spent_paused_during_popup = 0;
 	is->time_spent_computing_city_connections = 0;
@@ -21542,11 +21544,35 @@ patch_rand_int_for_ai_ai_negotiation (void * this, int edx, int lim)
 }
 
 bool
+ai_can_demand_from_with_max_cooldown (Leader * this, int other_civ_id, int max_offline_cooldown)
+{
+	if ((other_civ_id <= 0) ||
+	    (other_civ_id >= 32) ||
+	    (other_civ_id == this->ID) ||
+	    ((*p_player_bits & (1 << other_civ_id)) == 0) ||
+	    ((this->Contacts[other_civ_id] & 1) == 0) ||
+	    this->At_War[other_civ_id] ||
+	    ((! is_online_game ()) &&
+	     (this->ai_diplomacy_cooldown[other_civ_id] > max_offline_cooldown)) ||
+	    (! Leader_ai_would_meet_with (this, __, other_civ_id)))
+		return false;
+	return true;
+}
+
+bool
+ai_can_demand_from (Leader * this, int other_civ_id)
+{
+	return ai_can_demand_from_with_max_cooldown (this, other_civ_id, 0);
+}
+
+bool
 try_ai_demand_from_other_ai (Leader * this, int other_civ_id, int demand_rate)
 {
-	if (this->At_War[other_civ_id] ||
-	    ((! is_online_game ()) && (this->ai_diplomacy_cooldown[other_civ_id] > 0)) ||
-	    (! Leader_ai_would_meet_with (this, __, other_civ_id)))
+	if (! ai_can_demand_from (this, other_civ_id))
+		return false;
+	if (is->current_config.limit_ai_to_one_demand_per_turn &&
+	    is->ai_demand_target_selection_active &&
+	    (other_civ_id != is->ai_demand_target_civ_id))
 		return false;
 	if ((demand_rate < 100) && (rand_int (p_rand_object, __, 100) >= demand_rate))
 		return false;
@@ -21612,6 +21638,16 @@ done:
 	TradeOfferList_clear (&demands);
 	TradeOfferList_clear (&no_offers);
 	return made_demand;
+}
+
+bool __fastcall
+patch_Leader_demand_items_for_begin_turn (Leader * this, int edx, TradeOfferList * demands, TradeOfferList * other_offers, int other_civ_id)
+{
+	if (is->current_config.limit_ai_to_one_demand_per_turn &&
+	    is->ai_demand_target_selection_active &&
+	    (other_civ_id != is->ai_demand_target_civ_id))
+		return false;
+	return Leader_demand_items (this, __, demands, other_offers, other_civ_id);
 }
 
 void __fastcall
@@ -29190,6 +29226,22 @@ remove_unit_id_entries_owned_by (struct table * t, int owner_id)
 void __fastcall
 patch_Leader_begin_turn (Leader * this)
 {
+	is->ai_demand_target_selection_active = false;
+	if (is->current_config.limit_ai_to_one_demand_per_turn &&
+	    (this->ID > 0) &&
+	    ((*p_human_player_bits & (1 << this->ID)) == 0)) {
+		int eligible_civ_ids[31];
+		int eligible_count = 0;
+		int ai_demand_rate = clamp (0, 100, is->current_config.diplo_demand_rate_between_ai_players);
+		for (int n = 1; n < 32; n++)
+			// impl_begin_turn ticks a positive diplomacy cooldown down before it tries any demands, so a cooldown of one is eligible at
+			// this point in the wrapper.
+			if (ai_can_demand_from_with_max_cooldown (this, n, 1) && (((*p_human_player_bits & (1 << n)) != 0) || (ai_demand_rate > 0)))
+				eligible_civ_ids[eligible_count++] = n;
+		is->ai_demand_target_civ_id = (eligible_count > 0) ? eligible_civ_ids[rand_int (p_rand_object, __, eligible_count)] : -1;
+		is->ai_demand_target_selection_active = true;
+	}
+
 	if (is->aerodrome_airlift_usage.len > 0) {
 		int civ_bit = 1 << this->ID;
 		clear_memo ();
@@ -29232,6 +29284,7 @@ patch_Leader_begin_turn (Leader * this)
 				Leader_make_contact (this, __, n, false);
 
 	Leader_begin_turn (this);
+	is->ai_demand_target_selection_active = false;
 }
 
 int __fastcall
