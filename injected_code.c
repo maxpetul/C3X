@@ -1406,14 +1406,12 @@ parse_leader_name_alias_list  (char ** p_cursor, struct error_line ** p_unrecogn
 }
 
 struct parsed_unit_type_limit {
-	char name[32]; // Same length as Name in Unit_Type
+	struct string_slice name;
 	struct unit_type_limit limit;
+	int unit_type_id;
+	struct unit_type_tag * tag;
 };
 
-// ToC-26: Code replace: Removed per-item unit-type validation from this parser. Validation is now deferred to
-// the post-parse copy phase (see "Copy and validate unit type limits" block in load_config) so
-// that unit_type_tags is fully loaded regardless of key order in the config file. Tag names
-// used as keys in unit_limits are therefore accepted here without triggering unrecognized warnings.
 enum recognizable_parse_result
 parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_unit_type_limit)
 {
@@ -1424,7 +1422,6 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 	struct unit_type_limit limit = {0};
 	if (skip_white_space (&cur) &&
 	    parse_string (&cur, &name) &&
-	    (name.len < (sizeof out->name)) &&
 	    skip_punctuation (&cur, ':')) {
 
 		do {
@@ -1445,13 +1442,21 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 
 		} while (skip_punctuation (&cur, '+'));
 
-		// Store name and limit unconditionally; validation against unit types and groups
-		// happens in the post-parse copy phase after all config keys have been processed.
-		memset (out->name, 0, sizeof out->name);
-		strncpy (out->name, name.str, name.len);
+		out->name = name;
 		out->limit = limit;
+		out->unit_type_id = -1;
+		out->tag = NULL;
 		*p_cursor = cur;
-		return RPR_OK;
+
+		if (find_unit_type_id_by_name (&name, 0, &out->unit_type_id))
+			return RPR_OK;
+		else if (stable_look_up_slice (&is->current_config.unit_type_tags,
+		                               &name, (int *)&out->tag))
+			return RPR_OK;
+		else {
+			add_unrecognized_line (p_unrecognized_lines, &name);
+			return RPR_UNRECOGNIZED;
+		}
 
 	} else
 		return RPR_PARSE_ERROR;
@@ -2688,9 +2693,6 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		int count;
 	} perfume_spec_lists[COUNT_PERFUME_KINDS] = {0};
 
-	struct parsed_unit_type_limit * parsed_unit_type_limits = NULL;
-	int parsed_unit_type_limit_count = 0;
-
 	struct config_parsing p = { .file_path = full_path, .text = text, .cursor = text, .key = {0}, .displayed_error_message = 0 };
 	struct config_key_value_list key_value_lists[2] = {0}; // High priority, then normal priority
 	// First pass: split the file into key/value slices without interpreting the values.
@@ -2938,6 +2940,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 &cfg->count_leader_era_alias_lists)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "unit_limits")) {
+					struct parsed_unit_type_limit * parsed_unit_type_limits = NULL;
+					int parsed_unit_type_limit_count = 0;
 					if (0 <= (recog_err_offset = read_recognizables (&value,
 											 &unrecognized_lines,
 											 sizeof (struct parsed_unit_type_limit),
@@ -2945,6 +2949,21 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 (void **)&parsed_unit_type_limits,
 											 &parsed_unit_type_limit_count)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+
+					for (int n = 0; n < parsed_unit_type_limit_count; n++) {
+						struct parsed_unit_type_limit * parsed_lim = &parsed_unit_type_limits[n];
+						if (parsed_lim->unit_type_id >= 0) {
+							struct unit_type_limit * lim_values = malloc (sizeof *lim_values);
+							*lim_values = parsed_lim->limit;
+							stable_insert (&cfg->unit_limits,
+							               p_bic_data->UnitTypes[parsed_lim->unit_type_id].Name,
+							               (int)lim_values);
+						} else {
+							parsed_lim->tag->limit = parsed_lim->limit;
+							parsed_lim->tag->has_limit = true;
+						}
+					}
+					free (parsed_unit_type_limits);
 				} else if (slice_matches_str (&p.key, "unit_type_tags")) {
 					if (0 <= (recog_err_offset = read_unit_type_tags (&value,
 											 &unrecognized_lines,
@@ -3115,48 +3134,6 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 			free (list->items);
 		}
 	}
-	// Copy and validate unit type limits from parsed list to config tables.
-	// Validation is done here (post-parse) so that unit_type_tags is fully populated
-	// regardless of which key appears first in the config file. Each name is checked:
-	//   (1) individual unit type  -> insert into unit_limits as before
-	//   (2) tag label defined in unit_type_tags -> assign limit to the tag
-	//   (3) neither               -> add to unrecognized_lines for the warning popup
-	if (parsed_unit_type_limits != NULL) {
-		for (int n = 0; n < parsed_unit_type_limit_count; n++) {
-			struct parsed_unit_type_limit * parsed_lim = &parsed_unit_type_limits[n];
-			struct string_slice name_slice = { parsed_lim->name, (int)strlen (parsed_lim->name) };
-			int unused_id;
-			struct unit_type_tag * tag;
-			if (find_unit_type_id_by_name (&name_slice, 0, &unused_id)) {
-				// Valid unit type name: individual limit, stored by name for direct lookup
-				struct unit_type_limit * lim_values = malloc (sizeof *lim_values);
-				*lim_values = parsed_lim->limit;
-				stable_insert (&cfg->unit_limits, parsed_lim->name, (int)lim_values);
-			} else if (stable_look_up (&cfg->unit_type_tags, parsed_lim->name, (int *)&tag)) {
-				tag->limit     = parsed_lim->limit;
-				tag->has_limit = true;
-			} else {
-				// Unrecognized: neither a unit type nor a defined group
-				add_unrecognized_line (&unrecognized_lines, &name_slice);
-			}
-		}
-		free (parsed_unit_type_limits);
-	}
-
-	// Unrecognized names popup shown here (moved below unit limit copy so deferred
-	// validation errors from unit_limits are included in the report)
-	if (cfg->warn_about_unrecognized_names && (unrecognized_lines != NULL)) {
-		PopupForm * popup = get_popup_form ();
-		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
-		char s[200];
-		snprintf (s, sizeof s, "Unrecognized names in %s:", full_path);
-		s[(sizeof s) - 1] = '\0';
-		PopupForm_add_text (popup, __, s, false);
-		for (struct error_line * line = unrecognized_lines; line != NULL; line = line->next)
-			PopupForm_add_text (popup, __, line->text, false);
-		patch_show_popup (popup, __, 0, 0);
-	}
-
 	free (text);
 	free_error_lines (unrecognized_lines);
 
