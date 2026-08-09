@@ -16683,8 +16683,7 @@ compute_unit_limit (Leader * leader, struct unit_type_limit * limit)
 	return tr;
 }
 
-// If this unit type is limited, returns true and writes the smallest applicable absolute limit
-// to *out_limit. Individual unit_limits take priority over tag limits.
+// If this unit type is limited, returns true and writes the smallest applicable absolute limit to *out_limit.
 bool
 get_unit_limit (Leader * leader, int unit_type_id, int * out_limit)
 {
@@ -16692,15 +16691,15 @@ get_unit_limit (Leader * leader, int unit_type_id, int * out_limit)
 		return false;
 
 	struct unit_type_limit * individual_limit;
+	bool found = false;
 	if (stable_look_up (&is->current_config.unit_limits,
 	                    p_bic_data->UnitTypes[unit_type_id].Name,
 	                    (int *)&individual_limit)) {
 		*out_limit = compute_unit_limit (leader, individual_limit);
-		return true;
+		found = true;
 	}
 
 	struct unit_type_tag_id_list * list;
-	bool found = false;
 	if (itable_look_up (&is->current_config.unit_type_id_to_tag_ids, unit_type_id, (int *)&list)) {
 		for (int n = 0; n < list->count; n++) {
 			struct unit_type_tag * tag = is->current_config.unit_type_tags_by_id[list->tag_ids[n]];
@@ -16715,28 +16714,31 @@ get_unit_limit (Leader * leader, int unit_type_id, int * out_limit)
 	return found;
 }
 
+bool
+get_individual_unit_available_count (Leader * leader, int unit_type_id, int * out_available)
+{
+	struct unit_type_limit * limit;
+	if (! stable_look_up (&is->current_config.unit_limits, p_bic_data->UnitTypes[unit_type_id].Name, (int *)&limit))
+		return false;
+
+	int count = get_unit_type_count (leader, unit_type_id);
+	int dups[30];
+	int dups_count = list_unit_type_duplicates (unit_type_id, dups, ARRAY_LEN (dups));
+	for (int n = 0; n < dups_count; n++)
+		count += get_unit_type_count (leader, dups[n]);
+	*out_available = compute_unit_limit (leader, limit) - count;
+	return true;
+}
+
 // If this unit type is limited, returns true and writes to *out_available how many units the
 // given player can still add before reaching the limit. Returns false if the type is not limited.
-// For tags, the count is the combined total of all tagged types, and the smallest availability
-// across all limited tags is returned. Individual limits take priority over tag limits.
+// For tags, the count is the combined total of all tagged types. The smallest availability across
+// the individual limit and all limited tags is returned.
 bool
 get_available_unit_count (Leader * leader, int unit_type_id, int * out_available)
 {
-	struct unit_type_limit * individual_limit;
-	if (stable_look_up (&is->current_config.unit_limits,
-	                    p_bic_data->UnitTypes[unit_type_id].Name,
-	                    (int *)&individual_limit)) {
-		int count = get_unit_type_count (leader, unit_type_id);
-		int dups[30];
-		int dups_count = list_unit_type_duplicates (unit_type_id, dups, ARRAY_LEN (dups));
-		for (int n = 0; n < dups_count; n++)
-			count += get_unit_type_count (leader, dups[n]);
-		*out_available = compute_unit_limit (leader, individual_limit) - count;
-		return true;
-	}
-
+	bool found = get_individual_unit_available_count (leader, unit_type_id, out_available);
 	struct unit_type_tag_id_list * list;
-	bool found = false;
 	if (itable_look_up (&is->current_config.unit_type_id_to_tag_ids, unit_type_id, (int *)&list)) {
 		for (int n = 0; n < list->count; n++) {
 			struct unit_type_tag * tag = is->current_config.unit_type_tags_by_id[list->tag_ids[n]];
@@ -16758,13 +16760,8 @@ get_available_unit_count (Leader * leader, int unit_type_id, int * out_available
 bool
 get_available_unit_count_for_upgrade (Leader * leader, int source_type_id, int target_type_id, int * out_available)
 {
-	int unused;
-	if (stable_look_up (&is->current_config.unit_limits,
-	                    p_bic_data->UnitTypes[target_type_id].Name, &unused))
-		return get_available_unit_count (leader, target_type_id, out_available);
-
+	bool found = get_individual_unit_available_count (leader, target_type_id, out_available);
 	struct unit_type_tag_id_list * list;
-	bool found = false;
 	if (itable_look_up (&is->current_config.unit_type_id_to_tag_ids, target_type_id, (int *)&list)) {
 		for (int n = 0; n < list->count; n++) {
 			struct unit_type_tag * tag = is->current_config.unit_type_tags_by_id[list->tag_ids[n]];
@@ -16786,18 +16783,15 @@ get_available_unit_count_for_upgrade (Leader * leader, int source_type_id, int t
 bool
 can_pencil_in_upgrade (Leader * leader, int source_type_id, int target_type_id)
 {
-	struct unit_type_limit * individual_limit;
-	if (stable_look_up (&is->current_config.unit_limits,
-	                    p_bic_data->UnitTypes[target_type_id].Name,
-	                    (int *)&individual_limit)) {
-		int available;
-		get_available_unit_count (leader, target_type_id, &available);
+	int available;
+	if (get_individual_unit_available_count (leader, target_type_id, &available)) {
 		int penciled = 0;
 		for (int n = 0; n < is->penciled_in_upgrade_count; n++)
 			if (strcmp (p_bic_data->UnitTypes[is->penciled_in_upgrades[n].unit_type_id].Name,
 			            p_bic_data->UnitTypes[target_type_id].Name) == 0)
 				penciled += is->penciled_in_upgrades[n].count;
-		return penciled < available;
+		if (penciled >= available)
+			return false;
 	}
 
 	struct unit_type_tag_id_list * list;
@@ -16811,7 +16805,7 @@ can_pencil_in_upgrade (Leader * leader, int source_type_id, int target_type_id)
 		int current_count = 0;
 		for (int k = 0; k < tag->count_unit_type_ids; k++)
 			current_count += get_unit_type_count (leader, tag->unit_type_ids[k]);
-		int available = compute_unit_limit (leader, &tag->limit) - current_count;
+		available = compute_unit_limit (leader, &tag->limit) - current_count;
 
 		int penciled = 0;
 		for (int k = 0; k < is->penciled_in_upgrade_count; k++) {
