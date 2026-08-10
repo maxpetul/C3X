@@ -1462,15 +1462,82 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 		return RPR_PARSE_ERROR;
 }
 
+struct unit_type_tag_member {
+	struct string_slice name;
+	bool is_range_operator;
+};
+
+bool
+append_unit_type_ids_by_name (struct string_slice const * name, int ** p_ids, int * p_count, int * p_capacity)
+{
+	int search_start = 0, found_id;
+	bool any_found = false;
+	while (find_unit_type_id_by_name (name, search_start, &found_id)) {
+		reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
+		(*p_ids)[(*p_count)++] = found_id;
+		search_start = found_id + 1;
+		any_found = true;
+	}
+	return any_found;
+}
+
+// Appends the upgrade chain after start_name through end_name, plus every type duplicate of end_name. Returns false without appending
+// anything if end_name is not on the chain.
+bool
+append_unit_type_upgrade_range (struct string_slice const * start_name, struct string_slice const * end_name,
+                                int ** p_ids, int * p_count, int * p_capacity)
+{
+	int start_id;
+	if (! find_unit_type_id_by_name (start_name, 0, &start_id))
+		return false;
+
+	int end_id = start_id;
+	bool reached_end = slice_matches_str (end_name, p_bic_data->UnitTypes[end_id].Name);
+	for (int step = 0; ! reached_end && (step < p_bic_data->UnitTypeCount); step++) {
+		end_id = p_bic_data->UnitTypes[end_id].UpgradeToID;
+		if ((end_id < 0) || (end_id >= p_bic_data->UnitTypeCount))
+			break;
+		reached_end = slice_matches_str (end_name, p_bic_data->UnitTypes[end_id].Name);
+	}
+	if (! reached_end)
+		return false;
+
+	for (int current_id = start_id; current_id != end_id; ) {
+		current_id = p_bic_data->UnitTypes[current_id].UpgradeToID;
+		if (current_id != end_id) {
+			reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
+			(*p_ids)[(*p_count)++] = current_id;
+		}
+	}
+	append_unit_type_ids_by_name (end_name, p_ids, p_count, p_capacity);
+	return true;
+}
+
+void
+add_disconnected_unit_type_tag_range (struct error_line ** p_lines, struct string_slice const * start_name, struct string_slice const * end_name)
+{
+	struct error_line * line = add_error_line (p_lines);
+	snprintf (line->text, sizeof line->text, "^  No unit upgrade chain connects \"%.*s\" to \"%.*s\".",
+	          start_name->len, start_name->str, end_name->len, end_name->str);
+	line->text[(sizeof line->text) - 1] = '\0';
+}
+
+void
+add_malformed_unit_type_tag_range (struct error_line ** p_lines, struct string_slice const * tag_name)
+{
+	struct error_line * line = add_error_line (p_lines);
+	snprintf (line->text, sizeof line->text, "^  Misplaced range operator \"to\" in unit type tag \"%.*s\".", tag_name->len, tag_name->str);
+	line->text[(sizeof line->text) - 1] = '\0';
+}
+
 // Parses unit_type_tags. Format:
 // ["Tag Name": "UnitTypeA" "UnitTypeB" ..., "Tag2": "UnitTypeC" ...]
 // Tag names map to tag objects with integer IDs. A reverse table maps every unit type ID to
 // all of its tag IDs, so a type may participate in multiple counter categories and limits.
 // Returns -1 on success, or the byte offset of the first parse error within s.
 int
-read_unit_type_tags (struct string_slice const * s,
-                     struct error_line ** p_unrecognized_lines,
-                     struct c3x_config * cfg)
+read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrecognized_lines,
+                     struct error_line ** p_range_errors, struct c3x_config * cfg)
 {
 	if (s->len <= 0)
 		return -1;
@@ -1489,21 +1556,57 @@ read_unit_type_tags (struct string_slice const * s,
 		if (! skip_punctuation (&cursor, ':'))
 			break;
 
+		struct unit_type_tag_member * members = NULL;
+		int member_count = 0, member_capacity = 0;
+		while (1) {
+			char * token_start = cursor;
+			skip_horiz_space (&token_start);
+			bool quoted = *token_start == '"';
+			struct string_slice member_name;
+			if (! parse_string (&cursor, &member_name))
+				break;
+			reserve (sizeof members[0], (void **)&members, &member_capacity, member_count);
+			members[member_count].name = member_name;
+			members[member_count].is_range_operator = ! quoted && slice_matches_str (&member_name, "to");
+			member_count++;
+		}
+
 		int * ids = NULL;
 		int ids_count = 0, ids_capacity = 0;
-		struct string_slice member_name;
-		while (parse_string (&cursor, &member_name)) {
-			int search_start = 0, found_id;
-			bool any_found = false;
-			while (find_unit_type_id_by_name (&member_name, search_start, &found_id)) {
-				reserve (sizeof ids[0], (void **)&ids, &ids_capacity, ids_count);
-				ids[ids_count++] = found_id;
-				search_start = found_id + 1;
-				any_found = true;
+		for (int n = 0; n < member_count; n++) {
+			struct unit_type_tag_member * member = &members[n];
+			if (member->is_range_operator) {
+				add_malformed_unit_type_tag_range (p_range_errors, &tag_name);
+				continue;
 			}
-			if (! any_found)
-				add_unrecognized_line (p_unrecognized_lines, &member_name);
+
+			bool start_found = append_unit_type_ids_by_name (&member->name, &ids, &ids_count, &ids_capacity);
+			if (! start_found)
+				add_unrecognized_line (p_unrecognized_lines, &member->name);
+
+			while ((n + 1 < member_count) && members[n + 1].is_range_operator) {
+				if ((n + 2 >= member_count) || members[n + 2].is_range_operator) {
+					add_malformed_unit_type_tag_range (p_range_errors, &tag_name);
+					n += 1;
+					continue;
+				}
+
+				struct unit_type_tag_member * end = &members[n + 2];
+				int unused;
+				bool end_found = find_unit_type_id_by_name (&end->name, 0, &unused);
+				if (! end_found)
+					add_unrecognized_line (p_unrecognized_lines, &end->name);
+				else if (start_found && ! append_unit_type_upgrade_range (&member->name, &end->name, &ids, &ids_count, &ids_capacity))
+					add_disconnected_unit_type_tag_range (p_range_errors, &member->name, &end->name);
+
+				n += 2;
+				member = end;
+				start_found = end_found;
+				if (start_found && (n + 1 < member_count) && members[n + 1].is_range_operator)
+					append_unit_type_ids_by_name (&member->name, &ids, &ids_count, &ids_capacity);
+			}
 		}
+		free (members);
 
 		// Only register a tag when at least one valid unit type was resolved.
 		if (ids_count > 0) {
@@ -2722,6 +2825,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 	}
 
 	struct error_line * unrecognized_lines = NULL;
+	struct error_line * unit_type_tag_range_errors = NULL;
 	// Second pass: process high-priority entries first, preserving file order within each list.
 	for (int priority = 0; priority < ARRAY_LEN (key_value_lists); priority++) {
 		struct config_key_value_list * list = &key_value_lists[priority];
@@ -2965,9 +3069,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					}
 					free (parsed_unit_type_limits);
 				} else if (slice_matches_str (&p.key, "unit_type_tags")) {
-					if (0 <= (recog_err_offset = read_unit_type_tags (&value,
-											 &unrecognized_lines,
-											 cfg)))
+					if (0 <= (recog_err_offset = read_unit_type_tags (&value, &unrecognized_lines, &unit_type_tag_range_errors, cfg)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "aircraft_victory_animation")) {
 					struct string_slice trimmed = trim_string_slice (&value, 1);
@@ -3121,6 +3223,17 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 			PopupForm_add_text (popup, __, line->text, false);
 		patch_show_popup (popup, __, 0, 0);
 	}
+	if (unit_type_tag_range_errors != NULL) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "Invalid unit type tag ranges in %s:", full_path);
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, false);
+		for (struct error_line * line = unit_type_tag_range_errors; line != NULL; line = line->next)
+			PopupForm_add_text (popup, __, line->text, false);
+		patch_show_popup (popup, __, 0, 0);
+	}
 
 	// Copy perfume specs from lists to tables
 	for (int n = 0; n < COUNT_PERFUME_KINDS; n++) {
@@ -3136,6 +3249,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 	}
 	free (text);
 	free_error_lines (unrecognized_lines);
+	free_error_lines (unit_type_tag_range_errors);
 
 	struct loaded_config_name * top_lcn = is->loaded_config_names;
 	while (top_lcn->next != NULL)
