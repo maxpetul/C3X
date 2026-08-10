@@ -1481,6 +1481,15 @@ append_unit_type_ids_by_name (struct string_slice const * name, int ** p_ids, in
 	return any_found;
 }
 
+void
+append_unit_type_tag_ids (struct unit_type_tag const * tag, int ** p_ids, int * p_count, int * p_capacity)
+{
+	for (int n = 0; n < tag->count_unit_type_ids; n++) {
+		reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
+		(*p_ids)[(*p_count)++] = tag->unit_type_ids[n];
+	}
+}
+
 // Appends the upgrade chain after start_name through end_name, plus every type duplicate of end_name. Returns false without appending
 // anything if end_name is not on the chain.
 bool
@@ -1527,6 +1536,14 @@ add_malformed_unit_type_tag_range (struct error_line ** p_lines, struct string_s
 {
 	struct error_line * line = add_error_line (p_lines);
 	snprintf (line->text, sizeof line->text, "^  Misplaced range operator \"to\" in unit type tag \"%.*s\".", tag_name->len, tag_name->str);
+	line->text[(sizeof line->text) - 1] = '\0';
+}
+
+void
+add_tag_as_unit_type_range_endpoint (struct error_line ** p_lines, struct string_slice const * name)
+{
+	struct error_line * line = add_error_line (p_lines);
+	snprintf (line->text, sizeof line->text, "^  Unit type tag \"%.*s\" cannot be used as an endpoint of an upgrade range.", name->len, name->str);
 	line->text[(sizeof line->text) - 1] = '\0';
 }
 
@@ -1580,9 +1597,14 @@ read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrec
 				continue;
 			}
 
-			bool start_found = append_unit_type_ids_by_name (&member->name, &ids, &ids_count, &ids_capacity);
-			if (! start_found)
-				add_unrecognized_line (p_unrecognized_lines, &member->name);
+			bool start_type_found = append_unit_type_ids_by_name (&member->name, &ids, &ids_count, &ids_capacity);
+			struct unit_type_tag * start_tag = NULL;
+			if (! start_type_found) {
+				if (stable_look_up_slice (&cfg->unit_type_tags, &member->name, (int *)&start_tag))
+					append_unit_type_tag_ids (start_tag, &ids, &ids_count, &ids_capacity);
+				else
+					add_unrecognized_line (p_unrecognized_lines, &member->name);
+			}
 
 			while ((n + 1 < member_count) && members[n + 1].is_range_operator) {
 				if ((n + 2 >= member_count) || members[n + 2].is_range_operator) {
@@ -1593,16 +1615,23 @@ read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrec
 
 				struct unit_type_tag_member * end = &members[n + 2];
 				int unused;
-				bool end_found = find_unit_type_id_by_name (&end->name, 0, &unused);
-				if (! end_found)
+				bool end_type_found = find_unit_type_id_by_name (&end->name, 0, &unused);
+				struct unit_type_tag * end_tag = NULL;
+				if (! end_type_found && ! stable_look_up_slice (&cfg->unit_type_tags, &end->name, (int *)&end_tag))
 					add_unrecognized_line (p_unrecognized_lines, &end->name);
-				else if (start_found && ! append_unit_type_upgrade_range (&member->name, &end->name, &ids, &ids_count, &ids_capacity))
+				if (start_tag != NULL)
+					add_tag_as_unit_type_range_endpoint (p_range_errors, &member->name);
+				if (end_tag != NULL)
+					add_tag_as_unit_type_range_endpoint (p_range_errors, &end->name);
+				else if (start_type_found && end_type_found &&
+				         ! append_unit_type_upgrade_range (&member->name, &end->name, &ids, &ids_count, &ids_capacity))
 					add_disconnected_unit_type_tag_range (p_range_errors, &member->name, &end->name);
 
 				n += 2;
 				member = end;
-				start_found = end_found;
-				if (start_found && (n + 1 < member_count) && members[n + 1].is_range_operator)
+				start_type_found = end_type_found;
+				start_tag = end_tag;
+				if (start_type_found && (n + 1 < member_count) && members[n + 1].is_range_operator)
 					append_unit_type_ids_by_name (&member->name, &ids, &ids_count, &ids_capacity);
 			}
 		}
