@@ -2056,9 +2056,9 @@ read_building_unit_prereqs (struct string_slice const * s,
 	return success ? -1 : cursor - extracted_slice;
 }
 
-// Reads a space-separated list of unit types like:
+// Reads a space-separated list of unit types or unit type tags like:
 //   Worker Galley "Gallic Swordsman"
-// Looks up the type ID(s) for each name and inserts them into the unit_types table associated with a value of 1.
+// Looks up the type ID(s) for each name or tag and inserts them into the unit_types table associated with a value of 1.
 bool
 read_unit_type_list (struct string_slice const * s, struct error_line ** p_unrecognized_lines, struct table * unit_types)
 {
@@ -2073,14 +2073,20 @@ read_unit_type_list (struct string_slice const * s, struct error_line ** p_unrec
 		if (parse_string (&cursor, &name)) {
 
 			int id = -1;
-			bool matched_any = false;
+			bool matched_unit_type = false;
 			while (find_unit_type_id_by_name (&name, id + 1, &id)) {
 				itable_insert (unit_types, id, 1);
-				matched_any = true;
+				matched_unit_type = true;
 			}
 
-			if (! matched_any)
-				add_unrecognized_line (p_unrecognized_lines, &name);
+			if (! matched_unit_type) {
+				struct unit_type_tag * tag;
+				if (stable_look_up_slice (&is->current_config.unit_type_tags, &name, (int *)&tag))
+					for (int n = 0; n < tag->count_unit_type_ids; n++)
+						itable_insert (unit_types, tag->unit_type_ids[n], 1);
+				else
+					add_unrecognized_line (p_unrecognized_lines, &name);
+			}
 
 		} else {
 			skip_white_space (&cursor);
