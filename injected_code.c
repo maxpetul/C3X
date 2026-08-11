@@ -1547,6 +1547,15 @@ add_tag_as_unit_type_range_endpoint (struct error_line ** p_lines, struct string
 	line->text[(sizeof line->text) - 1] = '\0';
 }
 
+void
+add_unit_type_tag_name_conflict_warning (struct error_line ** p_lines, struct string_slice const * name)
+{
+	struct error_line * line = add_error_line (p_lines);
+	snprintf (line->text, sizeof line->text, "^  Unit type tag \"%.*s\" has the same name as a unit type. "
+	          "The unit type takes precedence when referenced.", name->len, name->str);
+	line->text[(sizeof line->text) - 1] = '\0';
+}
+
 // Parses unit_type_tags. Format:
 // ["Tag Name": "UnitTypeA" "UnitTypeB" ..., "Tag2": "UnitTypeC" ...]
 // Tag names map to tag objects with integer IDs. A reverse table maps every unit type ID to
@@ -1554,7 +1563,7 @@ add_tag_as_unit_type_range_endpoint (struct error_line ** p_lines, struct string
 // Returns -1 on success, or the byte offset of the first parse error within s.
 int
 read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrecognized_lines,
-                     struct error_line ** p_range_errors, struct c3x_config * cfg)
+                     struct error_line ** p_range_errors, struct error_line ** p_warnings, struct c3x_config * cfg)
 {
 	if (s->len <= 0)
 		return -1;
@@ -1572,6 +1581,9 @@ read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrec
 			break;
 		if (! skip_punctuation (&cursor, ':'))
 			break;
+		int unused_unit_type_id;
+		if (find_unit_type_id_by_name (&tag_name, 0, &unused_unit_type_id))
+			add_unit_type_tag_name_conflict_warning (p_warnings, &tag_name);
 
 		struct unit_type_tag_member * members = NULL;
 		int member_count = 0, member_capacity = 0;
@@ -2855,6 +2867,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 
 	struct error_line * unrecognized_lines = NULL;
 	struct error_line * unit_type_tag_range_errors = NULL;
+	struct error_line * unit_type_tag_warnings = NULL;
 	// Second pass: process high-priority entries first, preserving file order within each list.
 	for (int priority = 0; priority < ARRAY_LEN (key_value_lists); priority++) {
 		struct config_key_value_list * list = &key_value_lists[priority];
@@ -3098,7 +3111,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					}
 					free (parsed_unit_type_limits);
 				} else if (slice_matches_str (&p.key, "unit_type_tags")) {
-					if (0 <= (recog_err_offset = read_unit_type_tags (&value, &unrecognized_lines, &unit_type_tag_range_errors, cfg)))
+					if (0 <= (recog_err_offset = read_unit_type_tags (
+							&value, &unrecognized_lines, &unit_type_tag_range_errors, &unit_type_tag_warnings, cfg)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "aircraft_victory_animation")) {
 					struct string_slice trimmed = trim_string_slice (&value, 1);
@@ -3252,6 +3266,17 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 			PopupForm_add_text (popup, __, line->text, false);
 		patch_show_popup (popup, __, 0, 0);
 	}
+	if (unit_type_tag_warnings != NULL) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "Unit type tag warnings in %s:", full_path);
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, false);
+		for (struct error_line * line = unit_type_tag_warnings; line != NULL; line = line->next)
+			PopupForm_add_text (popup, __, line->text, false);
+		patch_show_popup (popup, __, 0, 0);
+	}
 	if (unit_type_tag_range_errors != NULL) {
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
@@ -3279,6 +3304,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 	free (text);
 	free_error_lines (unrecognized_lines);
 	free_error_lines (unit_type_tag_range_errors);
+	free_error_lines (unit_type_tag_warnings);
 
 	struct loaded_config_name * top_lcn = is->loaded_config_names;
 	while (top_lcn->next != NULL)
