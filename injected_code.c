@@ -8821,6 +8821,7 @@ parse_counter_rule (char ** p_cursor,
 		.self_bombard_pct  = 100,
 		.enemy_bombard_pct = 100,
 	};
+	bool unrecognized_match = false;
 
 	if (! slice_matches_str (&attacker_name, "*")) {
 		int type_id;
@@ -8832,6 +8833,10 @@ parse_counter_rule (char ** p_cursor,
 			if (stable_look_up_slice (&is->current_config.unit_type_tags,
 			                          &attacker_name, (int *)&tag))
 				r->attacker_tag_id = tag->id;
+			else {
+				add_unrecognized_line (p_unrecognized_lines, &attacker_name);
+				unrecognized_match = true;
+			}
 		}
 	}
 
@@ -8845,6 +8850,10 @@ parse_counter_rule (char ** p_cursor,
 			if (stable_look_up_slice (&is->current_config.unit_type_tags,
 			                          &defender_name, (int *)&tag))
 				r->defender_tag_id = tag->id;
+			else {
+				add_unrecognized_line (p_unrecognized_lines, &defender_name);
+				unrecognized_match = true;
+			}
 		}
 	}
 
@@ -8907,6 +8916,11 @@ parse_counter_rule (char ** p_cursor,
 	}
 
 	*p_cursor = cur;
+	if (unrecognized_match) {
+		free (r->district_name);
+		r->district_name = NULL;
+		return RPR_UNRECOGNIZED;
+	}
 	return RPR_OK;
 }
 
