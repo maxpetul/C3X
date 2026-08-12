@@ -246,6 +246,11 @@ enum perfume_kind {
 	COUNT_PERFUME_KINDS
 };
 
+struct perfume_amounts {
+	int flat;
+	int percent;
+};
+
 // Attacker/defender match modes
 #define UCM_ANY   -1  // * Any unit type
 #define UCM_TAG   -2
@@ -313,7 +318,7 @@ struct c3x_config {
 	bool enable_land_sea_intersections;
 	bool disallow_trespassing;
 	bool show_detailed_tile_info;
-	struct table perfume_specs[COUNT_PERFUME_KINDS]; // Each table maps strings to i31b's. Each i31b combines an amount and whether it's a percent
+	struct table perfume_specs[COUNT_PERFUME_KINDS]; // Maps strings to struct perfume_amounts pointers
 	struct table building_unit_prereqs; // A mapping from int keys to int values. The keys are unit type IDs. If an ID is present as a key in the
 					    // table that means that unit type has one or more prereq buildings. The associated value is either a
 					    // pointer to a list of MAX_BUILDING_PREREQS_FOR_UNITS improvement IDs or a single encoded improv ID. The

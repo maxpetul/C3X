@@ -19,6 +19,7 @@
 - Option pollution_spawn_effect that allows pollution strikes to reduce city population instead of, or in addition to, polluting a tile
 - Fix crash related to resource generation
 - Fix extraterritorial colony relations penalty improving instead of harming relations
+- Combine perfume amounts additively when perfume is specified multiple times for the same item (previously multiple specs would overwrite earlier ones)
 - Ignore new lines and other space characters at the start of config lists such as buildings_generating_resources
 
 * RELEASE 27

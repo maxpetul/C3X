@@ -694,8 +694,11 @@ reset_to_base_config ()
 
 	table_deinit (&cc->exclude_types_from_units_per_tile_limit);
 
-	for (int n = 0; n < COUNT_PERFUME_KINDS; n++)
+	for (int n = 0; n < COUNT_PERFUME_KINDS; n++) {
+		FOR_TABLE_ENTRIES (tei, &cc->perfume_specs[n])
+			free ((void *)tei.value);
 		stable_deinit (&cc->perfume_specs[n]);
+	}
 
 	// Free building-unit prereqs table
 	FOR_TABLE_ENTRIES (tei, &cc->building_unit_prereqs) {
@@ -1188,8 +1191,23 @@ enum recognizable_parse_result {
 
 struct perfume_spec {
 	char name[36]; // Must be large enough to fit the name of a unit type or improvement
-	i31b value; // Int component stores amount, bool stores whether it's a percentage or not
+	int flat_amount;
+	int percent_amount;
+	struct unit_type_tag * tag; // Non-NULL only for a unit type tag in a production perfume spec
 };
+
+// Adds a perfume spec to a table, accumulating it with any existing spec for the same name.
+void
+add_perfume_spec_to_table (struct table * table, char const * name, struct perfume_spec const * spec)
+{
+	struct perfume_amounts * amounts;
+	if (! stable_look_up (table, (char *)name, (int *)&amounts)) {
+		amounts = calloc (1, sizeof *amounts);
+		stable_insert (table, (char *)name, (int)amounts);
+	}
+	amounts->flat += spec->flat_amount;
+	amounts->percent += spec->percent_amount;
+}
 
 enum recognizable_parse_result
 parse_perfume_spec (char ** p_cursor, enum perfume_kind kind, struct error_line ** p_unrecognized_lines, void * out_perfume_spec)
@@ -1198,20 +1216,29 @@ parse_perfume_spec (char ** p_cursor, enum perfume_kind kind, struct error_line 
 	struct string_slice name;
 	City_Order unused_city_order;
 	int unused_id;
-	i31b value;
+	i31b packed_value;
 	if (parse_string (&cur, &name) &&
 	    skip_punctuation (&cur, ':') &&
-	    parse_i31b (&cur, &value)) {
+	    parse_i31b (&cur, &packed_value)) {
 		*p_cursor = cur;
 
-		if (((kind == PK_PRODUCTION) && find_city_order_by_name (&name, &unused_city_order)) ||
+		struct unit_type_tag * tag = NULL;
+		if (((kind == PK_PRODUCTION) && (find_city_order_by_name (&name, &unused_city_order) ||
+		                               stable_look_up_slice (&is->current_config.unit_type_tags, &name, (int *)&tag))) ||
 		    ((kind == PK_TECHNOLOGY) && find_game_object_id_by_name (GOK_TECHNOLOGY, &name, 0, &unused_id)) ||
 		    ((kind == PK_RESOURCE) && find_game_object_id_by_name (GOK_RESOURCE, &name, 0, &unused_id)) ||
 		    ((kind == PK_GOVERNMENT) && find_game_object_id_by_name (GOK_GOVERNMENT, &name, 0, &unused_id))) {
 			struct perfume_spec * out = out_perfume_spec;
-			snprintf (out->name, sizeof out->name, "%.*s", name.len, name.str);
-			out->name[(sizeof out->name) - 1] = '\0';
-			out->value = value;
+			if (tag == NULL) {
+				snprintf (out->name, sizeof out->name, "%.*s", name.len, name.str);
+				out->name[(sizeof out->name) - 1] = '\0';
+			}
+			int amount;
+			bool percent;
+			i31b_unpack (packed_value, &amount, &percent);
+			out->flat_amount = percent ? 0 : amount;
+			out->percent_amount = percent ? amount : 0;
+			out->tag = tag;
 			return RPR_OK;
 		} else {
 			add_unrecognized_line (p_unrecognized_lines, &name);
@@ -3302,7 +3329,20 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		if (list->items != NULL) {
 			for (int k = 0; k < list->count; k++) {
 				struct perfume_spec * ps = &list->items[k];
-				stable_insert (table, ps->name, ps->value);
+				if ((n == PK_PRODUCTION) && (ps->tag != NULL)) {
+					for (int m = 0; m < ps->tag->count_unit_type_ids; m++) {
+						char const * name = p_bic_data->UnitTypes[ps->tag->unit_type_ids[m]].Name;
+						bool name_already_added = false;
+						for (int j = 0; j < m; j++)
+							if (strcmp (name, p_bic_data->UnitTypes[ps->tag->unit_type_ids[j]].Name) == 0) {
+								name_already_added = true;
+								break;
+							}
+						if (! name_already_added)
+							add_perfume_spec_to_table (table, name, ps);
+					}
+				} else
+					add_perfume_spec_to_table (table, ps->name, ps);
 			}
 			free (list->items);
 		}
@@ -16989,11 +17029,14 @@ add_i31b_to_int (int base, i31b addition)
 int
 apply_perfume (enum perfume_kind kind, char const * name, int base_amount)
 {
-	i31b perfume_value;
-	if (stable_look_up (&is->current_config.perfume_specs[kind], name, &perfume_value))
-		return add_i31b_to_int (base_amount, perfume_value);
-	else
+	struct perfume_amounts * amounts;
+	if (! stable_look_up (&is->current_config.perfume_specs[kind], name, (int *)&amounts))
 		return base_amount;
+
+	int percent_amount = (base_amount * int_abs (amounts->percent) + 50) / 100;
+	if (amounts->percent < 0)
+		percent_amount = -percent_amount;
+	return base_amount + amounts->flat + percent_amount;
 }
 
 int __stdcall
