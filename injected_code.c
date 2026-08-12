@@ -1997,6 +1997,38 @@ read_sidtable (struct string_slice const * s,
 	return success ? -1 : cursor - extracted_slice;
 }
 
+void
+add_building_prereq_for_unit (struct table * prereqs, int building_id, int unit_type_id)
+{
+	int prev_val;
+	if (! itable_look_up (prereqs, unit_type_id, &prev_val)) {
+		itable_insert (prereqs, unit_type_id, (building_id << 1) | 1);
+		return;
+	}
+
+	if (prev_val & 1) {
+		if ((prev_val >> 1) == building_id)
+			return;
+		int * list = malloc (MAX_BUILDING_PREREQS_FOR_UNIT * sizeof *list);
+		for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
+			list[n] = -1;
+		list[0] = prev_val >> 1;
+		list[1] = building_id;
+		itable_insert (prereqs, unit_type_id, (int)list);
+		return;
+	}
+
+	int * list = (int *)prev_val;
+	for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++) {
+		if (list[n] == building_id)
+			return;
+		if (list[n] < 0) {
+			list[n] = building_id;
+			return;
+		}
+	}
+}
+
 // Like read_recognizables, returns -1 for success or the location of an error if there is one
 int
 read_building_unit_prereqs (struct string_slice const * s,
@@ -2011,7 +2043,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 
 	struct prereq {
 		int building_id;
-		struct string_slice unit_type_name;
+		int unit_type_id;
 	} * new_prereqs = NULL;
 	int new_prereqs_capacity = 0;
 	int count_new_prereqs = 0;
@@ -2027,14 +2059,27 @@ read_building_unit_prereqs (struct string_slice const * s,
 				break;
 			struct string_slice unit_type_name;
 			while (skip_white_space (&cursor) && parse_string (&cursor, &unit_type_name)) {
-				int unused;
-				if (find_unit_type_id_by_name (&unit_type_name, 0, &unused)) { // if there is any by this name, later we'll deal with the possibility of multiple
+				int unit_type_id = -1;
+				bool matched_unit_type = false;
+				while (find_unit_type_id_by_name (&unit_type_name, unit_type_id + 1, &unit_type_id)) {
+					matched_unit_type = true;
 					if (have_building_id) {
 						reserve (sizeof new_prereqs[0], (void **)&new_prereqs, &new_prereqs_capacity, count_new_prereqs);
-						new_prereqs[count_new_prereqs++] = (struct prereq) { .building_id = building_id, .unit_type_name = unit_type_name };
+						new_prereqs[count_new_prereqs++] = (struct prereq) { .building_id = building_id, .unit_type_id = unit_type_id };
 					}
-				} else
-					add_unrecognized_line (p_unrecognized_lines, &unit_type_name);
+				}
+				if (! matched_unit_type) {
+					struct unit_type_tag * tag;
+					if (stable_look_up_slice (&is->current_config.unit_type_tags, &unit_type_name, (int *)&tag)) {
+						if (have_building_id)
+							for (int n = 0; n < tag->count_unit_type_ids; n++) {
+								reserve (sizeof new_prereqs[0], (void **)&new_prereqs, &new_prereqs_capacity, count_new_prereqs);
+								new_prereqs[count_new_prereqs++] = (struct prereq) {
+									.building_id = building_id, .unit_type_id = tag->unit_type_ids[n] };
+							}
+					} else
+						add_unrecognized_line (p_unrecognized_lines, &unit_type_name);
+				}
 			}
 			skip_punctuation (&cursor, ',');
 		} else {
@@ -2045,37 +2090,8 @@ read_building_unit_prereqs (struct string_slice const * s,
 
 	// If parsing succeeded, add the new prereq rules to the table
 	if (success)
-		for (int n = 0; n < count_new_prereqs; n++) {
-			struct prereq * prereq = &new_prereqs[n];
-
-			int unit_type_id = -1;
-			while (find_unit_type_id_by_name (&prereq->unit_type_name, unit_type_id + 1, &unit_type_id)) {
-
-				// If this unit type ID is not already in the table, insert it paired with the encoded building ID
-				int prev_val;
-				if (! itable_look_up (building_unit_prereqs, unit_type_id, &prev_val))
-					itable_insert (building_unit_prereqs, unit_type_id, (prereq->building_id << 1) | 1);
-
-				// If the unit type ID is already associated with a building ID, create a list for both the old and new building IDs
-				else if (prev_val & 1) {
-					int * list = malloc (MAX_BUILDING_PREREQS_FOR_UNIT * sizeof *list);
-					for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
-						list[n] = -1;
-					list[0] = prev_val >> 1; // Decode
-					list[1] = prereq->building_id;
-					itable_insert (building_unit_prereqs, unit_type_id, (int)list);
-
-				// Otherwise, it's already associated with a list. Search the list for a free spot and fill it with the new building ID
-				} else {
-					int * list = (int *)prev_val;
-					for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
-						if (list[n] < 0) {
-							list[n] = prereq->building_id;
-							break;
-						}
-				}
-			}
-		}
+		for (int n = 0; n < count_new_prereqs; n++)
+			add_building_prereq_for_unit (building_unit_prereqs, new_prereqs[n].building_id, new_prereqs[n].unit_type_id);
 
 
 	free (new_prereqs);
