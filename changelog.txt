@@ -3,7 +3,7 @@
 - Make unit view distance and terrain visibility rules configurable, see "Visibility" section in config for details
 - Enable tile graphics to cycle over seasons in addition to days, see "Seasonal Cycle" config section for details
 - Allow multiple unit types to be limited together as a group
-  - Groups are defined by the new unit_type_tags option
+- New unit_type_tags config option that gathers unit types together into named categories. Tags can be used in place of unit types in all config options.
 - Districts may work like tile improvements in that cities must work their tiles to receive their yields
   - See the 'type' and 'ai_build_strategy' options in the districts config
 - Districts may consume a worker on completion, option consumes_worker in districts config
