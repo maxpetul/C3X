@@ -212,7 +212,6 @@ get_city_ptr (int id)
 }
 
 // Forward declarations for unit counter system (defined after their dependencies)
-enum recognizable_parse_result parse_unit_counter_group (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_group);
 enum recognizable_parse_result parse_counter_rule (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_rule);
 Unit * find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded, bool require_visible, bool * out_any_counter_effect);
 Unit * find_counter_base_visible_defender_against (Main_Screen_Form * form, Unit * attacker, int tile_x, int tile_y, Unit * excluded);
@@ -716,8 +715,11 @@ reset_to_base_config ()
 
 	table_deinit (&cc->exclude_types_from_units_per_tile_limit);
 
-	for (int n = 0; n < COUNT_PERFUME_KINDS; n++)
+	for (int n = 0; n < COUNT_PERFUME_KINDS; n++) {
+		FOR_TABLE_ENTRIES (tei, &cc->perfume_specs[n])
+			free ((void *)tei.value);
 		stable_deinit (&cc->perfume_specs[n]);
+	}
 
 	// Free building-unit prereqs table
 	FOR_TABLE_ENTRIES (tei, &cc->building_unit_prereqs) {
@@ -797,20 +799,8 @@ reset_to_base_config ()
 		cc->great_wall_auto_build_wonder_name = NULL;
 	}
 
-	if (cc->unit_counter_groups != NULL) {
-		for (int n = 0; n < cc->count_unit_counter_groups; n++) {
-			free (cc->unit_counter_groups[n].name);
-			free (cc->unit_counter_groups[n].type_ids);
-		}
-		free (cc->unit_counter_groups);
-		cc->unit_counter_groups = NULL;
-		cc->count_unit_counter_groups = 0;
-	}
-
 	if (cc->counter_rules != NULL) {
 		for (int n = 0; n < cc->count_counter_rules; n++) {
-			free (cc->counter_rules[n].attacker_group);
-			free (cc->counter_rules[n].defender_group);
 			free (cc->counter_rules[n].district_name);
 		}
 		free (cc->counter_rules);
@@ -823,17 +813,22 @@ reset_to_base_config ()
 		free ((void *)tei.value);
 	stable_deinit (&cc->unit_limits);
 
-	// ToC-26: (A way to group units for unit limits) - Free unit limit groups. Each group owns its unit_type_ids array.
-	// unit_type_to_group values are non-owning pointers into unit_limit_groups, so only
-	// the table structure itself needs to be freed (table_deinit does not free values).
-	FOR_TABLE_ENTRIES (tei_grp, &cc->unit_limit_groups) {
-		struct unit_limit_group * grp = (struct unit_limit_group *)tei_grp.value;
-		free (grp->unit_type_ids);
-		free (grp);
+	// Free unit type tags and the reverse index from unit type IDs to tag ID lists.
+	FOR_TABLE_ENTRIES (tei_tag, &cc->unit_type_tags) {
+		struct unit_type_tag * tag = (struct unit_type_tag *)tei_tag.value;
+		free (tag->unit_type_ids);
+		free (tag);
 	}
-	stable_deinit (&cc->unit_limit_groups);
-	table_deinit (&cc->unit_type_to_group);
-	// END ToC-26
+	stable_deinit (&cc->unit_type_tags);
+	free (cc->unit_type_tags_by_id);
+	cc->unit_type_tags_by_id = NULL;
+	cc->count_unit_type_tags = 0;
+	FOR_TABLE_ENTRIES (tei_tag_ids, &cc->unit_type_id_to_tag_ids) {
+		struct unit_type_tag_id_list * list = (struct unit_type_tag_id_list *)tei_tag_ids.value;
+		free (list->tag_ids);
+		free (list);
+	}
+	table_deinit (&cc->unit_type_id_to_tag_ids);
 
 	// Free the linked list of loaded config names and the string name contained in each one
 	if (is->loaded_config_names != NULL) {
@@ -861,8 +856,6 @@ reset_to_base_config ()
 
 	// These fields are heap-allocated and must not be inherited from base_config
 	// (base_config never owns valid pointers for them)
-	is->current_config.unit_counter_groups       = NULL;
-	is->current_config.count_unit_counter_groups = 0;
 	is->current_config.counter_rules             = NULL;
 	is->current_config.count_counter_rules       = 0;
 
@@ -1219,8 +1212,23 @@ enum recognizable_parse_result {
 
 struct perfume_spec {
 	char name[36]; // Must be large enough to fit the name of a unit type or improvement
-	i31b value; // Int component stores amount, bool stores whether it's a percentage or not
+	int flat_amount;
+	int percent_amount;
+	struct unit_type_tag * tag; // Non-NULL only for a unit type tag in a production perfume spec
 };
+
+// Adds a perfume spec to a table, accumulating it with any existing spec for the same name.
+void
+add_perfume_spec_to_table (struct table * table, char const * name, struct perfume_spec const * spec)
+{
+	struct perfume_amounts * amounts;
+	if (! stable_look_up (table, (char *)name, (int *)&amounts)) {
+		amounts = calloc (1, sizeof *amounts);
+		stable_insert (table, (char *)name, (int)amounts);
+	}
+	amounts->flat += spec->flat_amount;
+	amounts->percent += spec->percent_amount;
+}
 
 enum recognizable_parse_result
 parse_perfume_spec (char ** p_cursor, enum perfume_kind kind, struct error_line ** p_unrecognized_lines, void * out_perfume_spec)
@@ -1229,20 +1237,29 @@ parse_perfume_spec (char ** p_cursor, enum perfume_kind kind, struct error_line 
 	struct string_slice name;
 	City_Order unused_city_order;
 	int unused_id;
-	i31b value;
+	i31b packed_value;
 	if (parse_string (&cur, &name) &&
 	    skip_punctuation (&cur, ':') &&
-	    parse_i31b (&cur, &value)) {
+	    parse_i31b (&cur, &packed_value)) {
 		*p_cursor = cur;
 
-		if (((kind == PK_PRODUCTION) && find_city_order_by_name (&name, &unused_city_order)) ||
+		struct unit_type_tag * tag = NULL;
+		if (((kind == PK_PRODUCTION) && (find_city_order_by_name (&name, &unused_city_order) ||
+		                               stable_look_up_slice (&is->current_config.unit_type_tags, &name, (int *)&tag))) ||
 		    ((kind == PK_TECHNOLOGY) && find_game_object_id_by_name (GOK_TECHNOLOGY, &name, 0, &unused_id)) ||
 		    ((kind == PK_RESOURCE) && find_game_object_id_by_name (GOK_RESOURCE, &name, 0, &unused_id)) ||
 		    ((kind == PK_GOVERNMENT) && find_game_object_id_by_name (GOK_GOVERNMENT, &name, 0, &unused_id))) {
 			struct perfume_spec * out = out_perfume_spec;
-			snprintf (out->name, sizeof out->name, "%.*s", name.len, name.str);
-			out->name[(sizeof out->name) - 1] = '\0';
-			out->value = value;
+			if (tag == NULL) {
+				snprintf (out->name, sizeof out->name, "%.*s", name.len, name.str);
+				out->name[(sizeof out->name) - 1] = '\0';
+			}
+			int amount;
+			bool percent;
+			i31b_unpack (packed_value, &amount, &percent);
+			out->flat_amount = percent ? 0 : amount;
+			out->percent_amount = percent ? amount : 0;
+			out->tag = tag;
 			return RPR_OK;
 		} else {
 			add_unrecognized_line (p_unrecognized_lines, &name);
@@ -1437,14 +1454,12 @@ parse_leader_name_alias_list  (char ** p_cursor, struct error_line ** p_unrecogn
 }
 
 struct parsed_unit_type_limit {
-	char name[32]; // Same length as Name in Unit_Type
+	struct string_slice name;
 	struct unit_type_limit limit;
+	int unit_type_id;
+	struct unit_type_tag * tag;
 };
 
-// ToC-26: Code replace: Removed per-item unit-type validation from this parser. Validation is now deferred to
-// the post-parse copy phase (see "Copy and validate unit type limits" block in load_config) so
-// that unit_limit_groups is fully loaded regardless of key order in the config file. Group names
-// used as keys in unit_limits are therefore accepted here without triggering unrecognized warnings.
 enum recognizable_parse_result
 parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_unit_type_limit)
 {
@@ -1455,7 +1470,6 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 	struct unit_type_limit limit = {0};
 	if (skip_white_space (&cur) &&
 	    parse_string (&cur, &name) &&
-	    (name.len < (sizeof out->name)) &&
 	    skip_punctuation (&cur, ':')) {
 
 		do {
@@ -1476,34 +1490,128 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 
 		} while (skip_punctuation (&cur, '+'));
 
-		// Store name and limit unconditionally; validation against unit types and groups
-		// happens in the post-parse copy phase after all config keys have been processed.
-		memset (out->name, 0, sizeof out->name);
-		strncpy (out->name, name.str, name.len);
+		out->name = name;
 		out->limit = limit;
+		out->unit_type_id = -1;
+		out->tag = NULL;
 		*p_cursor = cur;
-		return RPR_OK;
+
+		if (find_unit_type_id_by_name (&name, 0, &out->unit_type_id))
+			return RPR_OK;
+		else if (stable_look_up_slice (&is->current_config.unit_type_tags,
+		                               &name, (int *)&out->tag))
+			return RPR_OK;
+		else {
+			add_unrecognized_line (p_unrecognized_lines, &name);
+			return RPR_UNRECOGNIZED;
+		}
 
 	} else
 		return RPR_PARSE_ERROR;
 }
 
-// ToC-26: Parses the unit_limit_groups config setting.
-// Format: ["Group Name": "UnitTypeA" "UnitTypeB" ..., "Group2": "UnitTypeC" ...]
-//
-// - Group names are arbitrary labels (not validated against game data).
-// - Unit type names within each group are looked up against the scenario's unit roster;
-//   unrecognized names are soft-reported via p_unrecognized_lines.
-// - All unit type IDs matching each member name are stored, including AI strategy duplicates.
-// - Populates unit_limit_groups (group_name -> struct unit_limit_group*) and
-//   unit_type_to_group (unit_type_id -> struct unit_limit_group*) for O(1) runtime lookup.
-// - If the same unit type appears in multiple groups, the first group definition wins.
+struct unit_type_tag_member {
+	struct string_slice name;
+	bool is_range_operator;
+};
+
+bool
+append_unit_type_ids_by_name (struct string_slice const * name, int ** p_ids, int * p_count, int * p_capacity)
+{
+	int search_start = 0, found_id;
+	bool any_found = false;
+	while (find_unit_type_id_by_name (name, search_start, &found_id)) {
+		reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
+		(*p_ids)[(*p_count)++] = found_id;
+		search_start = found_id + 1;
+		any_found = true;
+	}
+	return any_found;
+}
+
+void
+append_unit_type_tag_ids (struct unit_type_tag const * tag, int ** p_ids, int * p_count, int * p_capacity)
+{
+	for (int n = 0; n < tag->count_unit_type_ids; n++) {
+		reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
+		(*p_ids)[(*p_count)++] = tag->unit_type_ids[n];
+	}
+}
+
+// Appends the upgrade chain after start_name through end_name, plus every type duplicate of end_name. Returns false without appending
+// anything if end_name is not on the chain.
+bool
+append_unit_type_upgrade_range (struct string_slice const * start_name, struct string_slice const * end_name,
+                                int ** p_ids, int * p_count, int * p_capacity)
+{
+	int start_id;
+	if (! find_unit_type_id_by_name (start_name, 0, &start_id))
+		return false;
+
+	int end_id = start_id;
+	bool reached_end = slice_matches_str (end_name, p_bic_data->UnitTypes[end_id].Name);
+	for (int step = 0; ! reached_end && (step < p_bic_data->UnitTypeCount); step++) {
+		end_id = p_bic_data->UnitTypes[end_id].UpgradeToID;
+		if ((end_id < 0) || (end_id >= p_bic_data->UnitTypeCount))
+			break;
+		reached_end = slice_matches_str (end_name, p_bic_data->UnitTypes[end_id].Name);
+	}
+	if (! reached_end)
+		return false;
+
+	for (int current_id = start_id; current_id != end_id; ) {
+		current_id = p_bic_data->UnitTypes[current_id].UpgradeToID;
+		if (current_id != end_id) {
+			reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
+			(*p_ids)[(*p_count)++] = current_id;
+		}
+	}
+	append_unit_type_ids_by_name (end_name, p_ids, p_count, p_capacity);
+	return true;
+}
+
+void
+add_disconnected_unit_type_tag_range (struct error_line ** p_lines, struct string_slice const * start_name, struct string_slice const * end_name)
+{
+	struct error_line * line = add_error_line (p_lines);
+	snprintf (line->text, sizeof line->text, "^  No unit upgrade chain connects \"%.*s\" to \"%.*s\".",
+	          start_name->len, start_name->str, end_name->len, end_name->str);
+	line->text[(sizeof line->text) - 1] = '\0';
+}
+
+void
+add_malformed_unit_type_tag_range (struct error_line ** p_lines, struct string_slice const * tag_name)
+{
+	struct error_line * line = add_error_line (p_lines);
+	snprintf (line->text, sizeof line->text, "^  Misplaced range operator \"to\" in unit type tag \"%.*s\".", tag_name->len, tag_name->str);
+	line->text[(sizeof line->text) - 1] = '\0';
+}
+
+void
+add_tag_as_unit_type_range_endpoint (struct error_line ** p_lines, struct string_slice const * name)
+{
+	struct error_line * line = add_error_line (p_lines);
+	snprintf (line->text, sizeof line->text, "^  Unit type tag \"%.*s\" cannot be used as an endpoint of an upgrade range.", name->len, name->str);
+	line->text[(sizeof line->text) - 1] = '\0';
+}
+
+void
+add_unit_type_tag_name_conflict_warning (struct error_line ** p_lines, struct string_slice const * name)
+{
+	struct error_line * line = add_error_line (p_lines);
+	snprintf (line->text, sizeof line->text, "^  Unit type tag \"%.*s\" has the same name as a unit type. "
+	          "The unit type takes precedence when referenced.", name->len, name->str);
+	line->text[(sizeof line->text) - 1] = '\0';
+}
+
+// Parses unit_type_tags. Format:
+// ["Tag Name": "UnitTypeA" "UnitTypeB" ..., "Tag2": "UnitTypeC" ...]
+// Tag names map to tag objects with integer IDs. A reverse table maps every unit type ID to
+// all of its tag IDs, so a type may participate in multiple counter categories and limits.
 // Returns -1 on success, or the byte offset of the first parse error within s.
 int
-read_unit_limit_groups (struct string_slice const * s,
-                        struct error_line ** p_unrecognized_lines,
-                        struct table * unit_limit_groups,
-                        struct table * unit_type_to_group)
+read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrecognized_lines,
+                     struct error_line ** p_range_errors, struct error_line ** p_warnings, struct c3x_config * cfg)
 {
 	if (s->len <= 0)
 		return -1;
@@ -1516,53 +1624,123 @@ read_unit_limit_groups (struct string_slice const * s,
 		skip_white_space (&cursor);
 		if (*cursor == '\0') { success = true; break; }
 
-		// Parse the group label (arbitrary string, not a game object name)
-		struct string_slice group_name;
-		if (! parse_string (&cursor, &group_name))
+		struct string_slice tag_name;
+		if (! parse_string (&cursor, &tag_name))
 			break;
 		if (! skip_punctuation (&cursor, ':'))
 			break;
+		int unused_unit_type_id;
+		if (find_unit_type_id_by_name (&tag_name, 0, &unused_unit_type_id))
+			add_unit_type_tag_name_conflict_warning (p_warnings, &tag_name);
 
-		// Collect unit type IDs for every space-separated member name in this group.
-		// find_unit_type_id_by_name is called in a loop to collect all IDs sharing the same
-		// name (i.e. AI strategy duplicates), matching the behavior of list_unit_type_duplicates.
-		int * ids = NULL;
-		int ids_count = 0, ids_capacity = 0;
-		struct string_slice member_name;
-		while (parse_string (&cursor, &member_name)) {
-			int search_start = 0, found_id;
-			bool any_found = false;
-			while (find_unit_type_id_by_name (&member_name, search_start, &found_id)) {
-				reserve (sizeof ids[0], (void **)&ids, &ids_capacity, ids_count);
-				ids[ids_count++] = found_id;
-				search_start = found_id + 1;
-				any_found = true;
-			}
-			if (! any_found)
-				add_unrecognized_line (p_unrecognized_lines, &member_name);
+		struct unit_type_tag_member * members = NULL;
+		int member_count = 0, member_capacity = 0;
+		while (1) {
+			char * token_start = cursor;
+			skip_horiz_space (&token_start);
+			bool quoted = *token_start == '"';
+			struct string_slice member_name;
+			if (! parse_string (&cursor, &member_name))
+				break;
+			reserve (sizeof members[0], (void **)&members, &member_capacity, member_count);
+			members[member_count].name = member_name;
+			members[member_count].is_range_operator = ! quoted && slice_matches_str (&member_name, "to");
+			member_count++;
 		}
 
-		// Only register the group when at least one valid unit type was resolved
-		if (ids_count > 0) {
-			struct unit_limit_group * grp = malloc (sizeof *grp);
-			grp->unit_type_ids = ids;
-			grp->count         = ids_count;
-			memset (&grp->limit, 0, sizeof grp->limit);
-			grp->has_limit     = false; // limit is assigned in post-parse copy phase
-
-			// stable_insert strdup's the key; use extract_slice for a temp null-terminated copy
-			char * gname = extract_slice (&group_name);
-			stable_insert (unit_limit_groups, gname, (int)grp);
-			free (gname);
-
-			// Build reverse map: unit_type_id -> group (first group wins for any type in multiple groups)
-			for (int n = 0; n < ids_count; n++) {
-				int dummy;
-				if (! itable_look_up (unit_type_to_group, ids[n], &dummy))
-					itable_insert (unit_type_to_group, ids[n], (int)grp);
+		int * ids = NULL;
+		int ids_count = 0, ids_capacity = 0;
+		for (int n = 0; n < member_count; n++) {
+			struct unit_type_tag_member * member = &members[n];
+			if (member->is_range_operator) {
+				add_malformed_unit_type_tag_range (p_range_errors, &tag_name);
+				continue;
 			}
+
+			bool start_type_found = append_unit_type_ids_by_name (&member->name, &ids, &ids_count, &ids_capacity);
+			struct unit_type_tag * start_tag = NULL;
+			if (! start_type_found) {
+				if (stable_look_up_slice (&cfg->unit_type_tags, &member->name, (int *)&start_tag))
+					append_unit_type_tag_ids (start_tag, &ids, &ids_count, &ids_capacity);
+				else
+					add_unrecognized_line (p_unrecognized_lines, &member->name);
+			}
+
+			while ((n + 1 < member_count) && members[n + 1].is_range_operator) {
+				if ((n + 2 >= member_count) || members[n + 2].is_range_operator) {
+					add_malformed_unit_type_tag_range (p_range_errors, &tag_name);
+					n += 1;
+					continue;
+				}
+
+				struct unit_type_tag_member * end = &members[n + 2];
+				int unused;
+				bool end_type_found = find_unit_type_id_by_name (&end->name, 0, &unused);
+				struct unit_type_tag * end_tag = NULL;
+				if (! end_type_found && ! stable_look_up_slice (&cfg->unit_type_tags, &end->name, (int *)&end_tag))
+					add_unrecognized_line (p_unrecognized_lines, &end->name);
+				if (start_tag != NULL)
+					add_tag_as_unit_type_range_endpoint (p_range_errors, &member->name);
+				if (end_tag != NULL)
+					add_tag_as_unit_type_range_endpoint (p_range_errors, &end->name);
+				else if (start_type_found && end_type_found &&
+				         ! append_unit_type_upgrade_range (&member->name, &end->name, &ids, &ids_count, &ids_capacity))
+					add_disconnected_unit_type_tag_range (p_range_errors, &member->name, &end->name);
+
+				n += 2;
+				member = end;
+				start_type_found = end_type_found;
+				start_tag = end_tag;
+				if (start_type_found && (n + 1 < member_count) && members[n + 1].is_range_operator)
+					append_unit_type_ids_by_name (&member->name, &ids, &ids_count, &ids_capacity);
+			}
+		}
+		free (members);
+
+		// Only register a tag when at least one valid unit type was resolved.
+		if (ids_count > 0) {
+			struct unit_type_tag * tag;
+			if (! stable_look_up_slice (&cfg->unit_type_tags, &tag_name, (int *)&tag)) {
+				tag = calloc (1, sizeof *tag);
+				tag->id = cfg->count_unit_type_tags;
+				char * name = extract_slice (&tag_name);
+				stable_insert (&cfg->unit_type_tags, name, (int)tag);
+				free (name);
+
+				cfg->unit_type_tags_by_id = realloc (
+					cfg->unit_type_tags_by_id,
+					(cfg->count_unit_type_tags + 1) * sizeof cfg->unit_type_tags_by_id[0]);
+				cfg->unit_type_tags_by_id[cfg->count_unit_type_tags++] = tag;
+			}
+
+			int needed_capacity = tag->count_unit_type_ids + ids_count;
+			tag->unit_type_ids = realloc (
+				tag->unit_type_ids,
+				needed_capacity * sizeof tag->unit_type_ids[0]);
+
+			for (int n = 0; n < ids_count; n++) {
+				bool tag_already_has_type = false;
+				for (int k = 0; k < tag->count_unit_type_ids; k++)
+					if (tag->unit_type_ids[k] == ids[n]) {
+						tag_already_has_type = true;
+						break;
+					}
+				if (tag_already_has_type)
+					continue;
+
+				tag->unit_type_ids[tag->count_unit_type_ids++] = ids[n];
+
+				struct unit_type_tag_id_list * list;
+				if (! itable_look_up (&cfg->unit_type_id_to_tag_ids, ids[n], (int *)&list)) {
+					list = calloc (1, sizeof *list);
+					itable_insert (&cfg->unit_type_id_to_tag_ids, ids[n], (int)list);
+				}
+				list->tag_ids = realloc (list->tag_ids, (list->count + 1) * sizeof list->tag_ids[0]);
+				list->tag_ids[list->count++] = tag->id;
+			}
+			free (ids);
 		} else {
-			free (ids); // free(NULL) is safe; handles the zero-members case
+			free (ids);
 		}
 
 		// Advance past the comma between groups, or finish at end-of-string
@@ -1581,7 +1759,6 @@ read_unit_limit_groups (struct string_slice const * s,
 	free (extracted);
 	return result;
 }
-// END ToC-26
 
 enum recognizable_parse_result
 parse_unit_visibility_rule (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_unit_visibility_rule)
@@ -1841,6 +2018,38 @@ read_sidtable (struct string_slice const * s,
 	return success ? -1 : cursor - extracted_slice;
 }
 
+void
+add_building_prereq_for_unit (struct table * prereqs, int building_id, int unit_type_id)
+{
+	int prev_val;
+	if (! itable_look_up (prereqs, unit_type_id, &prev_val)) {
+		itable_insert (prereqs, unit_type_id, (building_id << 1) | 1);
+		return;
+	}
+
+	if (prev_val & 1) {
+		if ((prev_val >> 1) == building_id)
+			return;
+		int * list = malloc (MAX_BUILDING_PREREQS_FOR_UNIT * sizeof *list);
+		for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
+			list[n] = -1;
+		list[0] = prev_val >> 1;
+		list[1] = building_id;
+		itable_insert (prereqs, unit_type_id, (int)list);
+		return;
+	}
+
+	int * list = (int *)prev_val;
+	for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++) {
+		if (list[n] == building_id)
+			return;
+		if (list[n] < 0) {
+			list[n] = building_id;
+			return;
+		}
+	}
+}
+
 // Like read_recognizables, returns -1 for success or the location of an error if there is one
 int
 read_building_unit_prereqs (struct string_slice const * s,
@@ -1855,7 +2064,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 
 	struct prereq {
 		int building_id;
-		struct string_slice unit_type_name;
+		int unit_type_id;
 	} * new_prereqs = NULL;
 	int new_prereqs_capacity = 0;
 	int count_new_prereqs = 0;
@@ -1871,14 +2080,27 @@ read_building_unit_prereqs (struct string_slice const * s,
 				break;
 			struct string_slice unit_type_name;
 			while (skip_white_space (&cursor) && parse_string (&cursor, &unit_type_name)) {
-				int unused;
-				if (find_unit_type_id_by_name (&unit_type_name, 0, &unused)) { // if there is any by this name, later we'll deal with the possibility of multiple
+				int unit_type_id = -1;
+				bool matched_unit_type = false;
+				while (find_unit_type_id_by_name (&unit_type_name, unit_type_id + 1, &unit_type_id)) {
+					matched_unit_type = true;
 					if (have_building_id) {
 						reserve (sizeof new_prereqs[0], (void **)&new_prereqs, &new_prereqs_capacity, count_new_prereqs);
-						new_prereqs[count_new_prereqs++] = (struct prereq) { .building_id = building_id, .unit_type_name = unit_type_name };
+						new_prereqs[count_new_prereqs++] = (struct prereq) { .building_id = building_id, .unit_type_id = unit_type_id };
 					}
-				} else
-					add_unrecognized_line (p_unrecognized_lines, &unit_type_name);
+				}
+				if (! matched_unit_type) {
+					struct unit_type_tag * tag;
+					if (stable_look_up_slice (&is->current_config.unit_type_tags, &unit_type_name, (int *)&tag)) {
+						if (have_building_id)
+							for (int n = 0; n < tag->count_unit_type_ids; n++) {
+								reserve (sizeof new_prereqs[0], (void **)&new_prereqs, &new_prereqs_capacity, count_new_prereqs);
+								new_prereqs[count_new_prereqs++] = (struct prereq) {
+									.building_id = building_id, .unit_type_id = tag->unit_type_ids[n] };
+							}
+					} else
+						add_unrecognized_line (p_unrecognized_lines, &unit_type_name);
+				}
 			}
 			skip_punctuation (&cursor, ',');
 		} else {
@@ -1889,37 +2111,8 @@ read_building_unit_prereqs (struct string_slice const * s,
 
 	// If parsing succeeded, add the new prereq rules to the table
 	if (success)
-		for (int n = 0; n < count_new_prereqs; n++) {
-			struct prereq * prereq = &new_prereqs[n];
-
-			int unit_type_id = -1;
-			while (find_unit_type_id_by_name (&prereq->unit_type_name, unit_type_id + 1, &unit_type_id)) {
-
-				// If this unit type ID is not already in the table, insert it paired with the encoded building ID
-				int prev_val;
-				if (! itable_look_up (building_unit_prereqs, unit_type_id, &prev_val))
-					itable_insert (building_unit_prereqs, unit_type_id, (prereq->building_id << 1) | 1);
-
-				// If the unit type ID is already associated with a building ID, create a list for both the old and new building IDs
-				else if (prev_val & 1) {
-					int * list = malloc (MAX_BUILDING_PREREQS_FOR_UNIT * sizeof *list);
-					for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
-						list[n] = -1;
-					list[0] = prev_val >> 1; // Decode
-					list[1] = prereq->building_id;
-					itable_insert (building_unit_prereqs, unit_type_id, (int)list);
-
-				// Otherwise, it's already associated with a list. Search the list for a free spot and fill it with the new building ID
-				} else {
-					int * list = (int *)prev_val;
-					for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
-						if (list[n] < 0) {
-							list[n] = prereq->building_id;
-							break;
-						}
-				}
-			}
-		}
+		for (int n = 0; n < count_new_prereqs; n++)
+			add_building_prereq_for_unit (building_unit_prereqs, new_prereqs[n].building_id, new_prereqs[n].unit_type_id);
 
 
 	free (new_prereqs);
@@ -1927,9 +2120,9 @@ read_building_unit_prereqs (struct string_slice const * s,
 	return success ? -1 : cursor - extracted_slice;
 }
 
-// Reads a space-separated list of unit types like:
+// Reads a space-separated list of unit types or unit type tags like:
 //   Worker Galley "Gallic Swordsman"
-// Looks up the type ID(s) for each name and inserts them into the unit_types table associated with a value of 1.
+// Looks up the type ID(s) for each name or tag and inserts them into the unit_types table associated with a value of 1.
 bool
 read_unit_type_list (struct string_slice const * s, struct error_line ** p_unrecognized_lines, struct table * unit_types)
 {
@@ -1944,14 +2137,20 @@ read_unit_type_list (struct string_slice const * s, struct error_line ** p_unrec
 		if (parse_string (&cursor, &name)) {
 
 			int id = -1;
-			bool matched_any = false;
+			bool matched_unit_type = false;
 			while (find_unit_type_id_by_name (&name, id + 1, &id)) {
 				itable_insert (unit_types, id, 1);
-				matched_any = true;
+				matched_unit_type = true;
 			}
 
-			if (! matched_any)
-				add_unrecognized_line (p_unrecognized_lines, &name);
+			if (! matched_unit_type) {
+				struct unit_type_tag * tag;
+				if (stable_look_up_slice (&is->current_config.unit_type_tags, &name, (int *)&tag))
+					for (int n = 0; n < tag->count_unit_type_ids; n++)
+						itable_insert (unit_types, tag->unit_type_ids[n], 1);
+				else
+					add_unrecognized_line (p_unrecognized_lines, &name);
+			}
 
 		} else {
 			skip_white_space (&cursor);
@@ -2605,6 +2804,33 @@ struct config_parsing {
 	int displayed_error_message;
 };
 
+struct config_key_value {
+	// These slices point into config_parsing.text, which remains alive until both lists are processed.
+	struct string_slice key;
+	struct string_slice value;
+	char * cursor_after_value;
+};
+
+struct config_key_value_list {
+	struct config_key_value * items;
+	int count;
+	int capacity;
+};
+
+void
+append_config_key_value (struct config_key_value_list * list, struct string_slice const * key, struct string_slice const * value, char * cursor_after_value)
+{
+	reserve (sizeof list->items[0], (void **)&list->items, &list->capacity, list->count);
+	list->items[list->count++] = (struct config_key_value){ .key = *key, .value = *value, .cursor_after_value = cursor_after_value };
+}
+
+bool
+is_high_priority_config_key (struct string_slice const * key)
+{
+	// Tag definitions must be available when settings that refer to those tags are processed.
+	return slice_matches_str (key, "unit_type_tags");
+}
+
 enum config_parse_error {
 	CPE_GENERIC,
 	CPE_BAD_VALUE,
@@ -2696,11 +2922,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		int count;
 	} perfume_spec_lists[COUNT_PERFUME_KINDS] = {0};
 
-	struct parsed_unit_type_limit * parsed_unit_type_limits = NULL;
-	int parsed_unit_type_limit_count = 0;
-
 	struct config_parsing p = { .file_path = full_path, .text = text, .cursor = text, .key = {0}, .displayed_error_message = 0 };
-	struct error_line * unrecognized_lines = NULL;
+	struct config_key_value_list key_value_lists[2] = {0}; // High priority, then normal priority
+	// First pass: split the file into key/value slices without interpreting the values.
 	while (1) {
 		skip_horiz_space (&p.cursor);
 		if (*p.cursor == '\0')
@@ -2712,10 +2936,32 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		else if (*p.cursor == '[')
 			skip_to_line_end (&p.cursor); // Skip section line
 		else if (parse_string (&p.cursor, &p.key) && skip_punctuation (&p.cursor, '=')) { // Parse key and equals sign
-
 			struct string_slice value;
 			if (parse_string (&p.cursor, &value) || parse_bracketed_block (&p.cursor, &value)) { // Parse value
-				int ival, offset, recog_err_offset;
+				int priority = is_high_priority_config_key (&p.key) ? 0 : 1;
+				append_config_key_value (&key_value_lists[priority], &p.key, &value, p.cursor);
+			} else { // Failed to parse value
+				handle_config_error (&p, CPE_BAD_VALUE);
+				skip_to_line_end (&p.cursor);
+			}
+		} else { // Failed to categorize line
+			handle_config_error (&p, CPE_GENERIC);
+			skip_to_line_end (&p.cursor);
+		}
+	}
+
+	struct error_line * unrecognized_lines = NULL;
+	struct error_line * unit_type_tag_range_errors = NULL;
+	struct error_line * unit_type_tag_warnings = NULL;
+	// Second pass: process high-priority entries first, preserving file order within each list.
+	for (int priority = 0; priority < ARRAY_LEN (key_value_lists); priority++) {
+		struct config_key_value_list * list = &key_value_lists[priority];
+		for (int item_index = 0; item_index < list->count; item_index++) {
+			struct config_key_value * item = &list->items[item_index];
+			p.key = item->key;
+			p.cursor = item->cursor_after_value;
+			struct string_slice value = item->value;
+			int ival, offset, recog_err_offset;
 
 				// if key is for a boolean option
 				if (stable_look_up_slice (&is->boolean_config_offsets, &p.key, &offset)) {
@@ -2925,6 +3171,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 &cfg->count_leader_era_alias_lists)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "unit_limits")) {
+					struct parsed_unit_type_limit * parsed_unit_type_limits = NULL;
+					int parsed_unit_type_limit_count = 0;
 					if (0 <= (recog_err_offset = read_recognizables (&value,
 											 &unrecognized_lines,
 											 sizeof (struct parsed_unit_type_limit),
@@ -2932,14 +3180,24 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 (void **)&parsed_unit_type_limits,
 											 &parsed_unit_type_limit_count)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
-				// ToC-26: Parse group definitions for shared combined unit limits.
-				// Format: ["Group Label": "UnitA" "UnitB" ..., "Group2": ...]
-				// Group names used here must be referenced in unit_limits to have any effect.
-				} else if (slice_matches_str (&p.key, "unit_limit_groups")) {
-					if (0 <= (recog_err_offset = read_unit_limit_groups (&value,
-											  &unrecognized_lines,
-											  &cfg->unit_limit_groups,
-											  &cfg->unit_type_to_group)))
+
+					for (int n = 0; n < parsed_unit_type_limit_count; n++) {
+						struct parsed_unit_type_limit * parsed_lim = &parsed_unit_type_limits[n];
+						if (parsed_lim->unit_type_id >= 0) {
+							struct unit_type_limit * lim_values = malloc (sizeof *lim_values);
+							*lim_values = parsed_lim->limit;
+							stable_insert (&cfg->unit_limits,
+							               p_bic_data->UnitTypes[parsed_lim->unit_type_id].Name,
+							               (int)lim_values);
+						} else {
+							parsed_lim->tag->limit = parsed_lim->limit;
+							parsed_lim->tag->has_limit = true;
+						}
+					}
+					free (parsed_unit_type_limits);
+				} else if (slice_matches_str (&p.key, "unit_type_tags")) {
+					if (0 <= (recog_err_offset = read_unit_type_tags (
+							&value, &unrecognized_lines, &unit_type_tag_range_errors, &unit_type_tag_warnings, cfg)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "aircraft_victory_animation")) {
 					struct string_slice trimmed = trim_string_slice (&value, 1);
@@ -2961,15 +3219,6 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					}
 					if (! value_ok)
 						handle_config_error (&p, CPE_BAD_VALUE);
-				} else if (slice_matches_str (&p.key, "unit_groups") ||
-					   slice_matches_str (&p.key, "unit_group")) { // singular accepted for backward compatibility
-					if (0 <= (recog_err_offset = read_recognizables (&value,
-											 &unrecognized_lines,
-											 sizeof (struct unit_counter_group),
-											 parse_unit_counter_group,
-											 (void **)&cfg->unit_counter_groups,
-											 &cfg->count_unit_counter_groups)))
-						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "counter_rules") ||
 					   slice_matches_str (&p.key, "counter_rule")) { // singular accepted for backward compatibility
 					if (0 <= (recog_err_offset = read_recognizables (&value,
@@ -3030,7 +3279,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 				} else if (slice_matches_str (&p.key, "move_trade_net_object")) {
-					; // No nothing. This setting no longer serves any purpose.
+					; // Do nothing. This setting no longer serves any purpose.
 				} else if (slice_matches_str (&p.key, "use_civ4_style_best_defender")) {
 					; // Obsolete. Counter rules now always affect normal defender selection when enable_unit_counters is on.
 
@@ -3075,15 +3324,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					handle_config_error (&p, CPE_BAD_KEY);
 				}
 
-			} else { // Failed to parse value
-				handle_config_error (&p, CPE_BAD_VALUE);
-				skip_to_line_end (&p.cursor);
 			}
-
-		} else { // Failed to categorize line
-			handle_config_error (&p, CPE_GENERIC);
-			skip_to_line_end (&p.cursor);
-		}
+		free (list->items);
 	}
 
 	// If seasonal cycle mode is on "day_night_hour" but day/night cycle mode is off, disable seasonal cycle mode and show a warning
@@ -3109,6 +3351,28 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 			PopupForm_add_text (popup, __, line->text, false);
 		patch_show_popup (popup, __, 0, 0);
 	}
+	if (unit_type_tag_warnings != NULL) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "Unit type tag warnings in %s:", full_path);
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, false);
+		for (struct error_line * line = unit_type_tag_warnings; line != NULL; line = line->next)
+			PopupForm_add_text (popup, __, line->text, false);
+		patch_show_popup (popup, __, 0, 0);
+	}
+	if (unit_type_tag_range_errors != NULL) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "Invalid unit type tag ranges in %s:", full_path);
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, false);
+		for (struct error_line * line = unit_type_tag_range_errors; line != NULL; line = line->next)
+			PopupForm_add_text (popup, __, line->text, false);
+		patch_show_popup (popup, __, 0, 0);
+	}
 
 	// Copy perfume specs from lists to tables
 	for (int n = 0; n < COUNT_PERFUME_KINDS; n++) {
@@ -3117,56 +3381,28 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		if (list->items != NULL) {
 			for (int k = 0; k < list->count; k++) {
 				struct perfume_spec * ps = &list->items[k];
-				stable_insert (table, ps->name, ps->value);
+				if ((n == PK_PRODUCTION) && (ps->tag != NULL)) {
+					for (int m = 0; m < ps->tag->count_unit_type_ids; m++) {
+						char const * name = p_bic_data->UnitTypes[ps->tag->unit_type_ids[m]].Name;
+						bool name_already_added = false;
+						for (int j = 0; j < m; j++)
+							if (strcmp (name, p_bic_data->UnitTypes[ps->tag->unit_type_ids[j]].Name) == 0) {
+								name_already_added = true;
+								break;
+							}
+						if (! name_already_added)
+							add_perfume_spec_to_table (table, name, ps);
+					}
+				} else
+					add_perfume_spec_to_table (table, ps->name, ps);
 			}
 			free (list->items);
 		}
 	}
-	// ToC-26: Copy and validate unit type limits from parsed list to config tables.
-	// Validation is done here (post-parse) so that unit_limit_groups is fully populated
-	// regardless of which key appears first in the config file. Each name is checked:
-	//   (1) individual unit type  -> insert into unit_limits as before
-	//   (2) group label defined in unit_limit_groups -> assign limit to the group struct
-	//   (3) neither               -> add to unrecognized_lines for the warning popup
-	if (parsed_unit_type_limits != NULL) {
-		for (int n = 0; n < parsed_unit_type_limit_count; n++) {
-			struct parsed_unit_type_limit * parsed_lim = &parsed_unit_type_limits[n];
-			struct string_slice name_slice = { parsed_lim->name, (int)strlen (parsed_lim->name) };
-			int unused_id;
-			struct unit_limit_group * grp;
-			if (find_unit_type_id_by_name (&name_slice, 0, &unused_id)) {
-				// Valid unit type name: individual limit, stored by name for direct lookup
-				struct unit_type_limit * lim_values = malloc (sizeof *lim_values);
-				*lim_values = parsed_lim->limit;
-				stable_insert (&cfg->unit_limits, parsed_lim->name, (int)lim_values);
-			} else if (stable_look_up (&cfg->unit_limit_groups, parsed_lim->name, (int *)&grp)) {
-				// Group label: store limit inside the group struct for runtime use
-				grp->limit     = parsed_lim->limit;
-				grp->has_limit = true;
-			} else {
-				// Unrecognized: neither a unit type nor a defined group
-				add_unrecognized_line (&unrecognized_lines, &name_slice);
-			}
-		}
-		free (parsed_unit_type_limits);
-	}
-
-	// Unrecognized names popup shown here (moved below unit limit copy so deferred
-	// validation errors from unit_limits are included in the report)
-	if (cfg->warn_about_unrecognized_names && (unrecognized_lines != NULL)) {
-		PopupForm * popup = get_popup_form ();
-		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
-		char s[200];
-		snprintf (s, sizeof s, "Unrecognized names in %s:", full_path);
-		s[(sizeof s) - 1] = '\0';
-		PopupForm_add_text (popup, __, s, false);
-		for (struct error_line * line = unrecognized_lines; line != NULL; line = line->next)
-			PopupForm_add_text (popup, __, line->text, false);
-		patch_show_popup (popup, __, 0, 0);
-	}
-
 	free (text);
 	free_error_lines (unrecognized_lines);
+	free_error_lines (unit_type_tag_range_errors);
+	free_error_lines (unit_type_tag_warnings);
 
 	struct loaded_config_name * top_lcn = is->loaded_config_names;
 	while (top_lcn->next != NULL)
@@ -8379,38 +8615,25 @@ read_counter_rule_terrain_mask (struct string_slice const * terrain_name, unsign
 	return *out_mask != 0;
 }
 
-struct unit_counter_group *
-find_unit_counter_group_by_name (struct c3x_config * cfg, char const * name)
-{
-	for (int i = 0; i < cfg->count_unit_counter_groups; i++) {
-		struct unit_counter_group * g = &cfg->unit_counter_groups[i];
-		if (g->name && strcmp (g->name, name) == 0)
-			return g;
-	}
-	return NULL;
-}
-
 bool
-unit_type_in_group (struct unit_counter_group * g, int type_id)
+unit_type_has_tag (struct c3x_config * cfg, int type_id, int tag_id)
 {
-	char const * name = p_bic_data->UnitTypes[type_id].Name;
-	for (int i = 0; i < g->count_type_ids; i++)
-		if (strcmp (p_bic_data->UnitTypes[g->type_ids[i]].Name, name) == 0)
-			return true;
+	struct unit_type_tag_id_list * list;
+	if (itable_look_up (&cfg->unit_type_id_to_tag_ids, type_id, (int *)&list))
+		for (int i = 0; i < list->count; i++)
+			if (list->tag_ids[i] == tag_id)
+				return true;
 	return false;
 }
 
 bool
 unit_matches_counter_side (struct c3x_config * cfg, int type_id,
-                           int match, char * group_name)
+						   int match, int tag_id)
 {
 	if (match == UCM_ANY)
 		return true;
-	if (match == UCM_GROUP) {
-		struct unit_counter_group * g =
-		    find_unit_counter_group_by_name (cfg, group_name);
-		return g && unit_type_in_group (g, type_id);
-	}
+	if (match == UCM_TAG)
+		return (tag_id >= 0) && unit_type_has_tag (cfg, type_id, tag_id);
 	// Direct unit type match: compare by name rather than exact ID so that
 	// AI strategy duplicates (same name, different ID) are also matched.
 	return strcmp (p_bic_data->UnitTypes[match].Name,
@@ -8624,44 +8847,6 @@ counter_rule_experience_conditions_match (struct counter_rule * r,
 }
 
 enum recognizable_parse_result
-parse_unit_counter_group (char ** p_cursor,
-                          struct error_line ** p_unrecognized_lines,
-                          void * out_group)
-{
-	char * cur = *p_cursor;
-	struct string_slice group_name;
-	if (! (parse_string (&cur, &group_name) && skip_punctuation (&cur, ':')))
-		return RPR_PARSE_ERROR;
-
-	struct unit_counter_group * g = out_group;
-	g->name           = extract_slice (&group_name);
-	g->type_ids       = NULL;
-	g->count_type_ids = 0;
-
-	int any_unrecognized = 0;
-	struct string_slice type_name;
-	while (parse_string (&cur, &type_name)) {
-		// Loop through all unit types with this name, including AI strategy
-		// duplicates (same name, different ID), which the game creates internally.
-		int type_id = 0;
-		bool found_any = false;
-		while (find_unit_type_id_by_name (&type_name, type_id, &type_id)) {
-			g->type_ids = realloc (g->type_ids,
-			    (g->count_type_ids + 1) * sizeof (int));
-			g->type_ids[g->count_type_ids++] = type_id;
-			found_any = true;
-			type_id++;  // continue search from next index
-		}
-		if (! found_any) {
-			add_unrecognized_line (p_unrecognized_lines, &type_name);
-			any_unrecognized = 1;
-		}
-	}
-	*p_cursor = cur;
-	return any_unrecognized ? RPR_UNRECOGNIZED : RPR_OK;
-}
-
-enum recognizable_parse_result
 parse_counter_rule (char ** p_cursor,
                     struct error_line ** p_unrecognized_lines,
                     void * out_rule)
@@ -8681,6 +8866,8 @@ parse_counter_rule (char ** p_cursor,
 	*r = (struct counter_rule) {
 		.attacker_match = UCM_ANY,
 		.defender_match = UCM_ANY,
+		.attacker_tag_id = -1,
+		.defender_tag_id = -1,
 		.terrain_mask   = 0,
 		.district_id    = -1,
 		.district_name  = NULL,
@@ -8693,14 +8880,22 @@ parse_counter_rule (char ** p_cursor,
 		.self_bombard_pct  = 100,
 		.enemy_bombard_pct = 100,
 	};
+	bool unrecognized_match = false;
 
 	if (! slice_matches_str (&attacker_name, "*")) {
 		int type_id;
 		if (find_unit_type_id_by_name (&attacker_name, 0, &type_id))
 			r->attacker_match = type_id;
 		else {
-			r->attacker_match = UCM_GROUP;
-			r->attacker_group = extract_slice (&attacker_name);
+			struct unit_type_tag * tag;
+			r->attacker_match = UCM_TAG;
+			if (stable_look_up_slice (&is->current_config.unit_type_tags,
+			                          &attacker_name, (int *)&tag))
+				r->attacker_tag_id = tag->id;
+			else {
+				add_unrecognized_line (p_unrecognized_lines, &attacker_name);
+				unrecognized_match = true;
+			}
 		}
 	}
 
@@ -8709,8 +8904,15 @@ parse_counter_rule (char ** p_cursor,
 		if (find_unit_type_id_by_name (&defender_name, 0, &type_id))
 			r->defender_match = type_id;
 		else {
-			r->defender_match = UCM_GROUP;
-			r->defender_group = extract_slice (&defender_name);
+			struct unit_type_tag * tag;
+			r->defender_match = UCM_TAG;
+			if (stable_look_up_slice (&is->current_config.unit_type_tags,
+			                          &defender_name, (int *)&tag))
+				r->defender_tag_id = tag->id;
+			else {
+				add_unrecognized_line (p_unrecognized_lines, &defender_name);
+				unrecognized_match = true;
+			}
 		}
 	}
 
@@ -8773,6 +8975,11 @@ parse_counter_rule (char ** p_cursor,
 	}
 
 	*p_cursor = cur;
+	if (unrecognized_match) {
+		free (r->district_name);
+		r->district_name = NULL;
+		return RPR_UNRECOGNIZED;
+	}
 	return RPR_OK;
 }
 
@@ -8816,16 +9023,16 @@ apply_counter_rules (struct c3x_config * cfg,
 		// Check forward match (attacker=rule attacker side, defender=rule defender side)
 		// Applied fields: self-atk (attacker attack), enemy-def (defender defense)
 		bool forward = unit_matches_counter_side (cfg, a_type,
-		                   r->attacker_match, r->attacker_group) &&
+		                   r->attacker_match, r->attacker_tag_id) &&
 		               unit_matches_counter_side (cfg, d_type,
-		                   r->defender_match, r->defender_group);
+		                   r->defender_match, r->defender_tag_id);
 
 		// Check reverse match (attacker=rule defender side, defender=rule attacker side)
 		// Applied fields: self-def (rule attacker side is now defending), enemy-atk (rule defender side is now attacking)
 		bool reverse = unit_matches_counter_side (cfg, a_type,
-		                   r->defender_match, r->defender_group) &&
+		                   r->defender_match, r->defender_tag_id) &&
 		               unit_matches_counter_side (cfg, d_type,
-		                   r->attacker_match, r->attacker_group);
+		                   r->attacker_match, r->attacker_tag_id);
 
 		if (forward &&
 		    ! counter_rule_experience_conditions_match (
@@ -8889,14 +9096,14 @@ get_counter_rule_bombard_modifier (struct c3x_config * cfg,
 		struct counter_rule * r = &cfg->counter_rules[i];
 
 		bool forward = unit_matches_counter_side (cfg, b_type,
-		                   r->attacker_match, r->attacker_group) &&
+		                   r->attacker_match, r->attacker_tag_id) &&
 		               unit_matches_counter_side (cfg, t_type,
-		                   r->defender_match, r->defender_group);
+		                   r->defender_match, r->defender_tag_id);
 
 		bool reverse = unit_matches_counter_side (cfg, b_type,
-		                   r->defender_match, r->defender_group) &&
+		                   r->defender_match, r->defender_tag_id) &&
 		               unit_matches_counter_side (cfg, t_type,
-		                   r->attacker_match, r->attacker_group);
+		                   r->attacker_match, r->attacker_tag_id);
 
 		if (forward &&
 		    ! counter_rule_experience_conditions_match (
@@ -12630,9 +12837,9 @@ void
 resolve_counter_rule_districts (struct error_line ** parse_errors)
 {
 	struct c3x_config * cfg = &is->current_config;
-
 	for (int i = 0; i < cfg->count_counter_rules; i++) {
 		struct counter_rule * rule = &cfg->counter_rules[i];
+
 		rule->district_id = -1;
 
 		if ((rule->district_name == NULL) || (rule->district_name[0] == '\0'))
@@ -16912,90 +17119,152 @@ change_unit_type_count (Leader * leader, int unit_type_id, int amount)
 	itable_insert (counts, unit_type_id, prev_amount + amount);
 }
 
-// If this unit type is limited, returns true and writes how many units of the type the given
-// player is allowed to *out_limit. Returns false if the type is not limited.
-// ToC-26: Checks individual unit_limits first; falls back to a unit_limit_groups entry if the
-// type belongs to a group with an assigned limit. Individual limits always take priority.
+int
+compute_unit_limit (Leader * leader, struct unit_type_limit * limit)
+{
+	int city_count = leader->Cities_Count;
+	int tr = limit->per_civ + limit->per_city * city_count;
+	if (limit->cities_per != 0)
+		tr += city_count / limit->cities_per;
+	return tr;
+}
+
+// If this unit type is limited, returns true and writes the smallest applicable absolute limit to *out_limit.
 bool
 get_unit_limit (Leader * leader, int unit_type_id, int * out_limit)
 {
 	if ((unit_type_id < 0) || (unit_type_id >= p_bic_data->UnitTypeCount))
 		return false;
 
-	UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
-	struct unit_type_limit * lim;
-
-	// (1) Individual unit type limit
-	if (stable_look_up (&is->current_config.unit_limits, type->Name, (int *)&lim)) {
-		int city_count = leader->Cities_Count;
-		int tr = lim->per_civ + lim->per_city * city_count;
-		if (lim->cities_per != 0)
-			tr += city_count / lim->cities_per;
-		*out_limit = tr;
-		return true;
+	struct unit_type_limit * individual_limit;
+	bool found = false;
+	if (stable_look_up (&is->current_config.unit_limits,
+	                    p_bic_data->UnitTypes[unit_type_id].Name,
+	                    (int *)&individual_limit)) {
+		*out_limit = compute_unit_limit (leader, individual_limit);
+		found = true;
 	}
 
-	// ToC-26: (2) Group limit — only when groups are configured and this type is a member
-	struct unit_limit_group * grp;
-	if (itable_look_up (&is->current_config.unit_type_to_group, unit_type_id, (int *)&grp) &&
-	    grp->has_limit) {
-		struct unit_type_limit * glim = &grp->limit;
-		int city_count = leader->Cities_Count;
-		int tr = glim->per_civ + glim->per_city * city_count;
-		if (glim->cities_per != 0)
-			tr += city_count / glim->cities_per;
-		*out_limit = tr;
-		return true;
-	}
-
-	return false;
-}
-
-// If this unit type is limited, returns true and writes to *out_available how many units the
-// given player can still add before reaching the limit. Returns false if the type is not limited.
-// ToC-26: When the type belongs to a group with a limit (and no individual limit overrides it),
-// the count is the combined total of all unit types in that group rather than just this one type.
-// Individual limits always take priority over group limits for both the limit value and the count.
-bool
-get_available_unit_count (Leader * leader, int unit_type_id, int * out_available)
-{
-	int limit;
-	if (! get_unit_limit (leader, unit_type_id, &limit))
-		return false;
-
-	int count;
-
-	// ToC-26: Check for group-based counting. Skip this branch entirely when no groups are
-	// configured (unit_type_to_group.len == 0) to keep the hot path cost-free for non-group games.
-	if (is->current_config.unit_type_to_group.len > 0) {
-		struct unit_limit_group * grp;
-		if (itable_look_up (&is->current_config.unit_type_to_group, unit_type_id, (int *)&grp) &&
-		    grp->has_limit) {
-			// Verify no individual limit overrides the group for this specific type
-			int unused;
-			if (! stable_look_up (&is->current_config.unit_limits,
-			                      p_bic_data->UnitTypes[unit_type_id].Name, &unused)) {
-				// Group count: sum all member IDs (AI strat dups already included in the array)
-				count = 0;
-				for (int n = 0; n < grp->count; n++)
-					count += get_unit_type_count (leader, grp->unit_type_ids[n]);
-				*out_available = limit - count;
-				return true;
+	struct unit_type_tag_id_list * list;
+	if (itable_look_up (&is->current_config.unit_type_id_to_tag_ids, unit_type_id, (int *)&list)) {
+		for (int n = 0; n < list->count; n++) {
+			struct unit_type_tag * tag = is->current_config.unit_type_tags_by_id[list->tag_ids[n]];
+			if (tag->has_limit) {
+				int tag_limit = compute_unit_limit (leader, &tag->limit);
+				if (! found || (tag_limit < *out_limit))
+					*out_limit = tag_limit;
+				found = true;
 			}
 		}
 	}
+	return found;
+}
 
-	// Standard individual count: this type plus any AI strategy duplicates
-	count = get_unit_type_count (leader, unit_type_id);
+bool
+get_individual_unit_available_count (Leader * leader, int unit_type_id, int * out_available)
+{
+	struct unit_type_limit * limit;
+	if (! stable_look_up (&is->current_config.unit_limits, p_bic_data->UnitTypes[unit_type_id].Name, (int *)&limit))
+		return false;
+
+	int count = get_unit_type_count (leader, unit_type_id);
 	int dups[30];
 	int dups_count = list_unit_type_duplicates (unit_type_id, dups, ARRAY_LEN (dups));
 	for (int n = 0; n < dups_count; n++)
 		count += get_unit_type_count (leader, dups[n]);
-
-	*out_available = limit - count;
+	*out_available = compute_unit_limit (leader, limit) - count;
 	return true;
 }
-// END ToC-26
+
+// If this unit type is limited, returns true and writes to *out_available how many units the
+// given player can still add before reaching the limit. Returns false if the type is not limited.
+// For tags, the count is the combined total of all tagged types. The smallest availability across
+// the individual limit and all limited tags is returned.
+bool
+get_available_unit_count (Leader * leader, int unit_type_id, int * out_available)
+{
+	bool found = get_individual_unit_available_count (leader, unit_type_id, out_available);
+	struct unit_type_tag_id_list * list;
+	if (itable_look_up (&is->current_config.unit_type_id_to_tag_ids, unit_type_id, (int *)&list)) {
+		for (int n = 0; n < list->count; n++) {
+			struct unit_type_tag * tag = is->current_config.unit_type_tags_by_id[list->tag_ids[n]];
+			if (! tag->has_limit)
+				continue;
+			int count = 0;
+			for (int k = 0; k < tag->count_unit_type_ids; k++)
+				count += get_unit_type_count (leader, tag->unit_type_ids[k]);
+			int available = compute_unit_limit (leader, &tag->limit) - count;
+			if (! found || (available < *out_available))
+				*out_available = available;
+			found = true;
+		}
+	}
+	return found;
+}
+
+// Ignore limits on tags shared by source and target: an upgrade changes their counts by zero.
+bool
+get_available_unit_count_for_upgrade (Leader * leader, int source_type_id, int target_type_id, int * out_available)
+{
+	bool found = get_individual_unit_available_count (leader, target_type_id, out_available);
+	struct unit_type_tag_id_list * list;
+	if (itable_look_up (&is->current_config.unit_type_id_to_tag_ids, target_type_id, (int *)&list)) {
+		for (int n = 0; n < list->count; n++) {
+			struct unit_type_tag * tag = is->current_config.unit_type_tags_by_id[list->tag_ids[n]];
+			if (! tag->has_limit || unit_type_has_tag (&is->current_config, source_type_id, tag->id))
+				continue;
+			int count = 0;
+			for (int k = 0; k < tag->count_unit_type_ids; k++)
+				count += get_unit_type_count (leader, tag->unit_type_ids[k]);
+			int available = compute_unit_limit (leader, &tag->limit) - count;
+			if (! found || (available < *out_available))
+				*out_available = available;
+			found = true;
+		}
+	}
+	return found;
+}
+
+// Checks all limits affected by an upgrade against upgrades already queued by upgrade-all.
+bool
+can_pencil_in_upgrade (Leader * leader, int source_type_id, int target_type_id)
+{
+	int available;
+	if (get_individual_unit_available_count (leader, target_type_id, &available)) {
+		int penciled = 0;
+		for (int n = 0; n < is->penciled_in_upgrade_count; n++)
+			if (strcmp (p_bic_data->UnitTypes[is->penciled_in_upgrades[n].unit_type_id].Name,
+			            p_bic_data->UnitTypes[target_type_id].Name) == 0)
+				penciled += is->penciled_in_upgrades[n].count;
+		if (penciled >= available)
+			return false;
+	}
+
+	struct unit_type_tag_id_list * list;
+	if (! itable_look_up (&is->current_config.unit_type_id_to_tag_ids, target_type_id, (int *)&list))
+		return true;
+	for (int n = 0; n < list->count; n++) {
+		struct unit_type_tag * tag = is->current_config.unit_type_tags_by_id[list->tag_ids[n]];
+		if (! tag->has_limit || unit_type_has_tag (&is->current_config, source_type_id, tag->id))
+			continue;
+
+		int current_count = 0;
+		for (int k = 0; k < tag->count_unit_type_ids; k++)
+			current_count += get_unit_type_count (leader, tag->unit_type_ids[k]);
+		available = compute_unit_limit (leader, &tag->limit) - current_count;
+
+		int penciled = 0;
+		for (int k = 0; k < is->penciled_in_upgrade_count; k++) {
+			struct penciled_in_upgrade * piu = &is->penciled_in_upgrades[k];
+			if (unit_type_has_tag (&is->current_config, piu->unit_type_id, tag->id) &&
+			    ! unit_type_has_tag (&is->current_config, piu->source_unit_type_id, tag->id))
+				penciled += piu->count;
+		}
+		if (penciled >= available)
+			return false;
+	}
+	return true;
+}
 
 int
 add_i31b_to_int (int base, i31b addition)
@@ -17014,11 +17283,14 @@ add_i31b_to_int (int base, i31b addition)
 int
 apply_perfume (enum perfume_kind kind, char const * name, int base_amount)
 {
-	i31b perfume_value;
-	if (stable_look_up (&is->current_config.perfume_specs[kind], name, &perfume_value))
-		return add_i31b_to_int (base_amount, perfume_value);
-	else
+	struct perfume_amounts * amounts;
+	if (! stable_look_up (&is->current_config.perfume_specs[kind], name, (int *)&amounts))
 		return base_amount;
+
+	int percent_amount = (base_amount * int_abs (amounts->percent) + 50) / 100;
+	if (amounts->percent < 0)
+		percent_amount = -percent_amount;
+	return base_amount + amounts->flat + percent_amount;
 }
 
 int __stdcall
@@ -21849,29 +22121,14 @@ patch_Unit_can_upgrade (Unit * this)
 	bool base = Unit_can_upgrade (this);
 	int available;
 	City * city = city_at (this->Body.X, this->Body.Y);
-	// ToC-27: Store upgrade_id so we can check for same-group upgrades below.
 	int upgrade_id;
 	if (base &&
 	    (city != NULL) &&
 	    (0 <= (upgrade_id = City_get_upgraded_type_id (city, __, this->Body.UnitTypeID))) &&
-	    get_available_unit_count (&leaders[this->Body.CivID], upgrade_id, &available) &&
-	    (available <= 0)) {
-		// ToC-27: Allow same-group upgrades even at the group limit. An upgrade removes the
-		// source unit and adds the target unit — the group count is net zero. We only bypass
-		// the block when the target has no individual limit (i.e., the restriction came from
-		// the group limit, not a per-type override on the target type).
-		if (is->current_config.unit_type_to_group.len > 0) {
-			struct unit_limit_group * from_grp, * to_grp;
-			int unused;
-			if (itable_look_up (&is->current_config.unit_type_to_group, this->Body.UnitTypeID, (int *)&from_grp) &&
-			    itable_look_up (&is->current_config.unit_type_to_group, upgrade_id, (int *)&to_grp) &&
-			    (from_grp == to_grp) &&
-			    from_grp->has_limit &&
-			    ! stable_look_up (&is->current_config.unit_limits, p_bic_data->UnitTypes[upgrade_id].Name, &unused))
-				return base; // same-group upgrade: net-zero group count change — permit it
-		}
+	    get_available_unit_count_for_upgrade (&leaders[this->Body.CivID], this->Body.UnitTypeID, upgrade_id, &available) &&
+	    (available <= 0))
 		return false;
-	} else
+	else
 		return base;
 }
 // END ToC-27
@@ -22325,28 +22582,12 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 		{
 			City * city;
 			int upgrade_id;
-			// ToC-26: also check unit_type_to_group so group-limited upgrade types are caught
 			if ((is->current_config.unit_limits.len > 0 ||
-			     is->current_config.unit_type_to_group.len > 0) &&
+			     is->current_config.unit_type_id_to_tag_ids.len > 0) &&
 			    patch_Unit_can_perform_command (unit, __, UCV_Upgrade_Unit) &&
 			    (NULL != (city = city_at (unit->Body.X, unit->Body.Y))) &&
 			    (0 <= (upgrade_id = City_get_upgraded_type_id (city, __, unit_type_id)))) {
-				get_available_unit_count (&leaders[unit->Body.CivID], upgrade_id, &available);
-				// ToC-27: If source and target are in the same unit_limit_group with no individual
-				// limit on the target, upgrading is net-zero on the group count (source removed,
-				// target added). Reset available to INT_MAX so the loop below allows all units to
-				// queue for upgrade regardless of current group occupancy.
-				if ((available != INT_MAX) && (is->current_config.unit_type_to_group.len > 0)) {
-					struct unit_limit_group * from_grp, * to_grp;
-					int unused;
-					if (itable_look_up (&is->current_config.unit_type_to_group, unit_type_id, (int *)&from_grp) &&
-					    itable_look_up (&is->current_config.unit_type_to_group, upgrade_id, (int *)&to_grp) &&
-					    (from_grp == to_grp) &&
-					    from_grp->has_limit &&
-					    ! stable_look_up (&is->current_config.unit_limits,
-					                      p_bic_data->UnitTypes[upgrade_id].Name, &unused))
-						available = INT_MAX; // same-group upgrade: net-zero group count change
-				}
+				get_available_unit_count_for_upgrade (&leaders[unit->Body.CivID], unit_type_id, upgrade_id, &available);
 			}
 		}
 		// END ToC-26 and ToC-27
@@ -24863,7 +25104,7 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 		// Apply unit type limit.
 		// ToC-27: Skip this check when called from patch_City_can_build_upgrade_type (flag is set).
 		// The limit is re-applied with source-type context in patch_Unit_can_upgrade so that
-		// same-group upgrades (net-zero group count change) are correctly allowed.
+		// same-tag upgrades (net-zero tag count change) are correctly allowed.
 		int available;
 		if (! is->checking_upgrade_type_eligibility &&
 		    get_available_unit_count (&leaders[this->Body.CivID], unit_type_id, &available) &&
@@ -33049,36 +33290,18 @@ patch_Unit_can_perform_upgrade_all (Unit * this, int edx, int unit_command_value
 	// so many upgrades that we exceed the limit.
 	City * city;
 	int upgrade_id, available;
-	// ToC-26: also check unit_type_to_group so group-limited upgrade types are caught
 	if (base &&
 	    (is->current_config.unit_limits.len > 0 ||
-	     is->current_config.unit_type_to_group.len > 0) &&
+	     is->current_config.unit_type_id_to_tag_ids.len > 0) &&
 	    (NULL != (city = city_at (this->Body.X, this->Body.Y))) &&
 	    (0 <= (upgrade_id = City_get_upgraded_type_id (city, __, this->Body.UnitTypeID))) &&
-	    get_available_unit_count (&leaders[this->Body.CivID], upgrade_id, &available)) {
-
-		// ToC-27: If source and target are in the same unit_limit_group (and the target has no
-		// individual limit), the upgrade is net-zero on the group count — the source unit is
-		// consumed and the target unit is produced. There is no risk of exceeding the group limit
-		// regardless of how many such upgrades are queued, so skip the penciled-in accounting
-		// entirely and allow every qualifying unit to upgrade freely.
-		if (is->current_config.unit_type_to_group.len > 0) {
-			struct unit_limit_group * from_grp, * to_grp;
-			int unused;
-			if (itable_look_up (&is->current_config.unit_type_to_group, this->Body.UnitTypeID, (int *)&from_grp) &&
-			    itable_look_up (&is->current_config.unit_type_to_group, upgrade_id, (int *)&to_grp) &&
-			    (from_grp == to_grp) &&
-			    from_grp->has_limit &&
-			    ! stable_look_up (&is->current_config.unit_limits,
-			                      p_bic_data->UnitTypes[upgrade_id].Name, &unused))
-				return true; // same-group upgrade: net-zero group count change — always permit
-		}
-
+	    get_available_unit_count_for_upgrade (&leaders[this->Body.CivID], this->Body.UnitTypeID, upgrade_id, &available)) {
 
 		// Find penciled in upgrade. Add a new one if we don't already have one.
 		struct penciled_in_upgrade * piu = NULL; {
 			for (int n = 0; n < is->penciled_in_upgrade_count; n++)
-				if (is->penciled_in_upgrades[n].unit_type_id == upgrade_id) {
+				if ((is->penciled_in_upgrades[n].source_unit_type_id == this->Body.UnitTypeID) &&
+				    (is->penciled_in_upgrades[n].unit_type_id == upgrade_id)) {
 					piu = &is->penciled_in_upgrades[n];
 					break;
 				}
@@ -33086,6 +33309,7 @@ patch_Unit_can_perform_upgrade_all (Unit * this, int edx, int unit_command_value
 				reserve (sizeof is->penciled_in_upgrades[0], (void **)&is->penciled_in_upgrades, &is->penciled_in_upgrade_capacity, is->penciled_in_upgrade_count);
 				piu = &is->penciled_in_upgrades[is->penciled_in_upgrade_count];
 				is->penciled_in_upgrade_count += 1;
+				piu->source_unit_type_id = this->Body.UnitTypeID;
 				piu->unit_type_id = upgrade_id;
 				piu->count = 0;
 			}
@@ -33093,7 +33317,7 @@ patch_Unit_can_perform_upgrade_all (Unit * this, int edx, int unit_command_value
 
 		// If we can have more units of the type we're upgrading to, pencil in another upgrade and return true. Otherwise return false so this
 		// unit isn't considered one of the upgradable ones.
-		if (piu->count < available) {
+		if (can_pencil_in_upgrade (&leaders[this->Body.CivID], this->Body.UnitTypeID, upgrade_id)) {
 			piu->count += 1;
 			return true;
 		} else
@@ -33102,8 +33326,6 @@ patch_Unit_can_perform_upgrade_all (Unit * this, int edx, int unit_command_value
 	} else
 		return base;
 }
-
-		// END ToC-26 and ToC-27
 
 void __fastcall
 patch_Fighter_animate_start_of_combat (Fighter * this, int edx, Unit * attacker, Unit * defender)
@@ -36756,10 +36978,10 @@ patch_City_can_build_upgrade_type (City * this, int edx, int unit_type_id, bool 
 		exclude_upgradable = false;
 
 	// ToC-27: Set the upgrade-eligibility flag so patch_City_can_build_unit skips its unit-type
-	// limit check. Without this, group-limited types at their limit would cause Unit_can_upgrade
-	// to return false (base = false in patch_Unit_can_upgrade), making the ToC-27 same-group
+	// limit check. Without this, tag-limited types at their limit would cause Unit_can_upgrade
+	// to return false (base = false in patch_Unit_can_upgrade), making the same-tag
 	// bypass unreachable. With the flag, the limit is deferred to patch_Unit_can_upgrade, which
-	// has the source unit's type and can correctly allow same-group upgrades.
+	// has the source unit's type and can correctly allow same-tag upgrades.
 	is->checking_upgrade_type_eligibility = true;
 	bool result = patch_City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
 	is->checking_upgrade_type_eligibility = false;
