@@ -42,6 +42,7 @@ LINE_ENDING_POLICY = {
     "default.districts_config.txt": LF,
     "default.districts_natural_wonders_config.txt": LF,
     "default.districts_wonders_config.txt": LF,
+    "default.tile_animations.txt": LF,
     "ep.c": CRLF,
     "fix_line_endings.py": CRLF,
     "forgdb.py": CRLF,
