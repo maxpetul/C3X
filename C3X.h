@@ -506,6 +506,15 @@ struct c3x_config {
 	bool patch_failure_to_find_new_city_build;
 	bool patch_passengers_out_of_order_on_menu;
 
+	// ToC-418: mobile-friendly big buttons for touchscreen play. Adds large (40-50px) companion
+	// buttons: a confirm/cancel pair on vanilla popups (GUI_Form_1 family) and up/down scroll
+	// arrows on the city screen's build-picker window. The big buttons are pure CLICK
+	// TRANSLATORS — pressing one redirects the mouse message to the tiny vanilla control's own
+	// coordinates and vanilla does everything else. Config key: Mobile_Friendly_Icons
+	// (deliberately no ToC_ prefix, intended for upstreaming to mainline C3X; default false).
+	bool mobile_friendly_icons;
+	// End ToC-418
+
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
 
@@ -2614,6 +2623,53 @@ struct district_button_image_set {
 
 	// While Civilopedia_Article::m01_Draw_UNIT is running, this variable is set to the relevant unit type. Otherwise it's NULL.
 	UnitType * drawing_pedia_for_unit_type;
+
+	// ToC-418: mobile-friendly big-button sprites, sliced lazily from
+	// ToC_Mobile_Buttons_City_Screen.pcx (2 x 40x40: up/down queue-scroll arrows) and
+	// ToC_Mobile_Buttons_Popup_Screen.pcx (2 x 50x50: confirm/cancel).  IS_INIT_FAILED =
+	// sheet missing -> the feature silently stands down (mainline-C3X-safe).
+	enum init_state toc418_city_btns_state;
+	Sprite toc418_city_btns[2];
+	enum init_state toc418_popup_btns_state;
+	Sprite toc418_popup_btns[2];
+	// Live POPUP registry — parent GUI_Form_1-derived forms whose embedded
+	// OK_Btn/Cancel_Btn were seen drawing (filled by patch_Button_m22_Draw, read by the click
+	// remap; entries validated at click time against the self-calibrated Button-class vtable
+	// and cleared when stale, so a destroyed stack popup can never redirect a click).
+	// Per-popup data: the popup's live screen origin, calibrated by the
+	// GUI_Form_1_process_mouse_hover inlead (client mouse minus popup-local hover coords —
+	// no form field or canvas rect stores this: control canvases are DETACHED buffers whose
+	// abs rect is (0,0,W,H)), plus which twins have actually been DRAWN (a button's Status2
+	// is only 5 while it is itself drawing, so shown-ness cannot be read from outside — the
+	// remap must only accept twins whose sprites really exist).
+	void * toc418_live_par[4];
+	int    toc418_par_ox[4];
+	int    toc418_par_oy[4];
+	bool   toc418_par_cal[4];
+	bool   toc418_par_drawn[4][2];
+	void * toc418_button_vtable; // self-calibrated Button-class vtable (set by patch_Button_m22_Draw)
+	// Runtime per-object vtable swap on the city build-order window
+	// (p_city_form->Order_Queue_Dialog) so the big queue arrows draw AFTER the window's own
+	// draw (the window composites over anything painted from patch_City_Form_draw).  The
+	// copy lives here (writable is-> memory); slot 22 points at toc418_dlg_draw and every
+	// other slot forwards to the original class vtable, which is remembered for re-install
+	// detection (a re-run constructor restores the class vtable; the next city draw re-swaps).
+	void * toc418_dlg_vtbl[128];
+	void * toc418_dlg_orig_vtbl;
+	void * toc418_dlg_orig_draw;
+	// ToC-418: minimal WndProc subclass host (mouse position store + click-remap host; this
+	// branch has no other WndProc subclass, so ToC-418 carries its own).  The subclass stays
+	// installed across exit-to-menu — proven safe.  Field names kept as toc109_* to match the
+	// originating ToC branch, where ToC-109 owns the shared subclass.
+	int             toc109_mouse_x;             // last client-frame mouse position
+	int             toc109_mouse_y;
+	bool            toc109_wndproc_installed;
+	void *          toc109_orig_wndproc;        // original game WndProc, chained via CallWindowProcA
+	LONG    (WINAPI * toc109_SetWindowLongA)  (HWND, int, LONG);
+	LRESULT (WINAPI * toc109_CallWindowProcA) (void *, HWND, UINT, WPARAM, LPARAM);
+	HWND    (WINAPI * toc109_GetActiveWindow) (void);
+	BOOL    (WINAPI * toc109_GetClientRect)   (HWND, RECT *);
+	// End ToC-418
 
 	// ==========
 	// }
