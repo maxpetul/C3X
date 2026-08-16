@@ -212,7 +212,6 @@ get_city_ptr (int id)
 }
 
 // Forward declarations for unit counter system (defined after their dependencies)
-enum recognizable_parse_result parse_unit_counter_group (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_group);
 enum recognizable_parse_result parse_counter_rule (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_rule);
 Unit * find_counter_best_defender_against (Unit * attacker, Tile * tile, int tile_x, int tile_y, Unit * excluded, bool require_visible, bool * out_any_counter_effect);
 Unit * find_counter_base_visible_defender_against (Main_Screen_Form * form, Unit * attacker, int tile_x, int tile_y, Unit * excluded);
@@ -263,6 +262,27 @@ int count_neighborhoods_in_city_radius (City * city);
 int count_utilized_neighborhoods_in_city_radius (City * city);
 char * copy_trimmed_string_or_null (struct string_slice const * slice, int remove_quotes);
 bool city_has_resource_r (City * city, int resource_id, int max_generated_resource_id);
+void load_tile_animation_configs ();
+bool tile_has_matching_custom_animation_for_draw (Tile * tile, int tile_x, int tile_y);
+bool tile_has_matching_resource_animation_for_draw (Tile * tile, int tile_x, int tile_y);
+bool tile_has_matching_resource_animation_for_draw_with_resource (Tile * tile, int tile_x, int tile_y, int resource_id, int * out_effect_id);
+void tile_animation_scheduler_tick ();
+void rebuild_tile_animation_rule_match_cache ();
+void __fastcall patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effect, int tile_x, int tile_y, bool randomize_start_frame, enum direction dummy_dir);
+void reset_tile_animation_runtime_state ();
+bool tile_animation_matches_time_filters (struct tile_animation_config const * cfg);
+bool tile_animation_cache_needs_rebuild ();
+bool is_custom_tile_animation_effect (int effect_id);
+void clear_active_custom_resource_animation (Tile * tile);
+void clear_active_custom_tile_animation_if_different (Tile * tile, int effect_id);
+void clear_tile_animation_pcx_matches_in_cache ();
+void register_tile_animation_pcx_draw_for_current_tile (Sprite * sprite);
+void rebuild_tile_animation_pcx_sprite_lookup ();
+void refresh_tile_animation_pcx_active_mask ();
+int pick_tile_animation_winner_for_tile (unsigned int * tile_mask);
+bool parse_tile_animation_hour_list (struct string_slice const * value, unsigned int * out_mask);
+bool parse_tile_animation_season_list (struct string_slice const * value, unsigned int * out_mask);
+struct tile_animation_config * get_tile_animation_for_effect (int effect_id);
 int calc_max_visibility_range ();
 bool read_unit_type_list (struct string_slice const * s, struct error_line ** p_unrecognized_lines, struct table * unit_types);
 
@@ -695,8 +715,11 @@ reset_to_base_config ()
 
 	table_deinit (&cc->exclude_types_from_units_per_tile_limit);
 
-	for (int n = 0; n < COUNT_PERFUME_KINDS; n++)
+	for (int n = 0; n < COUNT_PERFUME_KINDS; n++) {
+		FOR_TABLE_ENTRIES (tei, &cc->perfume_specs[n])
+			free ((void *)tei.value);
 		stable_deinit (&cc->perfume_specs[n]);
+	}
 
 	// Free building-unit prereqs table
 	FOR_TABLE_ENTRIES (tei, &cc->building_unit_prereqs) {
@@ -776,20 +799,8 @@ reset_to_base_config ()
 		cc->great_wall_auto_build_wonder_name = NULL;
 	}
 
-	if (cc->unit_counter_groups != NULL) {
-		for (int n = 0; n < cc->count_unit_counter_groups; n++) {
-			free (cc->unit_counter_groups[n].name);
-			free (cc->unit_counter_groups[n].type_ids);
-		}
-		free (cc->unit_counter_groups);
-		cc->unit_counter_groups = NULL;
-		cc->count_unit_counter_groups = 0;
-	}
-
 	if (cc->counter_rules != NULL) {
 		for (int n = 0; n < cc->count_counter_rules; n++) {
-			free (cc->counter_rules[n].attacker_group);
-			free (cc->counter_rules[n].defender_group);
 			free (cc->counter_rules[n].district_name);
 		}
 		free (cc->counter_rules);
@@ -802,17 +813,22 @@ reset_to_base_config ()
 		free ((void *)tei.value);
 	stable_deinit (&cc->unit_limits);
 
-	// ToC-26: (A way to group units for unit limits) - Free unit limit groups. Each group owns its unit_type_ids array.
-	// unit_type_to_group values are non-owning pointers into unit_limit_groups, so only
-	// the table structure itself needs to be freed (table_deinit does not free values).
-	FOR_TABLE_ENTRIES (tei_grp, &cc->unit_limit_groups) {
-		struct unit_limit_group * grp = (struct unit_limit_group *)tei_grp.value;
-		free (grp->unit_type_ids);
-		free (grp);
+	// Free unit type tags and the reverse index from unit type IDs to tag ID lists.
+	FOR_TABLE_ENTRIES (tei_tag, &cc->unit_type_tags) {
+		struct unit_type_tag * tag = (struct unit_type_tag *)tei_tag.value;
+		free (tag->unit_type_ids);
+		free (tag);
 	}
-	stable_deinit (&cc->unit_limit_groups);
-	table_deinit (&cc->unit_type_to_group);
-	// END ToC-26
+	stable_deinit (&cc->unit_type_tags);
+	free (cc->unit_type_tags_by_id);
+	cc->unit_type_tags_by_id = NULL;
+	cc->count_unit_type_tags = 0;
+	FOR_TABLE_ENTRIES (tei_tag_ids, &cc->unit_type_id_to_tag_ids) {
+		struct unit_type_tag_id_list * list = (struct unit_type_tag_id_list *)tei_tag_ids.value;
+		free (list->tag_ids);
+		free (list);
+	}
+	table_deinit (&cc->unit_type_id_to_tag_ids);
 
 	// Free the linked list of loaded config names and the string name contained in each one
 	if (is->loaded_config_names != NULL) {
@@ -840,8 +856,6 @@ reset_to_base_config ()
 
 	// These fields are heap-allocated and must not be inherited from base_config
 	// (base_config never owns valid pointers for them)
-	is->current_config.unit_counter_groups       = NULL;
-	is->current_config.count_unit_counter_groups = 0;
 	is->current_config.counter_rules             = NULL;
 	is->current_config.count_counter_rules       = 0;
 
@@ -1198,8 +1212,23 @@ enum recognizable_parse_result {
 
 struct perfume_spec {
 	char name[36]; // Must be large enough to fit the name of a unit type or improvement
-	i31b value; // Int component stores amount, bool stores whether it's a percentage or not
+	int flat_amount;
+	int percent_amount;
+	struct unit_type_tag * tag; // Non-NULL only for a unit type tag in a production perfume spec
 };
+
+// Adds a perfume spec to a table, accumulating it with any existing spec for the same name.
+void
+add_perfume_spec_to_table (struct table * table, char const * name, struct perfume_spec const * spec)
+{
+	struct perfume_amounts * amounts;
+	if (! stable_look_up (table, (char *)name, (int *)&amounts)) {
+		amounts = calloc (1, sizeof *amounts);
+		stable_insert (table, (char *)name, (int)amounts);
+	}
+	amounts->flat += spec->flat_amount;
+	amounts->percent += spec->percent_amount;
+}
 
 enum recognizable_parse_result
 parse_perfume_spec (char ** p_cursor, enum perfume_kind kind, struct error_line ** p_unrecognized_lines, void * out_perfume_spec)
@@ -1208,20 +1237,29 @@ parse_perfume_spec (char ** p_cursor, enum perfume_kind kind, struct error_line 
 	struct string_slice name;
 	City_Order unused_city_order;
 	int unused_id;
-	i31b value;
+	i31b packed_value;
 	if (parse_string (&cur, &name) &&
 	    skip_punctuation (&cur, ':') &&
-	    parse_i31b (&cur, &value)) {
+	    parse_i31b (&cur, &packed_value)) {
 		*p_cursor = cur;
 
-		if (((kind == PK_PRODUCTION) && find_city_order_by_name (&name, &unused_city_order)) ||
+		struct unit_type_tag * tag = NULL;
+		if (((kind == PK_PRODUCTION) && (find_city_order_by_name (&name, &unused_city_order) ||
+		                               stable_look_up_slice (&is->current_config.unit_type_tags, &name, (int *)&tag))) ||
 		    ((kind == PK_TECHNOLOGY) && find_game_object_id_by_name (GOK_TECHNOLOGY, &name, 0, &unused_id)) ||
 		    ((kind == PK_RESOURCE) && find_game_object_id_by_name (GOK_RESOURCE, &name, 0, &unused_id)) ||
 		    ((kind == PK_GOVERNMENT) && find_game_object_id_by_name (GOK_GOVERNMENT, &name, 0, &unused_id))) {
 			struct perfume_spec * out = out_perfume_spec;
-			snprintf (out->name, sizeof out->name, "%.*s", name.len, name.str);
-			out->name[(sizeof out->name) - 1] = '\0';
-			out->value = value;
+			if (tag == NULL) {
+				snprintf (out->name, sizeof out->name, "%.*s", name.len, name.str);
+				out->name[(sizeof out->name) - 1] = '\0';
+			}
+			int amount;
+			bool percent;
+			i31b_unpack (packed_value, &amount, &percent);
+			out->flat_amount = percent ? 0 : amount;
+			out->percent_amount = percent ? amount : 0;
+			out->tag = tag;
 			return RPR_OK;
 		} else {
 			add_unrecognized_line (p_unrecognized_lines, &name);
@@ -1416,14 +1454,12 @@ parse_leader_name_alias_list  (char ** p_cursor, struct error_line ** p_unrecogn
 }
 
 struct parsed_unit_type_limit {
-	char name[32]; // Same length as Name in Unit_Type
+	struct string_slice name;
 	struct unit_type_limit limit;
+	int unit_type_id;
+	struct unit_type_tag * tag;
 };
 
-// ToC-26: Code replace: Removed per-item unit-type validation from this parser. Validation is now deferred to
-// the post-parse copy phase (see "Copy and validate unit type limits" block in load_config) so
-// that unit_limit_groups is fully loaded regardless of key order in the config file. Group names
-// used as keys in unit_limits are therefore accepted here without triggering unrecognized warnings.
 enum recognizable_parse_result
 parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_unit_type_limit)
 {
@@ -1434,7 +1470,6 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 	struct unit_type_limit limit = {0};
 	if (skip_white_space (&cur) &&
 	    parse_string (&cur, &name) &&
-	    (name.len < (sizeof out->name)) &&
 	    skip_punctuation (&cur, ':')) {
 
 		do {
@@ -1455,34 +1490,128 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 
 		} while (skip_punctuation (&cur, '+'));
 
-		// Store name and limit unconditionally; validation against unit types and groups
-		// happens in the post-parse copy phase after all config keys have been processed.
-		memset (out->name, 0, sizeof out->name);
-		strncpy (out->name, name.str, name.len);
+		out->name = name;
 		out->limit = limit;
+		out->unit_type_id = -1;
+		out->tag = NULL;
 		*p_cursor = cur;
-		return RPR_OK;
+
+		if (find_unit_type_id_by_name (&name, 0, &out->unit_type_id))
+			return RPR_OK;
+		else if (stable_look_up_slice (&is->current_config.unit_type_tags,
+		                               &name, (int *)&out->tag))
+			return RPR_OK;
+		else {
+			add_unrecognized_line (p_unrecognized_lines, &name);
+			return RPR_UNRECOGNIZED;
+		}
 
 	} else
 		return RPR_PARSE_ERROR;
 }
 
-// ToC-26: Parses the unit_limit_groups config setting.
-// Format: ["Group Name": "UnitTypeA" "UnitTypeB" ..., "Group2": "UnitTypeC" ...]
-//
-// - Group names are arbitrary labels (not validated against game data).
-// - Unit type names within each group are looked up against the scenario's unit roster;
-//   unrecognized names are soft-reported via p_unrecognized_lines.
-// - All unit type IDs matching each member name are stored, including AI strategy duplicates.
-// - Populates unit_limit_groups (group_name -> struct unit_limit_group*) and
-//   unit_type_to_group (unit_type_id -> struct unit_limit_group*) for O(1) runtime lookup.
-// - If the same unit type appears in multiple groups, the first group definition wins.
+struct unit_type_tag_member {
+	struct string_slice name;
+	bool is_range_operator;
+};
+
+bool
+append_unit_type_ids_by_name (struct string_slice const * name, int ** p_ids, int * p_count, int * p_capacity)
+{
+	int search_start = 0, found_id;
+	bool any_found = false;
+	while (find_unit_type_id_by_name (name, search_start, &found_id)) {
+		reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
+		(*p_ids)[(*p_count)++] = found_id;
+		search_start = found_id + 1;
+		any_found = true;
+	}
+	return any_found;
+}
+
+void
+append_unit_type_tag_ids (struct unit_type_tag const * tag, int ** p_ids, int * p_count, int * p_capacity)
+{
+	for (int n = 0; n < tag->count_unit_type_ids; n++) {
+		reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
+		(*p_ids)[(*p_count)++] = tag->unit_type_ids[n];
+	}
+}
+
+// Appends the upgrade chain after start_name through end_name, plus every type duplicate of end_name. Returns false without appending
+// anything if end_name is not on the chain.
+bool
+append_unit_type_upgrade_range (struct string_slice const * start_name, struct string_slice const * end_name,
+                                int ** p_ids, int * p_count, int * p_capacity)
+{
+	int start_id;
+	if (! find_unit_type_id_by_name (start_name, 0, &start_id))
+		return false;
+
+	int end_id = start_id;
+	bool reached_end = slice_matches_str (end_name, p_bic_data->UnitTypes[end_id].Name);
+	for (int step = 0; ! reached_end && (step < p_bic_data->UnitTypeCount); step++) {
+		end_id = p_bic_data->UnitTypes[end_id].UpgradeToID;
+		if ((end_id < 0) || (end_id >= p_bic_data->UnitTypeCount))
+			break;
+		reached_end = slice_matches_str (end_name, p_bic_data->UnitTypes[end_id].Name);
+	}
+	if (! reached_end)
+		return false;
+
+	for (int current_id = start_id; current_id != end_id; ) {
+		current_id = p_bic_data->UnitTypes[current_id].UpgradeToID;
+		if (current_id != end_id) {
+			reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
+			(*p_ids)[(*p_count)++] = current_id;
+		}
+	}
+	append_unit_type_ids_by_name (end_name, p_ids, p_count, p_capacity);
+	return true;
+}
+
+void
+add_disconnected_unit_type_tag_range (struct error_line ** p_lines, struct string_slice const * start_name, struct string_slice const * end_name)
+{
+	struct error_line * line = add_error_line (p_lines);
+	snprintf (line->text, sizeof line->text, "^  No unit upgrade chain connects \"%.*s\" to \"%.*s\".",
+	          start_name->len, start_name->str, end_name->len, end_name->str);
+	line->text[(sizeof line->text) - 1] = '\0';
+}
+
+void
+add_malformed_unit_type_tag_range (struct error_line ** p_lines, struct string_slice const * tag_name)
+{
+	struct error_line * line = add_error_line (p_lines);
+	snprintf (line->text, sizeof line->text, "^  Misplaced range operator \"to\" in unit type tag \"%.*s\".", tag_name->len, tag_name->str);
+	line->text[(sizeof line->text) - 1] = '\0';
+}
+
+void
+add_tag_as_unit_type_range_endpoint (struct error_line ** p_lines, struct string_slice const * name)
+{
+	struct error_line * line = add_error_line (p_lines);
+	snprintf (line->text, sizeof line->text, "^  Unit type tag \"%.*s\" cannot be used as an endpoint of an upgrade range.", name->len, name->str);
+	line->text[(sizeof line->text) - 1] = '\0';
+}
+
+void
+add_unit_type_tag_name_conflict_warning (struct error_line ** p_lines, struct string_slice const * name)
+{
+	struct error_line * line = add_error_line (p_lines);
+	snprintf (line->text, sizeof line->text, "^  Unit type tag \"%.*s\" has the same name as a unit type. "
+	          "The unit type takes precedence when referenced.", name->len, name->str);
+	line->text[(sizeof line->text) - 1] = '\0';
+}
+
+// Parses unit_type_tags. Format:
+// ["Tag Name": "UnitTypeA" "UnitTypeB" ..., "Tag2": "UnitTypeC" ...]
+// Tag names map to tag objects with integer IDs. A reverse table maps every unit type ID to
+// all of its tag IDs, so a type may participate in multiple counter categories and limits.
 // Returns -1 on success, or the byte offset of the first parse error within s.
 int
-read_unit_limit_groups (struct string_slice const * s,
-                        struct error_line ** p_unrecognized_lines,
-                        struct table * unit_limit_groups,
-                        struct table * unit_type_to_group)
+read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrecognized_lines,
+                     struct error_line ** p_range_errors, struct error_line ** p_warnings, struct c3x_config * cfg)
 {
 	if (s->len <= 0)
 		return -1;
@@ -1495,53 +1624,123 @@ read_unit_limit_groups (struct string_slice const * s,
 		skip_white_space (&cursor);
 		if (*cursor == '\0') { success = true; break; }
 
-		// Parse the group label (arbitrary string, not a game object name)
-		struct string_slice group_name;
-		if (! parse_string (&cursor, &group_name))
+		struct string_slice tag_name;
+		if (! parse_string (&cursor, &tag_name))
 			break;
 		if (! skip_punctuation (&cursor, ':'))
 			break;
+		int unused_unit_type_id;
+		if (find_unit_type_id_by_name (&tag_name, 0, &unused_unit_type_id))
+			add_unit_type_tag_name_conflict_warning (p_warnings, &tag_name);
 
-		// Collect unit type IDs for every space-separated member name in this group.
-		// find_unit_type_id_by_name is called in a loop to collect all IDs sharing the same
-		// name (i.e. AI strategy duplicates), matching the behavior of list_unit_type_duplicates.
-		int * ids = NULL;
-		int ids_count = 0, ids_capacity = 0;
-		struct string_slice member_name;
-		while (parse_string (&cursor, &member_name)) {
-			int search_start = 0, found_id;
-			bool any_found = false;
-			while (find_unit_type_id_by_name (&member_name, search_start, &found_id)) {
-				reserve (sizeof ids[0], (void **)&ids, &ids_capacity, ids_count);
-				ids[ids_count++] = found_id;
-				search_start = found_id + 1;
-				any_found = true;
-			}
-			if (! any_found)
-				add_unrecognized_line (p_unrecognized_lines, &member_name);
+		struct unit_type_tag_member * members = NULL;
+		int member_count = 0, member_capacity = 0;
+		while (1) {
+			char * token_start = cursor;
+			skip_horiz_space (&token_start);
+			bool quoted = *token_start == '"';
+			struct string_slice member_name;
+			if (! parse_string (&cursor, &member_name))
+				break;
+			reserve (sizeof members[0], (void **)&members, &member_capacity, member_count);
+			members[member_count].name = member_name;
+			members[member_count].is_range_operator = ! quoted && slice_matches_str (&member_name, "to");
+			member_count++;
 		}
 
-		// Only register the group when at least one valid unit type was resolved
-		if (ids_count > 0) {
-			struct unit_limit_group * grp = malloc (sizeof *grp);
-			grp->unit_type_ids = ids;
-			grp->count         = ids_count;
-			memset (&grp->limit, 0, sizeof grp->limit);
-			grp->has_limit     = false; // limit is assigned in post-parse copy phase
-
-			// stable_insert strdup's the key; use extract_slice for a temp null-terminated copy
-			char * gname = extract_slice (&group_name);
-			stable_insert (unit_limit_groups, gname, (int)grp);
-			free (gname);
-
-			// Build reverse map: unit_type_id -> group (first group wins for any type in multiple groups)
-			for (int n = 0; n < ids_count; n++) {
-				int dummy;
-				if (! itable_look_up (unit_type_to_group, ids[n], &dummy))
-					itable_insert (unit_type_to_group, ids[n], (int)grp);
+		int * ids = NULL;
+		int ids_count = 0, ids_capacity = 0;
+		for (int n = 0; n < member_count; n++) {
+			struct unit_type_tag_member * member = &members[n];
+			if (member->is_range_operator) {
+				add_malformed_unit_type_tag_range (p_range_errors, &tag_name);
+				continue;
 			}
+
+			bool start_type_found = append_unit_type_ids_by_name (&member->name, &ids, &ids_count, &ids_capacity);
+			struct unit_type_tag * start_tag = NULL;
+			if (! start_type_found) {
+				if (stable_look_up_slice (&cfg->unit_type_tags, &member->name, (int *)&start_tag))
+					append_unit_type_tag_ids (start_tag, &ids, &ids_count, &ids_capacity);
+				else
+					add_unrecognized_line (p_unrecognized_lines, &member->name);
+			}
+
+			while ((n + 1 < member_count) && members[n + 1].is_range_operator) {
+				if ((n + 2 >= member_count) || members[n + 2].is_range_operator) {
+					add_malformed_unit_type_tag_range (p_range_errors, &tag_name);
+					n += 1;
+					continue;
+				}
+
+				struct unit_type_tag_member * end = &members[n + 2];
+				int unused;
+				bool end_type_found = find_unit_type_id_by_name (&end->name, 0, &unused);
+				struct unit_type_tag * end_tag = NULL;
+				if (! end_type_found && ! stable_look_up_slice (&cfg->unit_type_tags, &end->name, (int *)&end_tag))
+					add_unrecognized_line (p_unrecognized_lines, &end->name);
+				if (start_tag != NULL)
+					add_tag_as_unit_type_range_endpoint (p_range_errors, &member->name);
+				if (end_tag != NULL)
+					add_tag_as_unit_type_range_endpoint (p_range_errors, &end->name);
+				else if (start_type_found && end_type_found &&
+				         ! append_unit_type_upgrade_range (&member->name, &end->name, &ids, &ids_count, &ids_capacity))
+					add_disconnected_unit_type_tag_range (p_range_errors, &member->name, &end->name);
+
+				n += 2;
+				member = end;
+				start_type_found = end_type_found;
+				start_tag = end_tag;
+				if (start_type_found && (n + 1 < member_count) && members[n + 1].is_range_operator)
+					append_unit_type_ids_by_name (&member->name, &ids, &ids_count, &ids_capacity);
+			}
+		}
+		free (members);
+
+		// Only register a tag when at least one valid unit type was resolved.
+		if (ids_count > 0) {
+			struct unit_type_tag * tag;
+			if (! stable_look_up_slice (&cfg->unit_type_tags, &tag_name, (int *)&tag)) {
+				tag = calloc (1, sizeof *tag);
+				tag->id = cfg->count_unit_type_tags;
+				char * name = extract_slice (&tag_name);
+				stable_insert (&cfg->unit_type_tags, name, (int)tag);
+				free (name);
+
+				cfg->unit_type_tags_by_id = realloc (
+					cfg->unit_type_tags_by_id,
+					(cfg->count_unit_type_tags + 1) * sizeof cfg->unit_type_tags_by_id[0]);
+				cfg->unit_type_tags_by_id[cfg->count_unit_type_tags++] = tag;
+			}
+
+			int needed_capacity = tag->count_unit_type_ids + ids_count;
+			tag->unit_type_ids = realloc (
+				tag->unit_type_ids,
+				needed_capacity * sizeof tag->unit_type_ids[0]);
+
+			for (int n = 0; n < ids_count; n++) {
+				bool tag_already_has_type = false;
+				for (int k = 0; k < tag->count_unit_type_ids; k++)
+					if (tag->unit_type_ids[k] == ids[n]) {
+						tag_already_has_type = true;
+						break;
+					}
+				if (tag_already_has_type)
+					continue;
+
+				tag->unit_type_ids[tag->count_unit_type_ids++] = ids[n];
+
+				struct unit_type_tag_id_list * list;
+				if (! itable_look_up (&cfg->unit_type_id_to_tag_ids, ids[n], (int *)&list)) {
+					list = calloc (1, sizeof *list);
+					itable_insert (&cfg->unit_type_id_to_tag_ids, ids[n], (int)list);
+				}
+				list->tag_ids = realloc (list->tag_ids, (list->count + 1) * sizeof list->tag_ids[0]);
+				list->tag_ids[list->count++] = tag->id;
+			}
+			free (ids);
 		} else {
-			free (ids); // free(NULL) is safe; handles the zero-members case
+			free (ids);
 		}
 
 		// Advance past the comma between groups, or finish at end-of-string
@@ -1560,7 +1759,6 @@ read_unit_limit_groups (struct string_slice const * s,
 	free (extracted);
 	return result;
 }
-// END ToC-26
 
 enum recognizable_parse_result
 parse_unit_visibility_rule (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_unit_visibility_rule)
@@ -1820,6 +2018,38 @@ read_sidtable (struct string_slice const * s,
 	return success ? -1 : cursor - extracted_slice;
 }
 
+void
+add_building_prereq_for_unit (struct table * prereqs, int building_id, int unit_type_id)
+{
+	int prev_val;
+	if (! itable_look_up (prereqs, unit_type_id, &prev_val)) {
+		itable_insert (prereqs, unit_type_id, (building_id << 1) | 1);
+		return;
+	}
+
+	if (prev_val & 1) {
+		if ((prev_val >> 1) == building_id)
+			return;
+		int * list = malloc (MAX_BUILDING_PREREQS_FOR_UNIT * sizeof *list);
+		for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
+			list[n] = -1;
+		list[0] = prev_val >> 1;
+		list[1] = building_id;
+		itable_insert (prereqs, unit_type_id, (int)list);
+		return;
+	}
+
+	int * list = (int *)prev_val;
+	for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++) {
+		if (list[n] == building_id)
+			return;
+		if (list[n] < 0) {
+			list[n] = building_id;
+			return;
+		}
+	}
+}
+
 // Like read_recognizables, returns -1 for success or the location of an error if there is one
 int
 read_building_unit_prereqs (struct string_slice const * s,
@@ -1834,7 +2064,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 
 	struct prereq {
 		int building_id;
-		struct string_slice unit_type_name;
+		int unit_type_id;
 	} * new_prereqs = NULL;
 	int new_prereqs_capacity = 0;
 	int count_new_prereqs = 0;
@@ -1850,14 +2080,27 @@ read_building_unit_prereqs (struct string_slice const * s,
 				break;
 			struct string_slice unit_type_name;
 			while (skip_white_space (&cursor) && parse_string (&cursor, &unit_type_name)) {
-				int unused;
-				if (find_unit_type_id_by_name (&unit_type_name, 0, &unused)) { // if there is any by this name, later we'll deal with the possibility of multiple
+				int unit_type_id = -1;
+				bool matched_unit_type = false;
+				while (find_unit_type_id_by_name (&unit_type_name, unit_type_id + 1, &unit_type_id)) {
+					matched_unit_type = true;
 					if (have_building_id) {
 						reserve (sizeof new_prereqs[0], (void **)&new_prereqs, &new_prereqs_capacity, count_new_prereqs);
-						new_prereqs[count_new_prereqs++] = (struct prereq) { .building_id = building_id, .unit_type_name = unit_type_name };
+						new_prereqs[count_new_prereqs++] = (struct prereq) { .building_id = building_id, .unit_type_id = unit_type_id };
 					}
-				} else
-					add_unrecognized_line (p_unrecognized_lines, &unit_type_name);
+				}
+				if (! matched_unit_type) {
+					struct unit_type_tag * tag;
+					if (stable_look_up_slice (&is->current_config.unit_type_tags, &unit_type_name, (int *)&tag)) {
+						if (have_building_id)
+							for (int n = 0; n < tag->count_unit_type_ids; n++) {
+								reserve (sizeof new_prereqs[0], (void **)&new_prereqs, &new_prereqs_capacity, count_new_prereqs);
+								new_prereqs[count_new_prereqs++] = (struct prereq) {
+									.building_id = building_id, .unit_type_id = tag->unit_type_ids[n] };
+							}
+					} else
+						add_unrecognized_line (p_unrecognized_lines, &unit_type_name);
+				}
 			}
 			skip_punctuation (&cursor, ',');
 		} else {
@@ -1868,37 +2111,8 @@ read_building_unit_prereqs (struct string_slice const * s,
 
 	// If parsing succeeded, add the new prereq rules to the table
 	if (success)
-		for (int n = 0; n < count_new_prereqs; n++) {
-			struct prereq * prereq = &new_prereqs[n];
-
-			int unit_type_id = -1;
-			while (find_unit_type_id_by_name (&prereq->unit_type_name, unit_type_id + 1, &unit_type_id)) {
-
-				// If this unit type ID is not already in the table, insert it paired with the encoded building ID
-				int prev_val;
-				if (! itable_look_up (building_unit_prereqs, unit_type_id, &prev_val))
-					itable_insert (building_unit_prereqs, unit_type_id, (prereq->building_id << 1) | 1);
-
-				// If the unit type ID is already associated with a building ID, create a list for both the old and new building IDs
-				else if (prev_val & 1) {
-					int * list = malloc (MAX_BUILDING_PREREQS_FOR_UNIT * sizeof *list);
-					for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
-						list[n] = -1;
-					list[0] = prev_val >> 1; // Decode
-					list[1] = prereq->building_id;
-					itable_insert (building_unit_prereqs, unit_type_id, (int)list);
-
-				// Otherwise, it's already associated with a list. Search the list for a free spot and fill it with the new building ID
-				} else {
-					int * list = (int *)prev_val;
-					for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
-						if (list[n] < 0) {
-							list[n] = prereq->building_id;
-							break;
-						}
-				}
-			}
-		}
+		for (int n = 0; n < count_new_prereqs; n++)
+			add_building_prereq_for_unit (building_unit_prereqs, new_prereqs[n].building_id, new_prereqs[n].unit_type_id);
 
 
 	free (new_prereqs);
@@ -1906,9 +2120,9 @@ read_building_unit_prereqs (struct string_slice const * s,
 	return success ? -1 : cursor - extracted_slice;
 }
 
-// Reads a space-separated list of unit types like:
+// Reads a space-separated list of unit types or unit type tags like:
 //   Worker Galley "Gallic Swordsman"
-// Looks up the type ID(s) for each name and inserts them into the unit_types table associated with a value of 1.
+// Looks up the type ID(s) for each name or tag and inserts them into the unit_types table associated with a value of 1.
 bool
 read_unit_type_list (struct string_slice const * s, struct error_line ** p_unrecognized_lines, struct table * unit_types)
 {
@@ -1923,14 +2137,20 @@ read_unit_type_list (struct string_slice const * s, struct error_line ** p_unrec
 		if (parse_string (&cursor, &name)) {
 
 			int id = -1;
-			bool matched_any = false;
+			bool matched_unit_type = false;
 			while (find_unit_type_id_by_name (&name, id + 1, &id)) {
 				itable_insert (unit_types, id, 1);
-				matched_any = true;
+				matched_unit_type = true;
 			}
 
-			if (! matched_any)
-				add_unrecognized_line (p_unrecognized_lines, &name);
+			if (! matched_unit_type) {
+				struct unit_type_tag * tag;
+				if (stable_look_up_slice (&is->current_config.unit_type_tags, &name, (int *)&tag))
+					for (int n = 0; n < tag->count_unit_type_ids; n++)
+						itable_insert (unit_types, tag->unit_type_ids[n], 1);
+				else
+					add_unrecognized_line (p_unrecognized_lines, &name);
+			}
 
 		} else {
 			skip_white_space (&cursor);
@@ -2148,20 +2368,33 @@ read_enabled_seasons_mask (struct string_slice const * s, int * out_val)
 }
 
 bool
-read_pinned_season_for_seasonal_cycle (struct string_slice const * s, int * out_val)
+read_cycle_season_value (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
-	if      (slice_matches_str (&trimmed, "summer")) { *out_val = CS_SUMMER; return true; }
-	else if (slice_matches_str (&trimmed, "Summer")) { *out_val = CS_SUMMER; return true; }
-	else if (slice_matches_str (&trimmed, "fall"  )) { *out_val = CS_FALL;   return true; }
-	else if (slice_matches_str (&trimmed, "Fall"  )) { *out_val = CS_FALL;   return true; }
-	else if (slice_matches_str (&trimmed, "autumn")) { *out_val = CS_FALL;   return true; }
-	else if (slice_matches_str (&trimmed, "autumn")) { *out_val = CS_FALL;   return true; }
-	else if (slice_matches_str (&trimmed, "winter")) { *out_val = CS_WINTER; return true; }
-	else if (slice_matches_str (&trimmed, "Winter")) { *out_val = CS_WINTER; return true; }
-	else if (slice_matches_str (&trimmed, "spring")) { *out_val = CS_SPRING; return true; }
-	else if (slice_matches_str (&trimmed, "Spring")) { *out_val = CS_SPRING; return true; }
-	return false;
+	if (trimmed.len <= 0)
+		return false;
+
+	char * text = extract_slice (&trimmed);
+	if (text == NULL)
+		return false;
+
+	bool found = true;
+	if      (_stricmp (text, "summer") == 0) *out_val = CS_SUMMER;
+	else if (_stricmp (text, "fall"  ) == 0) *out_val = CS_FALL;
+	else if (_stricmp (text, "autumn") == 0) *out_val = CS_FALL;
+	else if (_stricmp (text, "winter") == 0) *out_val = CS_WINTER;
+	else if (_stricmp (text, "spring") == 0) *out_val = CS_SPRING;
+	else
+		found = false;
+
+	free (text);
+	return found;
+}
+
+bool
+read_pinned_season_for_seasonal_cycle (struct string_slice const * s, int * out_val)
+{
+	return read_cycle_season_value (s, out_val);
 }
 
 bool
@@ -2243,6 +2476,7 @@ read_tile_terrain_type_value (struct string_slice const * s, enum SquareTypes * 
 		{"swamps",         SQ_Swamp},
 		{"volcano",        SQ_Volcano},
 		{"volcanos",       SQ_Volcano},
+		{"volcanoes",      SQ_Volcano},
 		{"coast",          SQ_Coast},
 		{"coasts",         SQ_Coast},
 		{"sea",            SQ_Sea},
@@ -2253,6 +2487,7 @@ read_tile_terrain_type_value (struct string_slice const * s, enum SquareTypes * 
 		{"rivers",         SQ_RIVER},
 		{"snow-volcano",   SQ_SNOW_VOLCANO},
 		{"snow-volcanos",  SQ_SNOW_VOLCANO},
+		{"snow-volcanoes", SQ_SNOW_VOLCANO},
 		{"snow-forest",    SQ_SNOW_FOREST},
 		{"snow-forests",   SQ_SNOW_FOREST},
 		{"snow-mountain",  SQ_SNOW_MOUNTAIN},
@@ -2580,6 +2815,33 @@ struct config_parsing {
 	int displayed_error_message;
 };
 
+struct config_key_value {
+	// These slices point into config_parsing.text, which remains alive until both lists are processed.
+	struct string_slice key;
+	struct string_slice value;
+	char * cursor_after_value;
+};
+
+struct config_key_value_list {
+	struct config_key_value * items;
+	int count;
+	int capacity;
+};
+
+void
+append_config_key_value (struct config_key_value_list * list, struct string_slice const * key, struct string_slice const * value, char * cursor_after_value)
+{
+	reserve (sizeof list->items[0], (void **)&list->items, &list->capacity, list->count);
+	list->items[list->count++] = (struct config_key_value){ .key = *key, .value = *value, .cursor_after_value = cursor_after_value };
+}
+
+bool
+is_high_priority_config_key (struct string_slice const * key)
+{
+	// Tag definitions must be available when settings that refer to those tags are processed.
+	return slice_matches_str (key, "unit_type_tags");
+}
+
 enum config_parse_error {
 	CPE_GENERIC,
 	CPE_BAD_VALUE,
@@ -2671,11 +2933,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		int count;
 	} perfume_spec_lists[COUNT_PERFUME_KINDS] = {0};
 
-	struct parsed_unit_type_limit * parsed_unit_type_limits = NULL;
-	int parsed_unit_type_limit_count = 0;
-
 	struct config_parsing p = { .file_path = full_path, .text = text, .cursor = text, .key = {0}, .displayed_error_message = 0 };
-	struct error_line * unrecognized_lines = NULL;
+	struct config_key_value_list key_value_lists[2] = {0}; // High priority, then normal priority
+	// First pass: split the file into key/value slices without interpreting the values.
 	while (1) {
 		skip_horiz_space (&p.cursor);
 		if (*p.cursor == '\0')
@@ -2687,10 +2947,32 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		else if (*p.cursor == '[')
 			skip_to_line_end (&p.cursor); // Skip section line
 		else if (parse_string (&p.cursor, &p.key) && skip_punctuation (&p.cursor, '=')) { // Parse key and equals sign
-
 			struct string_slice value;
 			if (parse_string (&p.cursor, &value) || parse_bracketed_block (&p.cursor, &value)) { // Parse value
-				int ival, offset, recog_err_offset;
+				int priority = is_high_priority_config_key (&p.key) ? 0 : 1;
+				append_config_key_value (&key_value_lists[priority], &p.key, &value, p.cursor);
+			} else { // Failed to parse value
+				handle_config_error (&p, CPE_BAD_VALUE);
+				skip_to_line_end (&p.cursor);
+			}
+		} else { // Failed to categorize line
+			handle_config_error (&p, CPE_GENERIC);
+			skip_to_line_end (&p.cursor);
+		}
+	}
+
+	struct error_line * unrecognized_lines = NULL;
+	struct error_line * unit_type_tag_range_errors = NULL;
+	struct error_line * unit_type_tag_warnings = NULL;
+	// Second pass: process high-priority entries first, preserving file order within each list.
+	for (int priority = 0; priority < ARRAY_LEN (key_value_lists); priority++) {
+		struct config_key_value_list * list = &key_value_lists[priority];
+		for (int item_index = 0; item_index < list->count; item_index++) {
+			struct config_key_value * item = &list->items[item_index];
+			p.key = item->key;
+			p.cursor = item->cursor_after_value;
+			struct string_slice value = item->value;
+			int ival, offset, recog_err_offset;
 
 				// if key is for a boolean option
 				if (stable_look_up_slice (&is->boolean_config_offsets, &p.key, &offset)) {
@@ -2903,6 +3185,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 &cfg->count_leader_era_alias_lists)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "unit_limits")) {
+					struct parsed_unit_type_limit * parsed_unit_type_limits = NULL;
+					int parsed_unit_type_limit_count = 0;
 					if (0 <= (recog_err_offset = read_recognizables (&value,
 											 &unrecognized_lines,
 											 sizeof (struct parsed_unit_type_limit),
@@ -2910,14 +3194,24 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 (void **)&parsed_unit_type_limits,
 											 &parsed_unit_type_limit_count)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
-				// ToC-26: Parse group definitions for shared combined unit limits.
-				// Format: ["Group Label": "UnitA" "UnitB" ..., "Group2": ...]
-				// Group names used here must be referenced in unit_limits to have any effect.
-				} else if (slice_matches_str (&p.key, "unit_limit_groups")) {
-					if (0 <= (recog_err_offset = read_unit_limit_groups (&value,
-											  &unrecognized_lines,
-											  &cfg->unit_limit_groups,
-											  &cfg->unit_type_to_group)))
+
+					for (int n = 0; n < parsed_unit_type_limit_count; n++) {
+						struct parsed_unit_type_limit * parsed_lim = &parsed_unit_type_limits[n];
+						if (parsed_lim->unit_type_id >= 0) {
+							struct unit_type_limit * lim_values = malloc (sizeof *lim_values);
+							*lim_values = parsed_lim->limit;
+							stable_insert (&cfg->unit_limits,
+							               p_bic_data->UnitTypes[parsed_lim->unit_type_id].Name,
+							               (int)lim_values);
+						} else {
+							parsed_lim->tag->limit = parsed_lim->limit;
+							parsed_lim->tag->has_limit = true;
+						}
+					}
+					free (parsed_unit_type_limits);
+				} else if (slice_matches_str (&p.key, "unit_type_tags")) {
+					if (0 <= (recog_err_offset = read_unit_type_tags (
+							&value, &unrecognized_lines, &unit_type_tag_range_errors, &unit_type_tag_warnings, cfg)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "aircraft_victory_animation")) {
 					struct string_slice trimmed = trim_string_slice (&value, 1);
@@ -2939,15 +3233,6 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					}
 					if (! value_ok)
 						handle_config_error (&p, CPE_BAD_VALUE);
-				} else if (slice_matches_str (&p.key, "unit_groups") ||
-					   slice_matches_str (&p.key, "unit_group")) { // singular accepted for backward compatibility
-					if (0 <= (recog_err_offset = read_recognizables (&value,
-											 &unrecognized_lines,
-											 sizeof (struct unit_counter_group),
-											 parse_unit_counter_group,
-											 (void **)&cfg->unit_counter_groups,
-											 &cfg->count_unit_counter_groups)))
-						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "counter_rules") ||
 					   slice_matches_str (&p.key, "counter_rule")) { // singular accepted for backward compatibility
 					if (0 <= (recog_err_offset = read_recognizables (&value,
@@ -3008,7 +3293,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 				} else if (slice_matches_str (&p.key, "move_trade_net_object")) {
-					; // No nothing. This setting no longer serves any purpose.
+					; // Do nothing. This setting no longer serves any purpose.
 				} else if (slice_matches_str (&p.key, "use_civ4_style_best_defender")) {
 					; // Obsolete. Counter rules now always affect normal defender selection when enable_unit_counters is on.
 
@@ -3053,15 +3338,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					handle_config_error (&p, CPE_BAD_KEY);
 				}
 
-			} else { // Failed to parse value
-				handle_config_error (&p, CPE_BAD_VALUE);
-				skip_to_line_end (&p.cursor);
 			}
-
-		} else { // Failed to categorize line
-			handle_config_error (&p, CPE_GENERIC);
-			skip_to_line_end (&p.cursor);
-		}
+		free (list->items);
 	}
 
 	// If seasonal cycle mode is on "day_night_hour" but day/night cycle mode is off, disable seasonal cycle mode and show a warning
@@ -3087,6 +3365,28 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 			PopupForm_add_text (popup, __, line->text, false);
 		patch_show_popup (popup, __, 0, 0);
 	}
+	if (unit_type_tag_warnings != NULL) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "Unit type tag warnings in %s:", full_path);
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, false);
+		for (struct error_line * line = unit_type_tag_warnings; line != NULL; line = line->next)
+			PopupForm_add_text (popup, __, line->text, false);
+		patch_show_popup (popup, __, 0, 0);
+	}
+	if (unit_type_tag_range_errors != NULL) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "Invalid unit type tag ranges in %s:", full_path);
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, false);
+		for (struct error_line * line = unit_type_tag_range_errors; line != NULL; line = line->next)
+			PopupForm_add_text (popup, __, line->text, false);
+		patch_show_popup (popup, __, 0, 0);
+	}
 
 	// Copy perfume specs from lists to tables
 	for (int n = 0; n < COUNT_PERFUME_KINDS; n++) {
@@ -3095,56 +3395,28 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		if (list->items != NULL) {
 			for (int k = 0; k < list->count; k++) {
 				struct perfume_spec * ps = &list->items[k];
-				stable_insert (table, ps->name, ps->value);
+				if ((n == PK_PRODUCTION) && (ps->tag != NULL)) {
+					for (int m = 0; m < ps->tag->count_unit_type_ids; m++) {
+						char const * name = p_bic_data->UnitTypes[ps->tag->unit_type_ids[m]].Name;
+						bool name_already_added = false;
+						for (int j = 0; j < m; j++)
+							if (strcmp (name, p_bic_data->UnitTypes[ps->tag->unit_type_ids[j]].Name) == 0) {
+								name_already_added = true;
+								break;
+							}
+						if (! name_already_added)
+							add_perfume_spec_to_table (table, name, ps);
+					}
+				} else
+					add_perfume_spec_to_table (table, ps->name, ps);
 			}
 			free (list->items);
 		}
 	}
-	// ToC-26: Copy and validate unit type limits from parsed list to config tables.
-	// Validation is done here (post-parse) so that unit_limit_groups is fully populated
-	// regardless of which key appears first in the config file. Each name is checked:
-	//   (1) individual unit type  -> insert into unit_limits as before
-	//   (2) group label defined in unit_limit_groups -> assign limit to the group struct
-	//   (3) neither               -> add to unrecognized_lines for the warning popup
-	if (parsed_unit_type_limits != NULL) {
-		for (int n = 0; n < parsed_unit_type_limit_count; n++) {
-			struct parsed_unit_type_limit * parsed_lim = &parsed_unit_type_limits[n];
-			struct string_slice name_slice = { parsed_lim->name, (int)strlen (parsed_lim->name) };
-			int unused_id;
-			struct unit_limit_group * grp;
-			if (find_unit_type_id_by_name (&name_slice, 0, &unused_id)) {
-				// Valid unit type name: individual limit, stored by name for direct lookup
-				struct unit_type_limit * lim_values = malloc (sizeof *lim_values);
-				*lim_values = parsed_lim->limit;
-				stable_insert (&cfg->unit_limits, parsed_lim->name, (int)lim_values);
-			} else if (stable_look_up (&cfg->unit_limit_groups, parsed_lim->name, (int *)&grp)) {
-				// Group label: store limit inside the group struct for runtime use
-				grp->limit     = parsed_lim->limit;
-				grp->has_limit = true;
-			} else {
-				// Unrecognized: neither a unit type nor a defined group
-				add_unrecognized_line (&unrecognized_lines, &name_slice);
-			}
-		}
-		free (parsed_unit_type_limits);
-	}
-
-	// Unrecognized names popup shown here (moved below unit limit copy so deferred
-	// validation errors from unit_limits are included in the report)
-	if (cfg->warn_about_unrecognized_names && (unrecognized_lines != NULL)) {
-		PopupForm * popup = get_popup_form ();
-		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
-		char s[200];
-		snprintf (s, sizeof s, "Unrecognized names in %s:", full_path);
-		s[(sizeof s) - 1] = '\0';
-		PopupForm_add_text (popup, __, s, false);
-		for (struct error_line * line = unrecognized_lines; line != NULL; line = line->next)
-			PopupForm_add_text (popup, __, line->text, false);
-		patch_show_popup (popup, __, 0, 0);
-	}
-
 	free (text);
 	free_error_lines (unrecognized_lines);
+	free_error_lines (unit_type_tag_range_errors);
+	free_error_lines (unit_type_tag_warnings);
 
 	struct loaded_config_name * top_lcn = is->loaded_config_names;
 	while (top_lcn->next != NULL)
@@ -3790,6 +4062,22 @@ patch_Leader_is_tile_visible (Leader * this, int edx, int x, int y)
 		return true;
 	else
 		return false;
+}
+
+void __fastcall
+patch_Leader_reveal_tile (Leader * this, int edx, int x, int y)
+{
+	if (is->current_config.enable_custom_animations &&
+	    (this->ID == p_main_screen_form->Player_CivID) &&
+	    ((*p_debug_mode_bits & 0xC) == 0) &&
+	    tile_has_matching_custom_animation_for_draw (tile_at (x, y), x, y)) {
+
+		// Match vanilla reveal path's flag setting process for checking for cities, huts, roads, and railroads.
+		// This ensures that a newly revealed tile with an animation immediately shows it.
+		*(bool *)(p_main_screen_form->animator.field_18E4 + 10) = true;
+	}
+
+	Leader_reveal_tile (this, __, x, y);
 }
 
 bool __fastcall
@@ -6844,7 +7132,7 @@ district_is_complete(Tile * tile, int district_id)
 		return false;
 	}
 
-	// Defer setting complete flag until after Trade Net recomputation is done, as auto-adding 
+	// Defer setting complete flag until after Trade Net recomputation is done, as auto-adding
 	// roads/railroads may trigger Trade Net updates that in turn depends on the non-artificial tile count being present
 	if (is->saved_tile_count >= 0)
 		return false;
@@ -7914,6 +8202,13 @@ free_dynamic_natural_wonder_config (struct natural_wonder_district_config * cfg)
 		free ((void *)cfg->img_path);
 		cfg->img_path = NULL;
 	}
+	for (int i = 0; i < cfg->animation_count; i++) {
+		if (cfg->animations[i].ini_path != NULL) {
+			free ((void *)cfg->animations[i].ini_path);
+			cfg->animations[i].ini_path = NULL;
+		}
+	}
+	cfg->animation_count = 0;
 
 	memset (cfg, 0, sizeof *cfg);
 	cfg->adjacent_to = (enum SquareTypes)SQ_INVALID;
@@ -8334,38 +8629,25 @@ read_counter_rule_terrain_mask (struct string_slice const * terrain_name, unsign
 	return *out_mask != 0;
 }
 
-struct unit_counter_group *
-find_unit_counter_group_by_name (struct c3x_config * cfg, char const * name)
-{
-	for (int i = 0; i < cfg->count_unit_counter_groups; i++) {
-		struct unit_counter_group * g = &cfg->unit_counter_groups[i];
-		if (g->name && strcmp (g->name, name) == 0)
-			return g;
-	}
-	return NULL;
-}
-
 bool
-unit_type_in_group (struct unit_counter_group * g, int type_id)
+unit_type_has_tag (struct c3x_config * cfg, int type_id, int tag_id)
 {
-	char const * name = p_bic_data->UnitTypes[type_id].Name;
-	for (int i = 0; i < g->count_type_ids; i++)
-		if (strcmp (p_bic_data->UnitTypes[g->type_ids[i]].Name, name) == 0)
-			return true;
+	struct unit_type_tag_id_list * list;
+	if (itable_look_up (&cfg->unit_type_id_to_tag_ids, type_id, (int *)&list))
+		for (int i = 0; i < list->count; i++)
+			if (list->tag_ids[i] == tag_id)
+				return true;
 	return false;
 }
 
 bool
 unit_matches_counter_side (struct c3x_config * cfg, int type_id,
-                           int match, char * group_name)
+						   int match, int tag_id)
 {
 	if (match == UCM_ANY)
 		return true;
-	if (match == UCM_GROUP) {
-		struct unit_counter_group * g =
-		    find_unit_counter_group_by_name (cfg, group_name);
-		return g && unit_type_in_group (g, type_id);
-	}
+	if (match == UCM_TAG)
+		return (tag_id >= 0) && unit_type_has_tag (cfg, type_id, tag_id);
 	// Direct unit type match: compare by name rather than exact ID so that
 	// AI strategy duplicates (same name, different ID) are also matched.
 	return strcmp (p_bic_data->UnitTypes[match].Name,
@@ -8579,44 +8861,6 @@ counter_rule_experience_conditions_match (struct counter_rule * r,
 }
 
 enum recognizable_parse_result
-parse_unit_counter_group (char ** p_cursor,
-                          struct error_line ** p_unrecognized_lines,
-                          void * out_group)
-{
-	char * cur = *p_cursor;
-	struct string_slice group_name;
-	if (! (parse_string (&cur, &group_name) && skip_punctuation (&cur, ':')))
-		return RPR_PARSE_ERROR;
-
-	struct unit_counter_group * g = out_group;
-	g->name           = extract_slice (&group_name);
-	g->type_ids       = NULL;
-	g->count_type_ids = 0;
-
-	int any_unrecognized = 0;
-	struct string_slice type_name;
-	while (parse_string (&cur, &type_name)) {
-		// Loop through all unit types with this name, including AI strategy
-		// duplicates (same name, different ID), which the game creates internally.
-		int type_id = 0;
-		bool found_any = false;
-		while (find_unit_type_id_by_name (&type_name, type_id, &type_id)) {
-			g->type_ids = realloc (g->type_ids,
-			    (g->count_type_ids + 1) * sizeof (int));
-			g->type_ids[g->count_type_ids++] = type_id;
-			found_any = true;
-			type_id++;  // continue search from next index
-		}
-		if (! found_any) {
-			add_unrecognized_line (p_unrecognized_lines, &type_name);
-			any_unrecognized = 1;
-		}
-	}
-	*p_cursor = cur;
-	return any_unrecognized ? RPR_UNRECOGNIZED : RPR_OK;
-}
-
-enum recognizable_parse_result
 parse_counter_rule (char ** p_cursor,
                     struct error_line ** p_unrecognized_lines,
                     void * out_rule)
@@ -8636,6 +8880,8 @@ parse_counter_rule (char ** p_cursor,
 	*r = (struct counter_rule) {
 		.attacker_match = UCM_ANY,
 		.defender_match = UCM_ANY,
+		.attacker_tag_id = -1,
+		.defender_tag_id = -1,
 		.terrain_mask   = 0,
 		.district_id    = -1,
 		.district_name  = NULL,
@@ -8648,14 +8894,22 @@ parse_counter_rule (char ** p_cursor,
 		.self_bombard_pct  = 100,
 		.enemy_bombard_pct = 100,
 	};
+	bool unrecognized_match = false;
 
 	if (! slice_matches_str (&attacker_name, "*")) {
 		int type_id;
 		if (find_unit_type_id_by_name (&attacker_name, 0, &type_id))
 			r->attacker_match = type_id;
 		else {
-			r->attacker_match = UCM_GROUP;
-			r->attacker_group = extract_slice (&attacker_name);
+			struct unit_type_tag * tag;
+			r->attacker_match = UCM_TAG;
+			if (stable_look_up_slice (&is->current_config.unit_type_tags,
+			                          &attacker_name, (int *)&tag))
+				r->attacker_tag_id = tag->id;
+			else {
+				add_unrecognized_line (p_unrecognized_lines, &attacker_name);
+				unrecognized_match = true;
+			}
 		}
 	}
 
@@ -8664,8 +8918,15 @@ parse_counter_rule (char ** p_cursor,
 		if (find_unit_type_id_by_name (&defender_name, 0, &type_id))
 			r->defender_match = type_id;
 		else {
-			r->defender_match = UCM_GROUP;
-			r->defender_group = extract_slice (&defender_name);
+			struct unit_type_tag * tag;
+			r->defender_match = UCM_TAG;
+			if (stable_look_up_slice (&is->current_config.unit_type_tags,
+			                          &defender_name, (int *)&tag))
+				r->defender_tag_id = tag->id;
+			else {
+				add_unrecognized_line (p_unrecognized_lines, &defender_name);
+				unrecognized_match = true;
+			}
 		}
 	}
 
@@ -8728,6 +8989,11 @@ parse_counter_rule (char ** p_cursor,
 	}
 
 	*p_cursor = cur;
+	if (unrecognized_match) {
+		free (r->district_name);
+		r->district_name = NULL;
+		return RPR_UNRECOGNIZED;
+	}
 	return RPR_OK;
 }
 
@@ -8786,15 +9052,15 @@ get_counter_effect_summary (struct c3x_config * cfg,
 
 		// Check forward match (attacker=rule attacker side, defender=rule defender side).
 		bool forward = unit_matches_counter_side (cfg, a_type,
-		                   r->attacker_match, r->attacker_group) &&
+		                   r->attacker_match, r->attacker_tag_id) &&
 		               unit_matches_counter_side (cfg, d_type,
-		                   r->defender_match, r->defender_group);
+		                   r->defender_match, r->defender_tag_id);
 
 		// Check reverse match (attacker=rule defender side, defender=rule attacker side).
 		bool reverse = unit_matches_counter_side (cfg, a_type,
-		                   r->defender_match, r->defender_group) &&
+		                   r->defender_match, r->defender_tag_id) &&
 		               unit_matches_counter_side (cfg, d_type,
-		                   r->attacker_match, r->attacker_group);
+		                   r->attacker_match, r->attacker_tag_id);
 
 		if (forward &&
 		    ! counter_rule_experience_conditions_match (
@@ -8855,9 +9121,57 @@ get_counter_rule_bombard_modifier (struct c3x_config * cfg,
                                    Unit * bombarder, Unit * target,
                                    Tile * target_tile)
 {
-	struct counter_effect_summary effects;
-	get_counter_effect_summary (cfg, bombarder, target, target_tile, &effects);
-	return effects.bombard_pct;
+	if (! (cfg->enable_unit_counters &&
+	       (bombarder != NULL) &&
+	       (target != NULL) &&
+	       (bombarder->Body.UnitTypeID >= 0) &&
+	       (bombarder->Body.UnitTypeID < p_bic_data->UnitTypeCount) &&
+	       (target->Body.UnitTypeID >= 0) &&
+	       (target->Body.UnitTypeID < p_bic_data->UnitTypeCount)))
+		return 100;
+
+	int b_type = bombarder->Body.UnitTypeID;
+	int t_type = target->Body.UnitTypeID;
+	int bombard_pct = 100;
+
+	for (int i = 0; i < cfg->count_counter_rules; i++) {
+		struct counter_rule * r = &cfg->counter_rules[i];
+
+		bool forward = unit_matches_counter_side (cfg, b_type,
+		                   r->attacker_match, r->attacker_tag_id) &&
+		               unit_matches_counter_side (cfg, t_type,
+		                   r->defender_match, r->defender_tag_id);
+
+		bool reverse = unit_matches_counter_side (cfg, b_type,
+		                   r->defender_match, r->defender_tag_id) &&
+		               unit_matches_counter_side (cfg, t_type,
+		                   r->attacker_match, r->attacker_tag_id);
+
+		if (forward &&
+		    ! counter_rule_experience_conditions_match (
+		        r,
+		        bombarder->Body.Combat_Experience,
+		        target->Body.Combat_Experience))
+			forward = false;
+
+		if (reverse &&
+		    ! counter_rule_experience_conditions_match (
+		        r,
+		        target->Body.Combat_Experience,
+		        bombarder->Body.Combat_Experience))
+			reverse = false;
+
+		if ((! forward && ! reverse) ||
+		    ! counter_rule_environment_matches (cfg, r, target_tile))
+			continue;
+
+		if (forward)
+			bombard_pct = bombard_pct * r->self_bombard_pct / 100;
+		if (reverse)
+			bombard_pct = bombard_pct * r->enemy_bombard_pct / 100;
+	}
+
+	return bombard_pct;
 }
 
 int
@@ -11826,6 +12140,14 @@ init_parsed_natural_wonder_definition (struct parsed_natural_wonder_definition *
 void
 free_parsed_natural_wonder_definition (struct parsed_natural_wonder_definition * def)
 {
+	for (int i = 0; i < def->animation_count; i++) {
+		if (def->animations[i].ini_path != NULL) {
+			free ((void *)def->animations[i].ini_path);
+			def->animations[i].ini_path = NULL;
+		}
+	}
+	def->animation_count = 0;
+
 	if (def->name != NULL) {
 		free (def->name);
 		def->name = NULL;
@@ -11874,6 +12196,34 @@ add_natural_wonder_from_definition (struct parsed_natural_wonder_definition * de
 	new_cfg.terrain_type = def->terrain_type;
 	new_cfg.adjacent_to = def->adjacent_to;
 	new_cfg.adjacency_dir = def->adjacency_dir;
+	new_cfg.animation_count = def->animation_count;
+	if (new_cfg.animation_count > ARRAY_LEN (new_cfg.animations))
+		new_cfg.animation_count = ARRAY_LEN (new_cfg.animations);
+	for (int i = 0; i < new_cfg.animation_count; i++) {
+		struct natural_wonder_animation_config const * src_anim = &def->animations[i];
+		char * ini_copy = NULL;
+		if (src_anim->ini_path != NULL)
+			ini_copy = strdup (src_anim->ini_path);
+		if ((src_anim->ini_path != NULL) && (ini_copy == NULL)) {
+			for (int j = 0; j < i; j++) {
+				if (new_cfg.animations[j].ini_path != NULL)
+					free ((void *)new_cfg.animations[j].ini_path);
+			}
+			free (img_copy);
+			free (name_copy);
+			return false;
+		}
+			new_cfg.animations[i].ini_path = ini_copy;
+			new_cfg.animations[i].day_night_hour_mask = src_anim->day_night_hour_mask;
+			new_cfg.animations[i].season_mask = src_anim->season_mask;
+			new_cfg.animations[i].direction = src_anim->direction;
+			new_cfg.animations[i].has_direction = src_anim->has_direction;
+			new_cfg.animations[i].frame_time_seconds = src_anim->frame_time_seconds;
+			new_cfg.animations[i].has_frame_time_seconds = src_anim->has_frame_time_seconds;
+			new_cfg.animations[i].x_offset = src_anim->x_offset;
+			new_cfg.animations[i].y_offset = src_anim->y_offset;
+			new_cfg.animations[i].has_offsets = src_anim->has_offsets;
+		}
 	new_cfg.culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
 	new_cfg.science_bonus = def->has_science_bonus ? def->science_bonus : 0;
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
@@ -11942,6 +12292,124 @@ finalize_parsed_natural_wonder_definition (struct parsed_natural_wonder_definiti
 		add_natural_wonder_from_definition (def, section_start_line);
 
 	free_parsed_natural_wonder_definition (def);
+}
+
+bool
+parse_natural_wonder_animation_entry (struct string_slice const * value,
+				      struct natural_wonder_animation_config * out_cfg)
+{
+	if ((value == NULL) || (out_cfg == NULL))
+		return false;
+
+	memset (out_cfg, 0, sizeof *out_cfg);
+	struct string_slice trimmed_value = trim_string_slice (value, 1);
+	char * text = extract_slice (&trimmed_value);
+	if (text == NULL)
+		return false;
+
+	bool ok = true;
+	bool has_ini = false;
+	char * cursor = text;
+	while (ok && (*cursor != '\0')) {
+		char * token_start = cursor;
+		while ((*cursor != '\0') && (*cursor != ';'))
+			cursor++;
+		char saved = *cursor;
+		*cursor = '\0';
+
+		struct string_slice token = {.str = token_start, .len = strlen (token_start)};
+		token = trim_string_slice (&token, 0);
+		if (token.len > 0) {
+			char * sep = NULL;
+			for (int i = 0; i < token.len; i++) {
+				char ch = token.str[i];
+				if ((ch == ':') || (ch == '=')) {
+					sep = token.str + i;
+					break;
+				}
+			}
+
+			if (sep == NULL) {
+				ok = false;
+			} else {
+				struct string_slice k = {.str = token.str, .len = sep - token.str};
+				struct string_slice v = {.str = sep + 1, .len = strlen (sep + 1)};
+				k = trim_string_slice (&k, 0);
+				v = trim_string_slice (&v, 0);
+				if (slice_matches_str (&k, "ini")) {
+					if (out_cfg->ini_path != NULL) {
+						free ((void *)out_cfg->ini_path);
+						out_cfg->ini_path = NULL;
+					}
+					out_cfg->ini_path = extract_slice (&v);
+					has_ini = (out_cfg->ini_path != NULL) && (out_cfg->ini_path[0] != '\0');
+					if (! has_ini)
+						ok = false;
+				} else if (slice_matches_str (&k, "hours")) {
+					unsigned int mask = 0;
+					ok = parse_tile_animation_hour_list (&v, &mask);
+					if (ok)
+						out_cfg->day_night_hour_mask = mask;
+					} else if (slice_matches_str (&k, "seasons")) {
+						unsigned int mask = 0;
+						ok = parse_tile_animation_season_list (&v, &mask);
+						if (ok)
+							out_cfg->season_mask = mask;
+					} else if (slice_matches_str (&k, "direction")) {
+						enum direction dir = DIR_ZERO;
+						ok = read_direction_value (&v, &dir);
+						if (ok) {
+							out_cfg->direction = dir;
+							out_cfg->has_direction = true;
+						}
+					} else if (slice_matches_str (&k, "frame_time_seconds")) {
+						float frame_time_seconds = 0.0f;
+						ok = read_float (&v, &frame_time_seconds);
+						if (ok) {
+							out_cfg->frame_time_seconds = frame_time_seconds;
+							out_cfg->has_frame_time_seconds = true;
+						}
+					} else if (slice_matches_str (&k, "offsets")) {
+						char * offsets_text = extract_slice (&v);
+						if (offsets_text == NULL)
+							ok = false;
+						else {
+							char * off_cursor = offsets_text;
+							int x = 0, y = 0;
+							ok = parse_int (&off_cursor, &x) &&
+								skip_horiz_space (&off_cursor) &&
+								(*off_cursor == ',');
+							if (ok) {
+								off_cursor++;
+								ok = parse_int (&off_cursor, &y) &&
+									skip_horiz_space (&off_cursor) &&
+									(*off_cursor == '\0');
+							}
+							if (ok) {
+								out_cfg->x_offset = x;
+								out_cfg->y_offset = y;
+								out_cfg->has_offsets = true;
+							}
+							free (offsets_text);
+						}
+					} else
+						ok = false;
+				}
+			}
+
+		if (saved == ';')
+			cursor++;
+	}
+
+	free (text);
+	if ((! ok) || (! has_ini)) {
+		if (out_cfg->ini_path != NULL) {
+			free ((void *)out_cfg->ini_path);
+			out_cfg->ini_path = NULL;
+		}
+		return false;
+	}
+	return true;
 }
 
 void
@@ -12134,6 +12602,17 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 		} else {
 			def->has_impassable_to_wheeled = false;
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "animation")) {
+		if (def->animation_count >= ARRAY_LEN (def->animations))
+			add_key_parse_error (parse_errors, line_number, key, value, "(too many animations for one wonder)");
+		else {
+			struct natural_wonder_animation_config anim = {0};
+			if (parse_natural_wonder_animation_entry (value, &anim))
+				def->animations[def->animation_count++] = anim;
+			else
+				add_key_parse_error (parse_errors, line_number, key, value, "(expected \"ini:<path>; hours:<0..23 list>; seasons:<season list>\")");
 		}
 
 	} else
@@ -12400,9 +12879,9 @@ void
 resolve_counter_rule_districts (struct error_line ** parse_errors)
 {
 	struct c3x_config * cfg = &is->current_config;
-
 	for (int i = 0; i < cfg->count_counter_rules; i++) {
 		struct counter_rule * rule = &cfg->counter_rules[i];
+
 		rule->district_id = -1;
 
 		if ((rule->district_name == NULL) || (rule->district_name[0] == '\0'))
@@ -16682,90 +17161,152 @@ change_unit_type_count (Leader * leader, int unit_type_id, int amount)
 	itable_insert (counts, unit_type_id, prev_amount + amount);
 }
 
-// If this unit type is limited, returns true and writes how many units of the type the given
-// player is allowed to *out_limit. Returns false if the type is not limited.
-// ToC-26: Checks individual unit_limits first; falls back to a unit_limit_groups entry if the
-// type belongs to a group with an assigned limit. Individual limits always take priority.
+int
+compute_unit_limit (Leader * leader, struct unit_type_limit * limit)
+{
+	int city_count = leader->Cities_Count;
+	int tr = limit->per_civ + limit->per_city * city_count;
+	if (limit->cities_per != 0)
+		tr += city_count / limit->cities_per;
+	return tr;
+}
+
+// If this unit type is limited, returns true and writes the smallest applicable absolute limit to *out_limit.
 bool
 get_unit_limit (Leader * leader, int unit_type_id, int * out_limit)
 {
 	if ((unit_type_id < 0) || (unit_type_id >= p_bic_data->UnitTypeCount))
 		return false;
 
-	UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
-	struct unit_type_limit * lim;
-
-	// (1) Individual unit type limit
-	if (stable_look_up (&is->current_config.unit_limits, type->Name, (int *)&lim)) {
-		int city_count = leader->Cities_Count;
-		int tr = lim->per_civ + lim->per_city * city_count;
-		if (lim->cities_per != 0)
-			tr += city_count / lim->cities_per;
-		*out_limit = tr;
-		return true;
+	struct unit_type_limit * individual_limit;
+	bool found = false;
+	if (stable_look_up (&is->current_config.unit_limits,
+	                    p_bic_data->UnitTypes[unit_type_id].Name,
+	                    (int *)&individual_limit)) {
+		*out_limit = compute_unit_limit (leader, individual_limit);
+		found = true;
 	}
 
-	// ToC-26: (2) Group limit — only when groups are configured and this type is a member
-	struct unit_limit_group * grp;
-	if (itable_look_up (&is->current_config.unit_type_to_group, unit_type_id, (int *)&grp) &&
-	    grp->has_limit) {
-		struct unit_type_limit * glim = &grp->limit;
-		int city_count = leader->Cities_Count;
-		int tr = glim->per_civ + glim->per_city * city_count;
-		if (glim->cities_per != 0)
-			tr += city_count / glim->cities_per;
-		*out_limit = tr;
-		return true;
-	}
-
-	return false;
-}
-
-// If this unit type is limited, returns true and writes to *out_available how many units the
-// given player can still add before reaching the limit. Returns false if the type is not limited.
-// ToC-26: When the type belongs to a group with a limit (and no individual limit overrides it),
-// the count is the combined total of all unit types in that group rather than just this one type.
-// Individual limits always take priority over group limits for both the limit value and the count.
-bool
-get_available_unit_count (Leader * leader, int unit_type_id, int * out_available)
-{
-	int limit;
-	if (! get_unit_limit (leader, unit_type_id, &limit))
-		return false;
-
-	int count;
-
-	// ToC-26: Check for group-based counting. Skip this branch entirely when no groups are
-	// configured (unit_type_to_group.len == 0) to keep the hot path cost-free for non-group games.
-	if (is->current_config.unit_type_to_group.len > 0) {
-		struct unit_limit_group * grp;
-		if (itable_look_up (&is->current_config.unit_type_to_group, unit_type_id, (int *)&grp) &&
-		    grp->has_limit) {
-			// Verify no individual limit overrides the group for this specific type
-			int unused;
-			if (! stable_look_up (&is->current_config.unit_limits,
-			                      p_bic_data->UnitTypes[unit_type_id].Name, &unused)) {
-				// Group count: sum all member IDs (AI strat dups already included in the array)
-				count = 0;
-				for (int n = 0; n < grp->count; n++)
-					count += get_unit_type_count (leader, grp->unit_type_ids[n]);
-				*out_available = limit - count;
-				return true;
+	struct unit_type_tag_id_list * list;
+	if (itable_look_up (&is->current_config.unit_type_id_to_tag_ids, unit_type_id, (int *)&list)) {
+		for (int n = 0; n < list->count; n++) {
+			struct unit_type_tag * tag = is->current_config.unit_type_tags_by_id[list->tag_ids[n]];
+			if (tag->has_limit) {
+				int tag_limit = compute_unit_limit (leader, &tag->limit);
+				if (! found || (tag_limit < *out_limit))
+					*out_limit = tag_limit;
+				found = true;
 			}
 		}
 	}
+	return found;
+}
 
-	// Standard individual count: this type plus any AI strategy duplicates
-	count = get_unit_type_count (leader, unit_type_id);
+bool
+get_individual_unit_available_count (Leader * leader, int unit_type_id, int * out_available)
+{
+	struct unit_type_limit * limit;
+	if (! stable_look_up (&is->current_config.unit_limits, p_bic_data->UnitTypes[unit_type_id].Name, (int *)&limit))
+		return false;
+
+	int count = get_unit_type_count (leader, unit_type_id);
 	int dups[30];
 	int dups_count = list_unit_type_duplicates (unit_type_id, dups, ARRAY_LEN (dups));
 	for (int n = 0; n < dups_count; n++)
 		count += get_unit_type_count (leader, dups[n]);
-
-	*out_available = limit - count;
+	*out_available = compute_unit_limit (leader, limit) - count;
 	return true;
 }
-// END ToC-26
+
+// If this unit type is limited, returns true and writes to *out_available how many units the
+// given player can still add before reaching the limit. Returns false if the type is not limited.
+// For tags, the count is the combined total of all tagged types. The smallest availability across
+// the individual limit and all limited tags is returned.
+bool
+get_available_unit_count (Leader * leader, int unit_type_id, int * out_available)
+{
+	bool found = get_individual_unit_available_count (leader, unit_type_id, out_available);
+	struct unit_type_tag_id_list * list;
+	if (itable_look_up (&is->current_config.unit_type_id_to_tag_ids, unit_type_id, (int *)&list)) {
+		for (int n = 0; n < list->count; n++) {
+			struct unit_type_tag * tag = is->current_config.unit_type_tags_by_id[list->tag_ids[n]];
+			if (! tag->has_limit)
+				continue;
+			int count = 0;
+			for (int k = 0; k < tag->count_unit_type_ids; k++)
+				count += get_unit_type_count (leader, tag->unit_type_ids[k]);
+			int available = compute_unit_limit (leader, &tag->limit) - count;
+			if (! found || (available < *out_available))
+				*out_available = available;
+			found = true;
+		}
+	}
+	return found;
+}
+
+// Ignore limits on tags shared by source and target: an upgrade changes their counts by zero.
+bool
+get_available_unit_count_for_upgrade (Leader * leader, int source_type_id, int target_type_id, int * out_available)
+{
+	bool found = get_individual_unit_available_count (leader, target_type_id, out_available);
+	struct unit_type_tag_id_list * list;
+	if (itable_look_up (&is->current_config.unit_type_id_to_tag_ids, target_type_id, (int *)&list)) {
+		for (int n = 0; n < list->count; n++) {
+			struct unit_type_tag * tag = is->current_config.unit_type_tags_by_id[list->tag_ids[n]];
+			if (! tag->has_limit || unit_type_has_tag (&is->current_config, source_type_id, tag->id))
+				continue;
+			int count = 0;
+			for (int k = 0; k < tag->count_unit_type_ids; k++)
+				count += get_unit_type_count (leader, tag->unit_type_ids[k]);
+			int available = compute_unit_limit (leader, &tag->limit) - count;
+			if (! found || (available < *out_available))
+				*out_available = available;
+			found = true;
+		}
+	}
+	return found;
+}
+
+// Checks all limits affected by an upgrade against upgrades already queued by upgrade-all.
+bool
+can_pencil_in_upgrade (Leader * leader, int source_type_id, int target_type_id)
+{
+	int available;
+	if (get_individual_unit_available_count (leader, target_type_id, &available)) {
+		int penciled = 0;
+		for (int n = 0; n < is->penciled_in_upgrade_count; n++)
+			if (strcmp (p_bic_data->UnitTypes[is->penciled_in_upgrades[n].unit_type_id].Name,
+			            p_bic_data->UnitTypes[target_type_id].Name) == 0)
+				penciled += is->penciled_in_upgrades[n].count;
+		if (penciled >= available)
+			return false;
+	}
+
+	struct unit_type_tag_id_list * list;
+	if (! itable_look_up (&is->current_config.unit_type_id_to_tag_ids, target_type_id, (int *)&list))
+		return true;
+	for (int n = 0; n < list->count; n++) {
+		struct unit_type_tag * tag = is->current_config.unit_type_tags_by_id[list->tag_ids[n]];
+		if (! tag->has_limit || unit_type_has_tag (&is->current_config, source_type_id, tag->id))
+			continue;
+
+		int current_count = 0;
+		for (int k = 0; k < tag->count_unit_type_ids; k++)
+			current_count += get_unit_type_count (leader, tag->unit_type_ids[k]);
+		available = compute_unit_limit (leader, &tag->limit) - current_count;
+
+		int penciled = 0;
+		for (int k = 0; k < is->penciled_in_upgrade_count; k++) {
+			struct penciled_in_upgrade * piu = &is->penciled_in_upgrades[k];
+			if (unit_type_has_tag (&is->current_config, piu->unit_type_id, tag->id) &&
+			    ! unit_type_has_tag (&is->current_config, piu->source_unit_type_id, tag->id))
+				penciled += piu->count;
+		}
+		if (penciled >= available)
+			return false;
+	}
+	return true;
+}
 
 int
 add_i31b_to_int (int base, i31b addition)
@@ -16784,11 +17325,14 @@ add_i31b_to_int (int base, i31b addition)
 int
 apply_perfume (enum perfume_kind kind, char const * name, int base_amount)
 {
-	i31b perfume_value;
-	if (stable_look_up (&is->current_config.perfume_specs[kind], name, &perfume_value))
-		return add_i31b_to_int (base_amount, perfume_value);
-	else
+	struct perfume_amounts * amounts;
+	if (! stable_look_up (&is->current_config.perfume_specs[kind], name, (int *)&amounts))
 		return base_amount;
+
+	int percent_amount = (base_amount * int_abs (amounts->percent) + 50) / 100;
+	if (amounts->percent < 0)
+		percent_amount = -percent_amount;
+	return base_amount + amounts->flat + percent_amount;
 }
 
 int __stdcall
@@ -19323,6 +19867,7 @@ patch_init_floating_point ()
 		{"aggressively_penalize_bankruptcy"                      , false, offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
 		{"no_penalty_exception_for_agri_fresh_water_city_tiles"  , false, offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
 		{"use_offensive_artillery_ai"                            , true , offsetof (struct c3x_config, use_offensive_artillery_ai)},
+		{"limit_ai_to_one_demand_per_turn"                       , false, offsetof (struct c3x_config, limit_ai_to_one_demand_per_turn)},
 		{"show_ai_demand_info_popup"                             , false, offsetof (struct c3x_config, show_ai_demand_info_popup)},
 		{"remove_human_player_bias_from_ai_war_planning"         , false, offsetof (struct c3x_config, remove_human_player_bias_from_ai_war_planning)},
 		{"dont_escort_unflagged_units"                           , false, offsetof (struct c3x_config, dont_escort_unflagged_units)},
@@ -19420,6 +19965,7 @@ patch_init_floating_point ()
 		{"enable_wonder_districts"                               , false, offsetof (struct c3x_config, enable_wonder_districts)},
 		{"enable_natural_wonders"                                , false, offsetof (struct c3x_config, enable_natural_wonders)},
 		{"add_natural_wonders_to_scenarios_if_none"              , false, offsetof (struct c3x_config, add_natural_wonders_to_scenarios_if_none)},
+		{"enable_custom_animations"                              , false, offsetof (struct c3x_config, enable_custom_animations)},
 		{"enable_named_tiles"                                    , false, offsetof (struct c3x_config, enable_named_tiles)},
 		{"enable_distribution_hub_districts"                     , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"enable_aerodrome_districts"                            , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
@@ -19496,8 +20042,8 @@ patch_init_floating_point ()
 		{"transition_season_on_day_night_hour"               ,     0,  offsetof (struct c3x_config, transition_season_on_day_night_hour)},
 		{"years_to_double_building_culture"                  ,  1000,  offsetof (struct c3x_config, years_to_double_building_culture)},
 		{"tourism_time_scale_percent"                        ,   100,  offsetof (struct c3x_config, tourism_time_scale_percent)},
-		{"luxury_randomized_appearance_rate_percent"    ,       100,   offsetof (struct c3x_config, luxury_randomized_appearance_rate_percent)},
-		{"tiles_per_non_luxury_resource"                ,        32,   offsetof (struct c3x_config, tiles_per_non_luxury_resource)},
+		{"luxury_randomized_appearance_rate_percent"         ,   100,  offsetof (struct c3x_config, luxury_randomized_appearance_rate_percent)},
+		{"tiles_per_non_luxury_resource"                     ,   32,   offsetof (struct c3x_config, tiles_per_non_luxury_resource)},
 		{"special_capital_decorruption_effect"               ,    10,  offsetof (struct c3x_config, special_capital_decorruption_effect)},
 		{"city_limit"                                        ,  2048,  offsetof (struct c3x_config, city_limit)},
 		{"maximum_pop_before_neighborhood_needed"            ,     8,  offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
@@ -19653,6 +20199,7 @@ patch_init_floating_point ()
 	is->keep_tnx_cache = false;
 	is->must_recompute_resources_for_mill_inputs = false;
 	is->is_placing_scenario_things = false;
+	is->ai_demand_target_selection_active = false;
 	is->paused_for_popup = false;
 	is->time_spent_paused_during_popup = 0;
 	is->time_spent_computing_city_connections = 0;
@@ -19815,6 +20362,15 @@ patch_init_floating_point ()
 	is->day_night_cycle_img_proxies_indexed = false;
 	is->day_night_cycle_sprite_proxies = (struct table) {0};
 	is->cycle_imgs = NULL;
+	is->tile_animation_selected_hour = -1;
+	is->tile_animation_selected_season = -1;
+	is->tile_animation_pcx_sprite_lookup = (struct table) {0};
+	is->tile_animation_pcx_rule_key_to_index = (struct table) {0};
+	is->tile_animation_pcx_rule_key_count = 0;
+	memset (is->tile_animation_pcx_rule_masks, 0, sizeof is->tile_animation_pcx_rule_masks);
+	memset (is->tile_animation_pcx_word_mask, 0, sizeof is->tile_animation_pcx_word_mask);
+	memset (is->tile_animation_pcx_active_word_mask, 0, sizeof is->tile_animation_pcx_active_word_mask);
+	is->tile_animation_has_pcx_rules = false;
 
 	is->charmed_types_converted_to_ptw_arty = NULL;
 	is->count_charmed_types_converted_to_ptw_arty = 0;
@@ -21303,11 +21859,35 @@ patch_rand_int_for_ai_ai_negotiation (void * this, int edx, int lim)
 }
 
 bool
+ai_can_demand_from_with_max_cooldown (Leader * this, int other_civ_id, int max_offline_cooldown)
+{
+	if ((other_civ_id <= 0) ||
+	    (other_civ_id >= 32) ||
+	    (other_civ_id == this->ID) ||
+	    ((*p_player_bits & (1 << other_civ_id)) == 0) ||
+	    ((this->Contacts[other_civ_id] & 1) == 0) ||
+	    this->At_War[other_civ_id] ||
+	    ((! is_online_game ()) &&
+	     (this->ai_diplomacy_cooldown[other_civ_id] > max_offline_cooldown)) ||
+	    (! Leader_ai_would_meet_with (this, __, other_civ_id)))
+		return false;
+	return true;
+}
+
+bool
+ai_can_demand_from (Leader * this, int other_civ_id)
+{
+	return ai_can_demand_from_with_max_cooldown (this, other_civ_id, 0);
+}
+
+bool
 try_ai_demand_from_other_ai (Leader * this, int other_civ_id, int demand_rate)
 {
-	if (this->At_War[other_civ_id] ||
-	    ((! is_online_game ()) && (this->ai_diplomacy_cooldown[other_civ_id] > 0)) ||
-	    (! Leader_ai_would_meet_with (this, __, other_civ_id)))
+	if (! ai_can_demand_from (this, other_civ_id))
+		return false;
+	if (is->current_config.limit_ai_to_one_demand_per_turn &&
+	    is->ai_demand_target_selection_active &&
+	    (other_civ_id != is->ai_demand_target_civ_id))
 		return false;
 	if ((demand_rate < 100) && (rand_int (p_rand_object, __, 100) >= demand_rate))
 		return false;
@@ -21373,6 +21953,16 @@ done:
 	TradeOfferList_clear (&demands);
 	TradeOfferList_clear (&no_offers);
 	return made_demand;
+}
+
+bool __fastcall
+patch_Leader_demand_items_for_begin_turn (Leader * this, int edx, TradeOfferList * demands, TradeOfferList * other_offers, int other_civ_id)
+{
+	if (is->current_config.limit_ai_to_one_demand_per_turn &&
+	    is->ai_demand_target_selection_active &&
+	    (other_civ_id != is->ai_demand_target_civ_id))
+		return false;
+	return Leader_demand_items (this, __, demands, other_offers, other_civ_id);
 }
 
 void __fastcall
@@ -21574,29 +22164,14 @@ patch_Unit_can_upgrade (Unit * this)
 	bool base = Unit_can_upgrade (this);
 	int available;
 	City * city = city_at (this->Body.X, this->Body.Y);
-	// ToC-27: Store upgrade_id so we can check for same-group upgrades below.
 	int upgrade_id;
 	if (base &&
 	    (city != NULL) &&
 	    (0 <= (upgrade_id = City_get_upgraded_type_id (city, __, this->Body.UnitTypeID))) &&
-	    get_available_unit_count (&leaders[this->Body.CivID], upgrade_id, &available) &&
-	    (available <= 0)) {
-		// ToC-27: Allow same-group upgrades even at the group limit. An upgrade removes the
-		// source unit and adds the target unit — the group count is net zero. We only bypass
-		// the block when the target has no individual limit (i.e., the restriction came from
-		// the group limit, not a per-type override on the target type).
-		if (is->current_config.unit_type_to_group.len > 0) {
-			struct unit_limit_group * from_grp, * to_grp;
-			int unused;
-			if (itable_look_up (&is->current_config.unit_type_to_group, this->Body.UnitTypeID, (int *)&from_grp) &&
-			    itable_look_up (&is->current_config.unit_type_to_group, upgrade_id, (int *)&to_grp) &&
-			    (from_grp == to_grp) &&
-			    from_grp->has_limit &&
-			    ! stable_look_up (&is->current_config.unit_limits, p_bic_data->UnitTypes[upgrade_id].Name, &unused))
-				return base; // same-group upgrade: net-zero group count change — permit it
-		}
+	    get_available_unit_count_for_upgrade (&leaders[this->Body.CivID], this->Body.UnitTypeID, upgrade_id, &available) &&
+	    (available <= 0))
 		return false;
-	} else
+	else
 		return base;
 }
 // END ToC-27
@@ -22050,28 +22625,12 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 		{
 			City * city;
 			int upgrade_id;
-			// ToC-26: also check unit_type_to_group so group-limited upgrade types are caught
 			if ((is->current_config.unit_limits.len > 0 ||
-			     is->current_config.unit_type_to_group.len > 0) &&
+			     is->current_config.unit_type_id_to_tag_ids.len > 0) &&
 			    patch_Unit_can_perform_command (unit, __, UCV_Upgrade_Unit) &&
 			    (NULL != (city = city_at (unit->Body.X, unit->Body.Y))) &&
 			    (0 <= (upgrade_id = City_get_upgraded_type_id (city, __, unit_type_id)))) {
-				get_available_unit_count (&leaders[unit->Body.CivID], upgrade_id, &available);
-				// ToC-27: If source and target are in the same unit_limit_group with no individual
-				// limit on the target, upgrading is net-zero on the group count (source removed,
-				// target added). Reset available to INT_MAX so the loop below allows all units to
-				// queue for upgrade regardless of current group occupancy.
-				if ((available != INT_MAX) && (is->current_config.unit_type_to_group.len > 0)) {
-					struct unit_limit_group * from_grp, * to_grp;
-					int unused;
-					if (itable_look_up (&is->current_config.unit_type_to_group, unit_type_id, (int *)&from_grp) &&
-					    itable_look_up (&is->current_config.unit_type_to_group, upgrade_id, (int *)&to_grp) &&
-					    (from_grp == to_grp) &&
-					    from_grp->has_limit &&
-					    ! stable_look_up (&is->current_config.unit_limits,
-					                      p_bic_data->UnitTypes[upgrade_id].Name, &unused))
-						available = INT_MAX; // same-group upgrade: net-zero group count change
-				}
+				get_available_unit_count_for_upgrade (&leaders[unit->Body.CivID], unit_type_id, upgrade_id, &available);
 			}
 		}
 		// END ToC-26 and ToC-27
@@ -23300,6 +23859,7 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 		is->destroy_tnx_cache (is->tnx_cache);
 		is->tnx_cache = NULL;
 	}
+	reset_tile_animation_runtime_state ();
 
 	unsigned tr = load_scenario (this, __, param_1, param_2);
 	char * scenario_path = param_1;
@@ -23327,6 +23887,7 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 		reset_district_state (true);
 		load_districts_config ();
 	}
+	load_tile_animation_configs ();
 
 	// Initialize Trade Net X
 	if (is->current_config.enable_trade_net_x && (is->tnx_init_state == IS_UNINITED)) {
@@ -24586,7 +25147,7 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 		// Apply unit type limit.
 		// ToC-27: Skip this check when called from patch_City_can_build_upgrade_type (flag is set).
 		// The limit is re-applied with source-type context in patch_Unit_can_upgrade so that
-		// same-group upgrades (net-zero group count change) are correctly allowed.
+		// same-tag upgrades (net-zero tag count change) are correctly allowed.
 		int available;
 		if (! is->checking_upgrade_type_eligibility &&
 		    get_available_unit_count (&leaders[this->Body.CivID], unit_type_id, &available) &&
@@ -26059,6 +26620,8 @@ patch_Sprite_draw (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int 
 int __fastcall
 patch_Sprite_draw_on_map (Sprite * this, int edx, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7)
 {
+	if (is->current_config.enable_custom_animations)
+		register_tile_animation_pcx_draw_for_current_tile (this);
 	Sprite * to_draw = get_cycle_sprite_proxy(this);
 	return Sprite_draw_on_map(to_draw ? to_draw : this, __, map_renderer, pixel_x, pixel_y, param_4, param_5, param_6, param_7);
 }
@@ -27654,6 +28217,16 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 		is->saved_tile_count = -1;
 	}
 
+	if (is->current_config.enable_custom_animations && is->tile_animation_has_pcx_rules) {
+		if (is->tile_animation_pcx_sprite_lookup.len == 0)
+			rebuild_tile_animation_pcx_sprite_lookup ();
+		if (tile_animation_cache_needs_rebuild ())
+			rebuild_tile_animation_rule_match_cache ();
+		// Per-frame refresh: clear stale PCX bits and rebuild only time-valid PCX candidates.
+		refresh_tile_animation_pcx_active_mask ();
+		clear_tile_animation_pcx_matches_in_cache ();
+	}
+
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
 }
 
@@ -28514,6 +29087,8 @@ patch_Map_impl_generate (Map * this, int edx, int seed, bool is_multiplayer_game
 
 	if (is->current_config.enable_natural_wonders)
 		place_natural_wonders_on_map ();
+	if (is->current_config.enable_custom_animations)
+		reset_tile_animation_runtime_state ();
 }
 
 int __fastcall
@@ -29125,6 +29700,22 @@ remove_unit_id_entries_owned_by (struct table * t, int owner_id)
 void __fastcall
 patch_Leader_begin_turn (Leader * this)
 {
+	is->ai_demand_target_selection_active = false;
+	if (is->current_config.limit_ai_to_one_demand_per_turn &&
+	    (this->ID > 0) &&
+	    ((*p_human_player_bits & (1 << this->ID)) == 0)) {
+		int eligible_civ_ids[31];
+		int eligible_count = 0;
+		int ai_demand_rate = clamp (0, 100, is->current_config.diplo_demand_rate_between_ai_players);
+		for (int n = 1; n < 32; n++)
+			// impl_begin_turn ticks a positive diplomacy cooldown down before it tries any demands, so a cooldown of one is eligible at
+			// this point in the wrapper.
+			if (ai_can_demand_from_with_max_cooldown (this, n, 1) && (((*p_human_player_bits & (1 << n)) != 0) || (ai_demand_rate > 0)))
+				eligible_civ_ids[eligible_count++] = n;
+		is->ai_demand_target_civ_id = (eligible_count > 0) ? eligible_civ_ids[rand_int (p_rand_object, __, eligible_count)] : -1;
+		is->ai_demand_target_selection_active = true;
+	}
+
 	if (is->aerodrome_airlift_usage.len > 0) {
 		int civ_bit = 1 << this->ID;
 		clear_memo ();
@@ -29167,6 +29758,7 @@ patch_Leader_begin_turn (Leader * this)
 				Leader_make_contact (this, __, n, false);
 
 	Leader_begin_turn (this);
+	is->ai_demand_target_selection_active = false;
 }
 
 int __fastcall
@@ -29565,6 +30157,7 @@ void * __cdecl
 patch_do_load_game (char * param_1)
 {
 	void * tr = do_load_game (param_1);
+	reset_tile_animation_runtime_state ();
 
 	if (is->current_config.restore_unit_directions_on_game_load && (p_units->Units != NULL))
 		for (int n = 0; n <= p_units->LastIndex; n++) {
@@ -29742,6 +30335,8 @@ patch_perform_interturn_in_main_loop ()
 		is->city_loc_display_perspective = -1;
 		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form); // Trigger map redraw
 	}
+	if (is->current_config.enable_custom_animations)
+		rebuild_tile_animation_rule_match_cache ();
 
 	if (is->current_config.measure_turn_times) {
 		long long ts_after;
@@ -33385,36 +33980,18 @@ patch_Unit_can_perform_upgrade_all (Unit * this, int edx, int unit_command_value
 	// so many upgrades that we exceed the limit.
 	City * city;
 	int upgrade_id, available;
-	// ToC-26: also check unit_type_to_group so group-limited upgrade types are caught
 	if (base &&
 	    (is->current_config.unit_limits.len > 0 ||
-	     is->current_config.unit_type_to_group.len > 0) &&
+	     is->current_config.unit_type_id_to_tag_ids.len > 0) &&
 	    (NULL != (city = city_at (this->Body.X, this->Body.Y))) &&
 	    (0 <= (upgrade_id = City_get_upgraded_type_id (city, __, this->Body.UnitTypeID))) &&
-	    get_available_unit_count (&leaders[this->Body.CivID], upgrade_id, &available)) {
-
-		// ToC-27: If source and target are in the same unit_limit_group (and the target has no
-		// individual limit), the upgrade is net-zero on the group count — the source unit is
-		// consumed and the target unit is produced. There is no risk of exceeding the group limit
-		// regardless of how many such upgrades are queued, so skip the penciled-in accounting
-		// entirely and allow every qualifying unit to upgrade freely.
-		if (is->current_config.unit_type_to_group.len > 0) {
-			struct unit_limit_group * from_grp, * to_grp;
-			int unused;
-			if (itable_look_up (&is->current_config.unit_type_to_group, this->Body.UnitTypeID, (int *)&from_grp) &&
-			    itable_look_up (&is->current_config.unit_type_to_group, upgrade_id, (int *)&to_grp) &&
-			    (from_grp == to_grp) &&
-			    from_grp->has_limit &&
-			    ! stable_look_up (&is->current_config.unit_limits,
-			                      p_bic_data->UnitTypes[upgrade_id].Name, &unused))
-				return true; // same-group upgrade: net-zero group count change — always permit
-		}
-
+	    get_available_unit_count_for_upgrade (&leaders[this->Body.CivID], this->Body.UnitTypeID, upgrade_id, &available)) {
 
 		// Find penciled in upgrade. Add a new one if we don't already have one.
 		struct penciled_in_upgrade * piu = NULL; {
 			for (int n = 0; n < is->penciled_in_upgrade_count; n++)
-				if (is->penciled_in_upgrades[n].unit_type_id == upgrade_id) {
+				if ((is->penciled_in_upgrades[n].source_unit_type_id == this->Body.UnitTypeID) &&
+				    (is->penciled_in_upgrades[n].unit_type_id == upgrade_id)) {
 					piu = &is->penciled_in_upgrades[n];
 					break;
 				}
@@ -33422,6 +33999,7 @@ patch_Unit_can_perform_upgrade_all (Unit * this, int edx, int unit_command_value
 				reserve (sizeof is->penciled_in_upgrades[0], (void **)&is->penciled_in_upgrades, &is->penciled_in_upgrade_capacity, is->penciled_in_upgrade_count);
 				piu = &is->penciled_in_upgrades[is->penciled_in_upgrade_count];
 				is->penciled_in_upgrade_count += 1;
+				piu->source_unit_type_id = this->Body.UnitTypeID;
 				piu->unit_type_id = upgrade_id;
 				piu->count = 0;
 			}
@@ -33429,7 +34007,7 @@ patch_Unit_can_perform_upgrade_all (Unit * this, int edx, int unit_command_value
 
 		// If we can have more units of the type we're upgrading to, pencil in another upgrade and return true. Otherwise return false so this
 		// unit isn't considered one of the upgradable ones.
-		if (piu->count < available) {
+		if (can_pencil_in_upgrade (&leaders[this->Body.CivID], this->Body.UnitTypeID, upgrade_id)) {
 			piu->count += 1;
 			return true;
 		} else
@@ -33438,8 +34016,6 @@ patch_Unit_can_perform_upgrade_all (Unit * this, int edx, int unit_command_value
 	} else
 		return base;
 }
-
-		// END ToC-26 and ToC-27
 
 void __fastcall
 patch_Fighter_animate_start_of_combat (Fighter * this, int edx, Unit * attacker, Unit * defender)
@@ -33956,6 +34532,8 @@ patch_Map_place_scenario_things (Map * this)
 		if (! any_natural_wonders)
 			place_natural_wonders_on_map ();
 	}
+	if (is->current_config.enable_custom_animations)
+		rebuild_tile_animation_rule_match_cache ();
 	is->is_placing_scenario_things = false;
 }
 
@@ -34559,6 +35137,8 @@ int __cdecl
 patch_move_game_data (byte * buffer, bool save_else_load)
 {
 	int tr = move_game_data (buffer, save_else_load);
+	if (! save_else_load && is->current_config.enable_custom_animations)
+		reset_tile_animation_runtime_state ();
 
 	if (! save_else_load) {
 		// Free all district_instance structs first
@@ -37088,10 +37668,10 @@ patch_City_can_build_upgrade_type (City * this, int edx, int unit_type_id, bool 
 		exclude_upgradable = false;
 
 	// ToC-27: Set the upgrade-eligibility flag so patch_City_can_build_unit skips its unit-type
-	// limit check. Without this, group-limited types at their limit would cause Unit_can_upgrade
-	// to return false (base = false in patch_Unit_can_upgrade), making the ToC-27 same-group
+	// limit check. Without this, tag-limited types at their limit would cause Unit_can_upgrade
+	// to return false (base = false in patch_Unit_can_upgrade), making the same-tag
 	// bypass unreachable. With the flag, the limit is deferred to patch_Unit_can_upgrade, which
-	// has the source unit's type and can correctly allow same-group upgrades.
+	// has the source unit's type and can correctly allow same-tag upgrades.
 	is->checking_upgrade_type_eligibility = true;
 	bool result = patch_City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
 	is->checking_upgrade_type_eligibility = false;
@@ -38483,6 +39063,24 @@ void
 draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, struct district_instance * inst, 
 	int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int visible_to_civ_id)
 {
+	int draw_tile_x = tile_x;
+	int draw_tile_y = tile_y;
+	if (is->tile_info_open) {
+		draw_tile_x = is->viewing_tile_info_x;
+		draw_tile_y = is->viewing_tile_info_y;
+	}
+
+	int anim_civ_id = visible_to_civ_id;
+	if ((anim_civ_id < 0) || (anim_civ_id >= 32))
+		anim_civ_id = p_main_screen_form->Player_CivID;
+
+	bool tile_visible_for_animation = false;
+	if (is->current_config.enable_custom_animations &&
+	    (! is->tile_info_open) &&
+	    ((*p_debug_mode_bits & 0xC) == 0) &&
+	    (anim_civ_id >= 0) && (anim_civ_id < 32))
+		tile_visible_for_animation = patch_Leader_is_tile_visible (&leaders[anim_civ_id], __, draw_tile_x, draw_tile_y);
+
 	int base_resource = get_visible_non_subsumed_tile_resource (tile, inst, visible_to_civ_id);
 	int district_resource = -1;
 
@@ -38504,6 +39102,8 @@ draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, stru
 	if (district_resource < 0) {
 		if (base_resource >= 0)
 			Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		else
+			clear_active_custom_resource_animation (tile);
 		return;
 	}
 
@@ -38530,9 +39130,46 @@ draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, stru
 		return;
 	}
 
+	int district_resource_effect_id = -1;
+	bool suppress_district_resource_static =
+		tile_visible_for_animation &&
+		tile_has_matching_resource_animation_for_draw_with_resource (tile, draw_tile_x, draw_tile_y,
+		                                                             district_resource, &district_resource_effect_id);
+
 	if (base_resource >= 0) {
 		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, left_x, pixel_y);
 	}
+
+	if (suppress_district_resource_static) {
+		if (district_resource_effect_id >= 0)
+			clear_active_custom_tile_animation_if_different (tile, district_resource_effect_id);
+		if ((district_resource_effect_id >= 0) && (tile->Body.active_tile_effect == NULL)) {
+			struct tile_animation_config * cfg = get_tile_animation_for_effect (district_resource_effect_id);
+			bool restore_cfg = false;
+			int saved_x_offset = 0;
+			bool saved_has_x_offset = false;
+
+			// Match static split-resource placement: generated resource is shifted to the right
+			// when a native resource is also drawn on the same tile.
+			if ((cfg != NULL) && (base_resource >= 0)) {
+				restore_cfg = true;
+				saved_x_offset = cfg->x_offset;
+				saved_has_x_offset = cfg->has_x_offset;
+				cfg->x_offset = saved_x_offset + (offset >> 1);
+				cfg->has_x_offset = true;
+			}
+
+			patch_Tile_spawn_animated_effect (tile, __, district_resource_effect_id, draw_tile_x, draw_tile_y, true, DIR_SW);
+
+			if (restore_cfg) {
+				cfg->x_offset = saved_x_offset;
+				cfg->has_x_offset = saved_has_x_offset;
+			}
+		}
+		return;
+	}
+	if (base_resource < 0)
+		clear_active_custom_resource_animation (tile);
 
 	int tile_height   = tile_width >> 1;
 	int sprite_width  = sprite->Width;
@@ -38835,32 +39472,67 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 void __fastcall
 patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	if (! is->current_config.enable_districts) {
-		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
-		return;
-	}
-
 	Tile * tile = is->current_render_tile;
+	int draw_tile_x = tile_x;
+	int draw_tile_y = tile_y;
 	if (is->tile_info_open)
 		tile = tile_at (is->viewing_tile_info_x, is->viewing_tile_info_y);
+	if (is->tile_info_open) {
+		draw_tile_x = is->viewing_tile_info_x;
+		draw_tile_y = is->viewing_tile_info_y;
+	}
+
+	bool suppress_static_resource = false;
+	int resource_animation_effect_id = -1;
+	int anim_civ_id = visible_to_civ_id;
+	if ((anim_civ_id < 0) || (anim_civ_id >= 32))
+		anim_civ_id = p_main_screen_form->Player_CivID;
+	bool tile_visible_for_animation = false;
+	if (is->current_config.enable_custom_animations &&
+	    (! is->tile_info_open) &&
+	    ((*p_debug_mode_bits & 0xC) == 0) &&
+	    (tile != NULL) && (tile != p_null_tile) &&
+	    (anim_civ_id >= 0) && (anim_civ_id < 32))
+		tile_visible_for_animation = patch_Leader_is_tile_visible (&leaders[anim_civ_id], __, draw_tile_x, draw_tile_y);
+
+	if (tile_visible_for_animation) {
+		int visible_resource_id = Tile_get_resource_visible_to (tile, __, anim_civ_id);
+		suppress_static_resource = tile_has_matching_resource_animation_for_draw_with_resource (tile, draw_tile_x, draw_tile_y,
+		                                                                                         visible_resource_id, &resource_animation_effect_id);
+		if (suppress_static_resource && (resource_animation_effect_id >= 0)) {
+			clear_active_custom_tile_animation_if_different (tile, resource_animation_effect_id);
+			if (tile->Body.active_tile_effect == NULL)
+				patch_Tile_spawn_animated_effect (tile, __, resource_animation_effect_id, draw_tile_x, draw_tile_y, true, DIR_SW);
+		} else
+			clear_active_custom_resource_animation (tile);
+	}
+
 	if ((tile == NULL) || (tile == p_null_tile)) {
-		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		if (! suppress_static_resource)
+			Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
 	}
 
-	struct district_instance * inst = is->current_render_tile_district;
-	if (is->tile_info_open)
-		inst = get_district_instance (tile);
-	if (inst == NULL) {
-		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
+		struct district_instance * inst = is->current_render_tile_district;
+		if (is->tile_info_open)
+			inst = get_district_instance (tile);
+		if (inst == NULL) {
+			if (! suppress_static_resource)
+				Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+			return;
+		}
+
+		// Resources that should be drawn below district are already drawn, skip in that case
+		if (is->district_configs[inst->district_id].draw_over_resources)
+			return;
+
+		draw_district_generated_resource_on_tile (this, tile, inst, tile_x, tile_y, map_renderer, pixel_x, pixel_y, visible_to_civ_id);
 		return;
 	}
 
-	// Resources that should be drawn below district are already drawn, skip in that case
-	if (is->district_configs[inst->district_id].draw_over_resources) 
-		return;
-
-	draw_district_generated_resource_on_tile (this, tile, inst, tile_x, tile_y, map_renderer, pixel_x, pixel_y, visible_to_civ_id);
+	if (! suppress_static_resource)
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 }
 
 void __fastcall
@@ -41462,6 +42134,1734 @@ patch_Tile_check_water_for_canal_move_to_adjacent_tile_dest (Tile * this)
 	}
 
 	return this->vtable->m35_Check_Is_Water (this);
+}
+
+int
+pack_tile_animation_pcx_lookup_value (int pcx_file_id, int pcx_index)
+{
+	int file_bits = (pcx_file_id < 0) ? 0 : (pcx_file_id + 1);
+	return (file_bits << 12) | (pcx_index & 0xFFF);
+}
+
+bool
+unpack_tile_animation_pcx_lookup_value (int packed, int * out_pcx_file_id, int * out_pcx_index)
+{
+	int file_bits = (packed >> 12) & 0xFFFFF;
+	if (file_bits <= 0)
+		return false;
+	if (out_pcx_file_id != NULL)
+		*out_pcx_file_id = file_bits - 1;
+	if (out_pcx_index != NULL)
+		*out_pcx_index = packed & 0xFFF;
+	return true;
+}
+
+void
+insert_tile_animation_pcx_sprite_mapping (Sprite * sprite, int pcx_file_id, int pcx_index)
+{
+	if ((sprite == NULL) || (sprite->vtable == NULL))
+		return;
+	itable_insert (&is->tile_animation_pcx_sprite_lookup, (int)sprite, pack_tile_animation_pcx_lookup_value (pcx_file_id, pcx_index));
+}
+
+void
+insert_tile_animation_pcx_sprite_range (Sprite * sprites, int count, int pcx_file_id)
+{
+	if ((sprites == NULL) || (count <= 0))
+		return;
+	for (int i = 0; i < count; i++)
+		insert_tile_animation_pcx_sprite_mapping (&sprites[i], pcx_file_id, i);
+}
+
+void
+clear_tile_animation_pcx_sprite_lookup ()
+{
+	table_deinit (&is->tile_animation_pcx_sprite_lookup);
+}
+
+void
+clear_tile_animation_pcx_rule_lookup ()
+{
+	// Rule lookup maps packed (pcx_file_id, pcx_index) -> rule-mask row index.
+	table_deinit (&is->tile_animation_pcx_rule_key_to_index);
+	is->tile_animation_pcx_rule_key_count = 0;
+	memset (is->tile_animation_pcx_rule_masks, 0, sizeof is->tile_animation_pcx_rule_masks);
+}
+
+void
+rebuild_tile_animation_pcx_sprite_lookup ()
+{
+	// Build once-per-map_renderer pointers: Sprite* -> packed (pcx_file_id, pcx_index).
+	// This lets draw-hook registration avoid any name/index inference work.
+	clear_tile_animation_pcx_sprite_lookup ();
+
+	Map_Renderer * mr = &p_bic_data->Map.Renderer;
+	insert_tile_animation_pcx_sprite_mapping (&mr->Terrain_Buldings_Mines, TAPF_TERRAINBUILDINGS, 0);
+	insert_tile_animation_pcx_sprite_range (mr->Waterfalls_Images, 4, TAPF_WATERFALLS);
+	insert_tile_animation_pcx_sprite_range (mr->Flood_Plains_Images, 16, TAPF_FLOODPLAINS);
+	insert_tile_animation_pcx_sprite_range (mr->Delta_Rivers_Images, 16, TAPF_DELTARIVERS);
+	insert_tile_animation_pcx_sprite_range (mr->Mountain_Rivers_Images, 16, TAPF_MTNRIVERS);
+	insert_tile_animation_pcx_sprite_range (mr->Irrigation_Desert_Images, 16, TAPF_IRRIGATION_DESETT);
+	insert_tile_animation_pcx_sprite_range (mr->Irrigation_Plains_Images, 16, TAPF_IRRIGATION_PLAINS);
+	insert_tile_animation_pcx_sprite_range (mr->Irrigation_Images, 16, TAPF_IRRIGATION);
+	insert_tile_animation_pcx_sprite_range (mr->Irrigation_Tundra_Images, 16, TAPF_IRRIGATION_TUNDRA);
+	insert_tile_animation_pcx_sprite_range (mr->Volcanos_Images, 16, TAPF_VOLCANOS);
+	insert_tile_animation_pcx_sprite_range (mr->Volcanos_Forests_Images, 16, TAPF_VOLCANOS_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Volcanos_Jungles_Images, 16, TAPF_VOLCANOS_JUNGLES);
+	insert_tile_animation_pcx_sprite_range (mr->Volcanos_Snow_Images, 16, TAPF_VOLCANOS_SNOW);
+	insert_tile_animation_pcx_sprite_range (mr->Grassland_Forests_Large, 8, TAPF_GRASSLAND_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Grassland_Forests_Small, 10, TAPF_GRASSLAND_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Grassland_Forests_Pines, 12, TAPF_GRASSLAND_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Plains_Forests_Large, 8, TAPF_PLAINS_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Plains_Forests_Small, 10, TAPF_PLAINS_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Plains_Forests_Pines, 12, TAPF_PLAINS_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Tundra_Forests_Large, 8, TAPF_TUNDRA_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Tundra_Forests_Small, 10, TAPF_TUNDRA_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Tundra_Forests_Pines, 12, TAPF_TUNDRA_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->LM_Forests_Large_Images, 8, TAPF_LMFORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->LM_Forests_Small_Images, 10, TAPF_LMFORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->LM_Forests_Pines_Images, 12, TAPF_LMFORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Mountains_Images, 16, TAPF_MOUNTAINS);
+	insert_tile_animation_pcx_sprite_range (mr->Mountains_Forests_Images, 16, TAPF_MOUNTAIN_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Mountains_Jungles_Images, 16, TAPF_MOUNTAIN_JUNGLES);
+	insert_tile_animation_pcx_sprite_range (mr->Mountains_Snow_Images, 16, TAPF_MOUNTAINS_SNOW);
+	insert_tile_animation_pcx_sprite_range (mr->Hills_Images, 16, TAPF_XHILLS);
+	insert_tile_animation_pcx_sprite_range (mr->Hills_Forests_Images, 16, TAPF_HILL_FORESTS);
+	insert_tile_animation_pcx_sprite_range (mr->Hills_Jungle_Images, 16, TAPF_HILL_JUNGLE);
+	insert_tile_animation_pcx_sprite_range (mr->LM_Hills_Images, 16, TAPF_LMHILLS);
+	insert_tile_animation_pcx_sprite_range (mr->Roads_Images, 256, TAPF_ROADS);
+	insert_tile_animation_pcx_sprite_range (mr->Railroads_Images, 272, TAPF_RAILROADS);
+}
+
+bool
+read_tile_animation_pcx_file (struct string_slice const * s, int * out_id)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	int id = TILE_ANIM_PCX_FILE_UNKNOWN;
+	if (slice_matches_str (&trimmed, "deltaRivers.pcx"))            id = TAPF_DELTARIVERS;
+	else if (slice_matches_str (&trimmed, "floodplains.pcx"))       id = TAPF_FLOODPLAINS;
+	else if (slice_matches_str (&trimmed, "LMHills.pcx"))           id = TAPF_LMHILLS;
+	else if (slice_matches_str (&trimmed, "Mountains.pcx"))         id = TAPF_MOUNTAINS;
+	else if (slice_matches_str (&trimmed, "Mountains-snow.pcx"))    id = TAPF_MOUNTAINS_SNOW;
+	else if (slice_matches_str (&trimmed, "mtnRivers.pcx"))         id = TAPF_MTNRIVERS;
+	else if (slice_matches_str (&trimmed, "Volcanos.pcx"))          id = TAPF_VOLCANOS;
+	else if (slice_matches_str (&trimmed, "Volcanos-snow.pcx"))     id = TAPF_VOLCANOS_SNOW;
+	else if (slice_matches_str (&trimmed, "waterfalls.pcx"))        id = TAPF_WATERFALLS;
+	else if (slice_matches_str (&trimmed, "xhills.pcx"))            id = TAPF_XHILLS;
+
+	if (id == TILE_ANIM_PCX_FILE_UNKNOWN)
+		return false;
+	if (out_id != NULL)
+		*out_id = id;
+	return true;
+}
+
+void
+refresh_tile_animation_pcx_rule_mask ()
+{
+	// Precompute two things:
+	// 1) which animation bits are PCX-driven at all (tile_animation_pcx_word_mask),
+	// 2) key-specific bitmasks for fast per-draw assignment.
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	for (int w = 0; w < words_per_tile; w++)
+		is->tile_animation_pcx_word_mask[w] = 0;
+	for (int w = 0; w < words_per_tile; w++)
+		is->tile_animation_pcx_active_word_mask[w] = 0;
+	is->tile_animation_has_pcx_rules = false;
+	clear_tile_animation_pcx_rule_lookup ();
+
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+		if (! cfg->in_use || (cfg->type != TAT_PCX))
+			continue;
+		is->tile_animation_pcx_word_mask[i / 32] |= 1u << (i % 32);
+		is->tile_animation_has_pcx_rules = true;
+
+		int packed = pack_tile_animation_pcx_lookup_value (cfg->pcx_file_id, cfg->pcx_index);
+		int key_index = -1;
+		if (! itable_look_up (&is->tile_animation_pcx_rule_key_to_index, packed, &key_index)) {
+			if (is->tile_animation_pcx_rule_key_count >= MAX_TILE_ANIMATION_CONFIGS)
+				continue;
+			key_index = is->tile_animation_pcx_rule_key_count++;
+			itable_insert (&is->tile_animation_pcx_rule_key_to_index, packed, key_index);
+		}
+		// One row per unique (pcx_file, pcx_index), bits mark matching animation configs.
+		is->tile_animation_pcx_rule_masks[key_index][i / 32] |= 1u << (i % 32);
+	}
+
+	refresh_tile_animation_pcx_active_mask ();
+}
+
+void
+refresh_tile_animation_pcx_active_mask ()
+{
+	// Time/season gating is recomputed once per Draw_Tiles pass, then ANDed at draw time.
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	for (int w = 0; w < words_per_tile; w++)
+		is->tile_animation_pcx_active_word_mask[w] = 0;
+	if (! is->tile_animation_has_pcx_rules)
+		return;
+
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+		if (! cfg->in_use || (cfg->type != TAT_PCX))
+			continue;
+		if (! tile_animation_matches_time_filters (cfg))
+			continue;
+		is->tile_animation_pcx_active_word_mask[i / 32] |= 1u << (i % 32);
+	}
+}
+
+void
+clear_tile_animation_pcx_matches_in_cache ()
+{
+	// PCX matches are dynamic because they depend on what sprites were actually drawn this frame.
+	// Keep static terrain/resource cache bits, clear only the PCX-controlled bits.
+	if (! is->tile_animation_has_pcx_rules)
+		return;
+	if (! is->tile_animation_selected_valid || (is->tile_animation_selected_mask_matrix == NULL))
+		return;
+	if ((is->tile_animation_selected_next_index == NULL) || (is->tile_animation_selected_tile_indices == NULL))
+		return;
+	int tile_count = p_bic_data->Map.TileCount;
+	if (tile_count <= 0)
+		return;
+	if (is->tile_animation_selected_tile_count <= 0)
+		return;
+	if (tile_count > is->tile_animation_selected_tile_count)
+		tile_count = is->tile_animation_selected_tile_count;
+
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	is->tile_animation_selected_match_count = 0;
+	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
+		unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
+		for (int w = 0; w < words_per_tile; w++) {
+			unsigned int clear_mask = is->tile_animation_pcx_word_mask[w];
+			if (clear_mask != 0)
+				tile_mask[w] &= ~clear_mask;
+		}
+
+		int winner = pick_tile_animation_winner_for_tile (tile_mask);
+		if ((winner >= 0) && (winner < is->tile_animation_count)) {
+			is->tile_animation_selected_next_index[tile_index] = winner;
+			is->tile_animation_selected_tile_indices[is->tile_animation_selected_match_count++] = tile_index;
+		} else
+			is->tile_animation_selected_next_index[tile_index] = 0xFF;
+	}
+}
+
+void
+register_tile_animation_pcx_draw_for_current_tile (Sprite * sprite)
+{
+	// Called from patch_Sprite_draw_on_map while current_render_tile_* points at the tile being drawn.
+	// We mark candidate animations onto that tile's mask; spawning still happens later in scheduler_tick.
+	if (! is->tile_animation_has_pcx_rules)
+		return;
+	if (! is->tile_animation_selected_valid ||
+	    (is->tile_animation_selected_mask_matrix == NULL) ||
+	    (is->current_render_tile == NULL) ||
+	    (is->current_render_tile == p_null_tile))
+		return;
+	if ((is->current_render_tile_x < 0) || (is->current_render_tile_y < 0))
+		return;
+
+	int packed = 0;
+	if (! itable_look_up (&is->tile_animation_pcx_sprite_lookup, (int)sprite, &packed))
+		return;
+
+	int pcx_file_id = TILE_ANIM_PCX_FILE_UNKNOWN;
+	int pcx_index = -1;
+	if (! unpack_tile_animation_pcx_lookup_value (packed, &pcx_file_id, &pcx_index))
+		return;
+
+	int tile_index = tile_coords_to_index (&p_bic_data->Map, is->current_render_tile_x, is->current_render_tile_y);
+	if ((tile_index < 0) || (tile_index >= is->tile_animation_selected_tile_count))
+		return;
+
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
+	byte prev_winner = is->tile_animation_selected_next_index[tile_index];
+	int key_index = -1;
+	// Exact file+index match.
+	if (itable_look_up (&is->tile_animation_pcx_rule_key_to_index, packed, &key_index) &&
+	    (key_index >= 0) &&
+	    (key_index < is->tile_animation_pcx_rule_key_count)) {
+		for (int w = 0; w < words_per_tile; w++)
+			tile_mask[w] |= is->tile_animation_pcx_rule_masks[key_index][w] & is->tile_animation_pcx_active_word_mask[w];
+	}
+
+	if (pcx_index >= 0) {
+		// Also allow wildcard rules keyed as (same file, index = -1).
+		int wildcard_packed = pack_tile_animation_pcx_lookup_value (pcx_file_id, -1);
+		if ((wildcard_packed != packed) &&
+		    itable_look_up (&is->tile_animation_pcx_rule_key_to_index, wildcard_packed, &key_index) &&
+		    (key_index >= 0) &&
+		    (key_index < is->tile_animation_pcx_rule_key_count)) {
+			for (int w = 0; w < words_per_tile; w++)
+				tile_mask[w] |= is->tile_animation_pcx_rule_masks[key_index][w] & is->tile_animation_pcx_active_word_mask[w];
+		}
+	}
+
+	int winner = pick_tile_animation_winner_for_tile (tile_mask);
+	if ((winner >= 0) && (winner < is->tile_animation_count)) {
+		is->tile_animation_selected_next_index[tile_index] = winner;
+		if ((prev_winner == 0xFF) && (is->tile_animation_selected_tile_indices != NULL) &&
+		    (is->tile_animation_selected_match_count < is->tile_animation_selected_tile_count))
+			is->tile_animation_selected_tile_indices[is->tile_animation_selected_match_count++] = tile_index;
+	} else
+		is->tile_animation_selected_next_index[tile_index] = 0xFF;
+}
+
+bool
+read_tile_animation_terrain_types (struct string_slice const * value,
+				       unsigned int * out_mask,
+				       bool * out_include_land)
+{
+	char * text = extract_slice (value);
+	if (text == NULL)
+		return false;
+
+	unsigned int mask = 0;
+	bool include_land = false;
+	bool saw_token = false;
+	char * cursor = text;
+	while (*cursor != '\0') {
+		while ((*cursor == ' ') || (*cursor == '\t') || (*cursor == ','))
+			cursor++;
+		if (*cursor == '\0')
+			break;
+
+		char * token_start = cursor;
+		while ((*cursor != '\0') && (*cursor != ','))
+			cursor++;
+		struct string_slice token = { .str = token_start, .len = cursor - token_start };
+		token = trim_string_slice (&token, 1);
+		if (token.len > 0) {
+			saw_token = true;
+			if (slice_matches_str (&token, "land"))
+				include_land = true;
+			else {
+				enum SquareTypes terrain = SQ_INVALID;
+				if (! read_tile_terrain_type_value (&token, &terrain)) {
+					free (text);
+					return false;
+				}
+				if (terrain == SQ_INVALID) {
+					mask |= all_square_types_mask ();
+					include_land = true;
+				} else {
+					unsigned int bit = square_type_mask_bit (terrain);
+					if (bit == 0) {
+						free (text);
+						return false;
+					}
+					mask |= bit;
+				}
+			}
+		}
+
+		if (*cursor == ',')
+			cursor++;
+	}
+
+	free (text);
+	if (! saw_token)
+		return false;
+	if (out_mask != NULL)
+		*out_mask = mask;
+	if (out_include_land != NULL)
+		*out_include_land = include_land;
+	return true;
+}
+
+bool
+tile_matches_terrain_types (Tile * tile, unsigned int terrain_types_mask, bool include_land)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	if (include_land && ! tile->vtable->m35_Check_Is_Water (tile))
+		return true;
+	return tile_matches_square_type_mask (tile, terrain_types_mask);
+}
+
+bool
+get_tile_animation_coastal_wave_direction (int tile_x, int tile_y, enum direction * out_dir)
+{
+	bool nw_is_land = ! tile_is_water (tile_x - 1, tile_y - 1);
+	bool ne_is_land = ! tile_is_water (tile_x + 1, tile_y - 1);
+	bool se_is_land = ! tile_is_water (tile_x + 1, tile_y + 1);
+	bool sw_is_land = ! tile_is_water (tile_x - 1, tile_y + 1);
+
+	if (nw_is_land && ! se_is_land && ! ne_is_land && ! sw_is_land) {
+		*out_dir = DIR_NW;
+		return true;
+	}
+	if (ne_is_land && ! sw_is_land && ! se_is_land && !nw_is_land) {
+		*out_dir = DIR_NE;
+		return true;
+	}
+	if (sw_is_land && ! ne_is_land && ! se_is_land && ! nw_is_land) {
+		*out_dir = DIR_SW;
+		return true;
+	}
+	if (se_is_land && ! nw_is_land && ! ne_is_land && ! sw_is_land) {
+		*out_dir = DIR_SE;
+		return true;
+	}
+	return false;
+}
+
+bool
+tile_animation_adjacent_requirement_matches (struct tile_animation_adjacent_requirement const * req,
+						     int tile_x,
+						     int tile_y)
+{
+	if (req == NULL)
+		return false;
+
+	int diffs[8][2] = {
+		{ 1, -1}, { 2,  0}, { 1,  1}, { 0,  2},
+		{-1,  1}, {-2,  0}, {-1, -1}, { 0, -2}
+	};
+
+	int begin = 0, end = 8;
+	if (req->has_direction) {
+		begin = req->direction - DIR_NE;
+		end = begin + 1;
+	}
+
+	for (int i = begin; i < end; i++) {
+		int nx = tile_x + diffs[i][0];
+		int ny = tile_y + diffs[i][1];
+		wrap_tile_coords (&p_bic_data->Map, &nx, &ny);
+		Tile * n = tile_at (nx, ny);
+		if ((n == NULL) || (n == p_null_tile))
+			continue;
+
+		bool matches = req->is_land ? ! n->vtable->m35_Check_Is_Water (n) : tile_matches_square_type (n, req->square_type);
+		if (matches)
+			return true;
+	}
+
+	return false;
+}
+
+int
+get_tile_animation_hour_for_match ()
+{
+	if (is->current_config.day_night_cycle_mode != DNCM_OFF)
+		return clamp (0, 23, is->current_day_night_cycle);
+	return 12;
+}
+
+int
+get_tile_animation_season_for_match ()
+{
+	if (is->current_config.seasonal_cycle_mode != SCM_OFF)
+		return clamp (CS_SUMMER, CS_SPRING, is->current_seasonal_cycle);
+	return CS_SUMMER;
+}
+
+bool
+tile_animation_matches_time_filters (struct tile_animation_config const * cfg)
+{
+	if (cfg == NULL)
+		return false;
+
+	int hour = get_tile_animation_hour_for_match ();
+	int season = get_tile_animation_season_for_match ();
+	if ((cfg->day_night_hour_mask != 0) && ((cfg->day_night_hour_mask & (1u << hour)) == 0))
+		return false;
+	if ((cfg->season_mask != 0) && ((cfg->season_mask & (1u << season)) == 0))
+		return false;
+	return true;
+}
+
+bool
+tile_animation_rule_matches_tile_base (struct tile_animation_config const * cfg, Tile * tile, int tile_x, int tile_y)
+{
+	if ((cfg == NULL) || (! cfg->in_use) || (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (Tile_has_city (tile))
+		return false;
+
+	if (cfg->type == TAT_RESOURCE) {
+		// Resource visibility is civ/tech-specific. Resource animations are matched from
+		// the resource draw hook, where Tile_get_resource_visible_to is available.
+		return false;
+	} else if (cfg->type == TAT_NATURAL_WONDER) {
+		struct district_instance * inst = get_district_instance (tile);
+		if ((inst == NULL) || (inst->district_id != NATURAL_WONDER_DISTRICT_ID))
+			return false;
+		if ((cfg->natural_wonder_id >= 0) &&
+		    (inst->natural_wonder_info.natural_wonder_id != cfg->natural_wonder_id))
+			return false;
+	} else if (cfg->type == TAT_TERRAIN) {
+		if (! tile_matches_terrain_types (tile, cfg->terrain_types_mask, cfg->terrain_types_include_land))
+			return false;
+	} else if (cfg->type == TAT_COASTAL_WAVE) {
+		if (get_district_instance (tile) != NULL)
+			return false;
+		if (! tile_matches_square_type (tile, SQ_Coast))
+			return false;
+	} else {
+		// PCX-based animations are discovered from actual draw calls in patch_Sprite_draw_on_map.
+		return false;
+	}
+
+	if (cfg->adjacent_to_count > 0) {
+		bool matched = false;
+		for (int i = 0; i < cfg->adjacent_to_count; i++)
+			if (tile_animation_adjacent_requirement_matches (&cfg->adjacent_to[i], tile_x, tile_y)) {
+				matched = true;
+				break;
+			}
+		if (! matched)
+			return false;
+	}
+
+	if (cfg->type == TAT_COASTAL_WAVE) {
+		enum direction dir = DIR_ZERO;
+		if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &dir))
+			return false;
+	}
+
+	return true;
+}
+
+void
+free_tile_animation_selected_matrix ()
+{
+	if (is->tile_animation_selected_mask_matrix != NULL)
+		free (is->tile_animation_selected_mask_matrix);
+	if (is->tile_animation_selected_next_index != NULL)
+		free (is->tile_animation_selected_next_index);
+	if (is->tile_animation_selected_tile_indices != NULL)
+		free (is->tile_animation_selected_tile_indices);
+	is->tile_animation_selected_mask_matrix = NULL;
+	is->tile_animation_selected_next_index = NULL;
+	is->tile_animation_selected_tile_indices = NULL;
+	is->tile_animation_selected_match_count = 0;
+	is->tile_animation_selected_tile_count = 0;
+	is->tile_animation_selected_animation_count = 0;
+	is->tile_animation_selected_hour = -1;
+	is->tile_animation_selected_season = -1;
+	is->tile_animation_selected_valid = false;
+}
+
+void
+clear_stale_custom_tile_animation_effects ()
+{
+	if (! is->tile_animation_selected_valid || (is->tile_animation_selected_next_index == NULL))
+		return;
+
+	Map * map = &p_bic_data->Map;
+	int tile_count = map->TileCount;
+	if (tile_count != is->tile_animation_selected_tile_count)
+		return;
+
+	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
+		int tile_x, tile_y;
+		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile == NULL) || (tile == p_null_tile) || (tile->Body.active_tile_effect == NULL))
+			continue;
+
+		int effect_id = tile->Body.active_tile_effect->V[2];
+		if (! is_custom_tile_animation_effect (effect_id))
+			continue;
+
+		struct tile_animation_config * cfg = get_tile_animation_for_effect (effect_id);
+		if ((cfg != NULL) && (cfg->type == TAT_RESOURCE) && (! Tile_has_city (tile)) && (get_district_instance (tile) == NULL))
+			continue;
+
+		int animation_index = effect_id - is->tile_animation_effect_base;
+		if (is->tile_animation_selected_next_index[tile_index] != animation_index)
+			Tile_clear_animated_effect (tile);
+	}
+}
+
+void
+rebuild_tile_animation_rule_match_cache ()
+{
+	if (is->saved_tile_count >= 0)
+		return;
+
+	Map * map = &p_bic_data->Map;
+	int tile_count = map->TileCount;
+	if ((tile_count <= 0) || (is->tile_animation_count <= 0)) {
+		free_tile_animation_selected_matrix ();
+		return;
+	}
+
+	int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+	free_tile_animation_selected_matrix ();
+	is->tile_animation_selected_mask_matrix = calloc (tile_count * words_per_tile, sizeof *is->tile_animation_selected_mask_matrix);
+	is->tile_animation_selected_next_index = malloc (tile_count * sizeof *is->tile_animation_selected_next_index);
+	is->tile_animation_selected_tile_indices = malloc (tile_count * sizeof *is->tile_animation_selected_tile_indices);
+	if ((is->tile_animation_selected_mask_matrix == NULL) ||
+	    (is->tile_animation_selected_next_index == NULL) ||
+	    (is->tile_animation_selected_tile_indices == NULL)) {
+		free_tile_animation_selected_matrix ();
+		return;
+	}
+	memset (is->tile_animation_selected_next_index, 0xFF, tile_count * sizeof *is->tile_animation_selected_next_index);
+	is->tile_animation_selected_match_count = 0;
+
+	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
+		int tile_x, tile_y;
+		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+		unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
+
+		for (int i = 0; i < is->tile_animation_count; i++) {
+			struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+			if (! cfg->in_use)
+				continue;
+
+				bool matches = tile_animation_matches_time_filters (cfg)
+					&& tile_animation_rule_matches_tile_base (cfg, tile, tile_x, tile_y);
+				if (! matches)
+					continue;
+
+					tile_mask[i / 32] |= 1u << (i % 32);
+				}
+
+		int winner = pick_tile_animation_winner_for_tile (tile_mask);
+		if ((winner >= 0) && (winner < is->tile_animation_count)) {
+			is->tile_animation_selected_next_index[tile_index] = winner;
+			is->tile_animation_selected_tile_indices[is->tile_animation_selected_match_count++] = tile_index;
+		}
+	}
+
+	is->tile_animation_selected_tile_count = tile_count;
+	is->tile_animation_selected_animation_count = is->tile_animation_count;
+	is->tile_animation_selected_hour = get_tile_animation_hour_for_match ();
+	is->tile_animation_selected_season = get_tile_animation_season_for_match ();
+	is->tile_animation_selected_valid = true;
+	clear_stale_custom_tile_animation_effects ();
+}
+
+bool
+tile_animation_cache_needs_rebuild ()
+{
+	if (! is->tile_animation_selected_valid)
+		return true;
+	if (is->tile_animation_selected_mask_matrix == NULL)
+		return true;
+	if (is->tile_animation_selected_next_index == NULL)
+		return true;
+	if (is->tile_animation_selected_tile_indices == NULL)
+		return true;
+	if (is->tile_animation_count <= 0)
+		return true;
+	int real_tile_count = (is->saved_tile_count >= 0) ? is->saved_tile_count : p_bic_data->Map.TileCount;
+	if (is->tile_animation_selected_tile_count != real_tile_count)
+		return true;
+	if (is->tile_animation_selected_animation_count != is->tile_animation_count)
+		return true;
+	if (is->tile_animation_selected_hour != get_tile_animation_hour_for_match ())
+		return true;
+	if (is->tile_animation_selected_season != get_tile_animation_season_for_match ())
+		return true;
+	return false;
+}
+
+bool
+tile_animation_rule_matches_tile (struct tile_animation_config const * cfg, Tile * tile, int tile_x, int tile_y, bool for_draw)
+{
+	if ((cfg == NULL) || (! cfg->in_use) || (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (! for_draw)
+		return tile_animation_matches_time_filters (cfg) &&
+			tile_animation_rule_matches_tile_base (cfg, tile, tile_x, tile_y);
+
+	if (cfg->type == TAT_COASTAL_WAVE) {
+		enum direction dir = DIR_ZERO;
+		if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &dir))
+			return false;
+	}
+
+	if (is->tile_animation_selected_valid &&
+	    (is->tile_animation_selected_mask_matrix != NULL) &&
+	    (tile_x >= 0) && (tile_y >= 0) &&
+	    (tile_x < p_bic_data->Map.Width) &&
+	    (tile_y < p_bic_data->Map.Height)) {
+		int tile_index = tile_coords_to_index (&p_bic_data->Map, tile_x, tile_y);
+		int animation_index = cfg - &is->tile_animation_configs[0];
+			if ((tile_index >= 0) &&
+			    (tile_index < is->tile_animation_selected_tile_count) &&
+			    (animation_index >= 0) &&
+			    (animation_index < is->tile_animation_count)) {
+				int words_per_tile = (MAX_TILE_ANIMATION_CONFIGS + 31) / 32;
+				unsigned int * tile_mask = is->tile_animation_selected_mask_matrix + tile_index * words_per_tile;
+				bool selected = (tile_mask[animation_index / 32] & (1u << (animation_index % 32))) != 0;
+				return selected;
+			}
+	}
+
+	return tile_animation_matches_time_filters (cfg) &&
+		tile_animation_rule_matches_tile_base (cfg, tile, tile_x, tile_y);
+}
+
+bool
+tile_has_matching_custom_animation_for_draw (Tile * tile, int tile_x, int tile_y)
+{
+	if (! is->current_config.enable_custom_animations)
+		return false;
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (tile_has_matching_resource_animation_for_draw (tile, tile_x, tile_y))
+		return true;
+
+	if (tile_animation_cache_needs_rebuild ())
+		rebuild_tile_animation_rule_match_cache ();
+
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+		if ((cfg == NULL) || (! cfg->in_use) || (cfg->type == TAT_RESOURCE))
+			continue;
+		if (tile_animation_rule_matches_tile (cfg, tile, tile_x, tile_y, true))
+			return true;
+	}
+
+	return false;
+}
+
+bool
+tile_has_matching_resource_animation_for_draw (Tile * tile, int tile_x, int tile_y)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	int resource_id = tile->vtable->m39_Get_Resource_Type (tile);
+	return tile_has_matching_resource_animation_for_draw_with_resource (tile, tile_x, tile_y, resource_id, NULL);
+}
+
+bool
+tile_has_matching_resource_animation_for_draw_with_resource (Tile * tile, int tile_x, int tile_y, int resource_id, int * out_effect_id)
+{
+	if (out_effect_id != NULL)
+		*out_effect_id = -1;
+
+	if (! is->current_config.enable_custom_animations)
+		return false;
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	if ((resource_id < 0) || (resource_id >= p_bic_data->ResourceTypeCount))
+		return false;
+	if (Tile_has_city (tile) || (get_district_instance (tile) != NULL)) {
+		if (tile->Body.active_tile_effect != NULL) {
+			struct tile_animation_config * cfg = get_tile_animation_for_effect (tile->Body.active_tile_effect->V[2]);
+			if ((cfg != NULL) && (cfg->type == TAT_RESOURCE))
+				Tile_clear_animated_effect (tile);
+		}
+		return false;
+	}
+
+	int matched_animation_index = -1;
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+		if ((cfg == NULL) || (! cfg->in_use))
+			continue;
+		if ((cfg->type != TAT_RESOURCE) || (cfg->resource_id != resource_id))
+			continue;
+		if (! tile_animation_matches_time_filters (cfg))
+			continue;
+
+		bool adjacent_ok = true;
+		if (cfg->adjacent_to_count > 0) {
+			adjacent_ok = false;
+			for (int k = 0; k < cfg->adjacent_to_count; k++)
+				if (tile_animation_adjacent_requirement_matches (&cfg->adjacent_to[k], tile_x, tile_y)) {
+					adjacent_ok = true;
+					break;
+				}
+		}
+		if (! adjacent_ok)
+			continue;
+
+		if (matched_animation_index < i)
+			matched_animation_index = i;
+	}
+
+	if (matched_animation_index < 0)
+		return false;
+	if (out_effect_id != NULL)
+		*out_effect_id = is->tile_animation_configs[matched_animation_index].effect_id;
+	return true;
+}
+
+void
+reset_tile_animation_runtime_state ()
+{
+	free_tile_animation_selected_matrix ();
+	clear_tile_animation_pcx_sprite_lookup ();
+	refresh_tile_animation_pcx_rule_mask ();
+	is->tile_animation_spawn_effect_override = 0;
+	is->tile_animation_spawn_effect_override_active = false;
+}
+
+void
+clear_tile_animation_configs ()
+{
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		struct tile_animation_config * cfg = &is->tile_animation_configs[i];
+		if (cfg->name != NULL)
+			free ((void *)cfg->name);
+		if (cfg->ini_path != NULL)
+			free ((void *)cfg->ini_path);
+		memset (cfg, 0, sizeof *cfg);
+	}
+	is->tile_animation_count = 0;
+	reset_tile_animation_runtime_state ();
+}
+
+void
+init_parsed_tile_animation_definition (struct parsed_tile_animation_definition * def)
+{
+	memset (def, 0, sizeof *def);
+	def->type = TAT_TERRAIN;
+	def->terrain_types_mask = square_type_mask_bit (SQ_Grassland);
+	def->natural_wonder_id = -1;
+	def->pcx_file_id = TILE_ANIM_PCX_FILE_UNKNOWN;
+	def->pcx_index = -1;
+}
+
+void
+free_parsed_tile_animation_definition (struct parsed_tile_animation_definition * def)
+{
+	if (def->name != NULL)
+		free (def->name);
+	if (def->ini_path != NULL)
+		free (def->ini_path);
+	if (def->resource_type != NULL)
+		free (def->resource_type);
+	if (def->pcx_file != NULL)
+		free (def->pcx_file);
+	init_parsed_tile_animation_definition (def);
+}
+
+bool
+parse_tile_animation_hour_list (struct string_slice const * value, unsigned int * out_mask)
+{
+	char * text = extract_slice (value);
+	if (text == NULL)
+		return false;
+
+	unsigned int mask = 0;
+	char * cursor = text;
+	while (*cursor != '\0') {
+		while ((*cursor == ' ') || (*cursor == '\t') || (*cursor == ','))
+			cursor++;
+		if (*cursor == '\0')
+			break;
+
+		if ((*cursor < '0') || (*cursor > '9')) {
+			free (text);
+			return false;
+		}
+		int start_hour = 0;
+		while ((*cursor >= '0') && (*cursor <= '9')) {
+			start_hour = start_hour * 10 + (*cursor - '0');
+			cursor++;
+		}
+		if ((start_hour < 0) || (start_hour > 23)) {
+			free (text);
+			return false;
+		}
+
+		int end_hour = start_hour;
+		bool has_range = false;
+		while ((*cursor == ' ') || (*cursor == '\t'))
+			cursor++;
+		if (*cursor == '-') {
+			has_range = true;
+			cursor++;
+			while ((*cursor == ' ') || (*cursor == '\t'))
+				cursor++;
+			if ((*cursor < '0') || (*cursor > '9')) {
+				free (text);
+				return false;
+			}
+			end_hour = 0;
+			while ((*cursor >= '0') && (*cursor <= '9')) {
+				end_hour = end_hour * 10 + (*cursor - '0');
+				cursor++;
+			}
+			if ((end_hour < 0) || (end_hour > 23)) {
+				free (text);
+				return false;
+			}
+		}
+		if (! has_range || (end_hour >= start_hour)) {
+			for (int hour = start_hour; hour <= end_hour; hour++)
+				mask |= (1u << hour);
+		} else {
+			// Wraparound range, e.g. 18-5 => 18..23 plus 0..5.
+			for (int hour = start_hour; hour <= 23; hour++)
+				mask |= (1u << hour);
+			for (int hour = 0; hour <= end_hour; hour++)
+				mask |= (1u << hour);
+		}
+
+		while ((*cursor == ' ') || (*cursor == '\t'))
+			cursor++;
+		if (*cursor == ',')
+			cursor++;
+		else if (*cursor != '\0') {
+			free (text);
+			return false;
+		}
+	}
+
+	free (text);
+	*out_mask = mask;
+	return true;
+}
+
+bool
+parse_tile_animation_season_list (struct string_slice const * value, unsigned int * out_mask)
+{
+	char * text = extract_slice (value);
+	if (text == NULL)
+		return false;
+
+	unsigned int mask = 0;
+	char * cursor = text;
+	while (*cursor != '\0') {
+		while ((*cursor == ' ') || (*cursor == '\t') || (*cursor == ','))
+			cursor++;
+		if (*cursor == '\0')
+			break;
+
+		char * start = cursor;
+		while ((*cursor != '\0') && (*cursor != ','))
+			cursor++;
+		struct string_slice token = { .str = start, .len = cursor - start };
+		token = trim_string_slice (&token, 1);
+
+		int season;
+		if (read_cycle_season_value (&token, &season))
+			mask |= 1u << season;
+		else {
+			free (text);
+			return false;
+		}
+
+		if (*cursor == ',')
+			cursor++;
+	}
+
+	free (text);
+	*out_mask = mask;
+	return true;
+}
+
+bool
+parse_tile_animation_adjacent_to (struct string_slice const * value,
+				  struct tile_animation_adjacent_requirement * out_reqs,
+				  int * out_count)
+{
+	char * text = extract_slice (value);
+	if (text == NULL)
+		return false;
+
+	int count = 0;
+	char * cursor = text;
+	while (*cursor != '\0') {
+		while ((*cursor == ' ') || (*cursor == '\t') || (*cursor == ','))
+			cursor++;
+		if (*cursor == '\0')
+			break;
+
+		char * token_start = cursor;
+		while ((*cursor != '\0') && (*cursor != ','))
+			cursor++;
+		struct string_slice token = { .str = token_start, .len = cursor - token_start };
+		token = trim_string_slice (&token, 1);
+		if (token.len <= 0) {
+			if (*cursor == ',')
+				cursor++;
+			continue;
+		}
+
+		char * colon = NULL;
+		for (int i = 0; i < token.len; i++)
+			if (token.str[i] == ':') {
+				colon = token.str + i;
+				break;
+			}
+
+		struct string_slice terrain_token = token;
+		struct string_slice dir_token = {0};
+		if (colon != NULL) {
+			terrain_token.len = colon - terrain_token.str;
+			dir_token.str = colon + 1;
+			dir_token.len = token.len - (terrain_token.len + 1);
+			dir_token = trim_string_slice (&dir_token, 1);
+		}
+		terrain_token = trim_string_slice (&terrain_token, 1);
+
+		if ((count < MAX_TILE_ANIMATION_ADJACENCY) && (terrain_token.len > 0)) {
+			struct tile_animation_adjacent_requirement * req = &out_reqs[count];
+			memset (req, 0, sizeof *req);
+
+			if (slice_matches_str (&terrain_token, "land")) {
+				req->is_land = true;
+				req->square_type = SQ_Grassland;
+			} else if (! read_tile_terrain_type_value (&terrain_token, &req->square_type)) {
+				free (text);
+				return false;
+			}
+
+			if (dir_token.len > 0) {
+				if (! read_direction_value (&dir_token, &req->direction)) {
+					free (text);
+					return false;
+				}
+				req->has_direction = true;
+			}
+			count++;
+		}
+
+		if (*cursor == ',')
+			cursor++;
+	}
+
+	free (text);
+	*out_count = count;
+	return true;
+}
+
+int
+find_tile_animation_index_by_name (char const * name)
+{
+	if ((name == NULL) || (name[0] == '\0'))
+		return -1;
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		char const * existing = is->tile_animation_configs[i].name;
+		if ((existing != NULL) && (strcmp (existing, name) == 0))
+			return i;
+	}
+	return -1;
+}
+
+bool
+add_tile_animation_from_definition (struct parsed_tile_animation_definition * def)
+{
+	if ((def == NULL) || (! def->has_name) || (def->name == NULL))
+		return false;
+
+	int existing = find_tile_animation_index_by_name (def->name);
+	int dest = (existing >= 0) ? existing : is->tile_animation_count;
+	if ((dest < 0) || (dest >= MAX_TILE_ANIMATION_CONFIGS))
+		return false;
+
+	struct tile_animation_config cfg;
+	memset (&cfg, 0, sizeof cfg);
+	cfg.name = strdup (def->name);
+	cfg.ini_path = strdup (def->ini_path);
+	cfg.type = def->type;
+	cfg.terrain_types_mask = def->terrain_types_mask;
+	cfg.terrain_types_include_land = def->terrain_types_include_land;
+	cfg.natural_wonder_id = def->natural_wonder_id;
+	cfg.pcx_file_id = def->pcx_file_id;
+	cfg.pcx_index = def->pcx_index;
+	cfg.direction = def->direction;
+	cfg.x_offset = def->x_offset;
+	cfg.y_offset = def->y_offset;
+	cfg.frame_time_seconds = def->frame_time_seconds;
+	cfg.has_direction = def->has_direction;
+	cfg.has_x_offset = def->has_x_offset;
+	cfg.has_y_offset = def->has_y_offset;
+	cfg.has_frame_time_seconds = def->has_frame_time_seconds;
+	cfg.day_night_hour_mask = def->day_night_hour_mask;
+	cfg.season_mask = def->season_mask;
+	cfg.adjacent_to_count = def->adjacent_to_count;
+	for (int i = 0; i < def->adjacent_to_count; i++)
+		cfg.adjacent_to[i] = def->adjacent_to[i];
+	cfg.resource_id = -1;
+	if (cfg.type == TAT_RESOURCE) {
+		struct string_slice resource_name = {.str = def->resource_type, .len = strlen (def->resource_type)};
+		if (! find_resource_id_by_name (&resource_name, &cfg.resource_id)) {
+			free ((void *)cfg.name);
+			free ((void *)cfg.ini_path);
+			return false;
+		}
+	} else if (cfg.type == TAT_PCX) {
+		if ((cfg.pcx_file_id < 0) || (cfg.pcx_index < 0)) {
+			free ((void *)cfg.name);
+			free ((void *)cfg.ini_path);
+			return false;
+		}
+	} else if (cfg.type == TAT_COASTAL_WAVE) {
+		// No extra required fields.
+	}
+
+	cfg.effect_id = is->tile_animation_effect_base + dest;
+	cfg.in_use = true;
+
+	if (existing >= 0) {
+		struct tile_animation_config * old = &is->tile_animation_configs[existing];
+		if (old->name != NULL)
+			free ((void *)old->name);
+		if (old->ini_path != NULL)
+			free ((void *)old->ini_path);
+		*old = cfg;
+	} else {
+		is->tile_animation_configs[dest] = cfg;
+		is->tile_animation_count = dest + 1;
+	}
+	refresh_tile_animation_pcx_rule_mask ();
+	return true;
+}
+
+void
+finalize_parsed_tile_animation_definition (struct parsed_tile_animation_definition * def,
+					   int section_start_line,
+					   struct error_line ** parse_errors)
+{
+	bool ok = true;
+	if (! def->has_name) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: name (value is required)", section_start_line);
+	}
+	if (! def->has_ini_path) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: ini_path (value is required)", section_start_line);
+	}
+	if (! def->has_type) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: type (value is required)", section_start_line);
+	}
+	if (def->type == TAT_RESOURCE && ! def->has_resource_type) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: resource_type (value is required for type=resource)", section_start_line);
+	}
+	if (def->type == TAT_PCX && ! def->has_pcx_file) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: pcx_file (value is required for type=pcx)", section_start_line);
+	}
+	if (def->type == TAT_PCX && ! def->has_pcx_index) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: pcx_index (value is required for type=pcx)", section_start_line);
+	}
+	if (def->type == TAT_TERRAIN && ! def->has_terrain_types) {
+		ok = false;
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: terrain_types (value is required for type=terrain)", section_start_line);
+	}
+	if (ok && ! add_tile_animation_from_definition (def)) {
+		struct error_line * e = add_error_line (parse_errors);
+		snprintf (e->text, sizeof e->text, "^  Line %d: failed to add animation entry", section_start_line);
+	}
+	free_parsed_tile_animation_definition (def);
+}
+
+void
+handle_tile_animation_definition_key (struct parsed_tile_animation_definition * def,
+				      struct string_slice const * key,
+				      struct string_slice const * value,
+				      int line_number,
+				      struct error_line ** parse_errors,
+				      struct error_line ** unrecognized_keys)
+{
+	if (slice_matches_str (key, "name")) {
+		if (def->name != NULL) free (def->name);
+		struct string_slice v = trim_string_slice (value, 1);
+		if (v.len <= 0) {
+			def->has_name = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
+		} else {
+			def->name = extract_slice (&v);
+			def->has_name = def->name != NULL;
+		}
+	} else if (slice_matches_str (key, "ini_path")) {
+		if (def->ini_path != NULL) free (def->ini_path);
+		struct string_slice v = trim_string_slice (value, 1);
+		if (v.len <= 0) {
+			def->has_ini_path = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
+		} else {
+			def->ini_path = extract_slice (&v);
+			def->has_ini_path = def->ini_path != NULL;
+		}
+	} else if (slice_matches_str (key, "type")) {
+		struct string_slice v = trim_string_slice (value, 1);
+		if (slice_matches_str (&v, "terrain")) {
+			def->type = TAT_TERRAIN;
+			def->has_type = true;
+		} else if (slice_matches_str (&v, "resource")) {
+			def->type = TAT_RESOURCE;
+			def->has_type = true;
+		} else if (slice_matches_str (&v, "pcx")) {
+			def->type = TAT_PCX;
+			def->has_type = true;
+		} else if (slice_matches_str (&v, "coastal-wave")) {
+			def->type = TAT_COASTAL_WAVE;
+			def->has_type = true;
+		} else {
+			def->has_type = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected \"terrain\", \"resource\", \"pcx\", or \"coastal-wave\")");
+		}
+	} else if (slice_matches_str (key, "resource_type")) {
+		if (def->resource_type != NULL) free (def->resource_type);
+		struct string_slice v = trim_string_slice (value, 1);
+		def->resource_type = extract_slice (&v);
+		def->has_resource_type = (def->resource_type != NULL) && (def->resource_type[0] != '\0');
+	} else if (slice_matches_str (key, "pcx_file")) {
+		if (def->pcx_file != NULL) free (def->pcx_file);
+		def->pcx_file = NULL;
+		def->pcx_file_id = TILE_ANIM_PCX_FILE_UNKNOWN;
+		if (read_tile_animation_pcx_file (value, &def->pcx_file_id)) {
+			struct string_slice v = trim_string_slice (value, 1);
+			def->pcx_file = extract_slice (&v);
+			def->has_pcx_file = true;
+		} else {
+			def->has_pcx_file = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(unsupported pcx_file)");
+		}
+	} else if (slice_matches_str (key, "pcx_index")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival) && (ival >= 0) && (ival <= 4095)) {
+			def->pcx_index = ival;
+			def->has_pcx_index = true;
+		} else {
+			def->has_pcx_index = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer 0..4095)");
+		}
+	} else if (slice_matches_str (key, "terrain_types")) {
+		unsigned int terrain_types_mask = 0;
+		bool include_land = false;
+		if (read_tile_animation_terrain_types (value, &terrain_types_mask, &include_land)) {
+			def->terrain_types_mask = terrain_types_mask;
+			def->terrain_types_include_land = include_land;
+			def->has_terrain_types = true;
+		} else {
+			def->has_terrain_types = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized terrain type list)");
+		}
+	} else if (slice_matches_str (key, "direction")) {
+		enum direction dir;
+		if (read_direction_value (value, &dir)) {
+			def->direction = dir;
+			def->has_direction = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized direction)");
+	} else if (slice_matches_str (key, "x_offset")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->x_offset = ival;
+			def->has_x_offset = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+	} else if (slice_matches_str (key, "y_offset")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->y_offset = ival;
+			def->has_y_offset = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+	} else if (slice_matches_str (key, "frame_time_seconds")) {
+		float fval;
+		if (read_float (value, &fval)) {
+			def->frame_time_seconds = fval;
+			def->has_frame_time_seconds = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected float)");
+	} else if (slice_matches_str (key, "adjacent_to")) {
+		if (parse_tile_animation_adjacent_to (value, def->adjacent_to, &def->adjacent_to_count))
+			def->has_adjacent_to = true;
+		else
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized adjacent_to value)");
+	} else if (slice_matches_str (key, "show_in_day_night_hours")) {
+		unsigned int mask = 0;
+		if (parse_tile_animation_hour_list (value, &mask)) { def->day_night_hour_mask = mask; def->has_day_night_hour_mask = true; }
+		else add_key_parse_error (parse_errors, line_number, key, value, "(expected comma-delimited 0..23 hour list)");
+	} else if (slice_matches_str (key, "show_in_seasons")) {
+		unsigned int mask = 0;
+		if (parse_tile_animation_season_list (value, &mask)) { def->season_mask = mask; def->has_season_mask = true; }
+		else add_key_parse_error (parse_errors, line_number, key, value, "(expected comma-delimited season list)");
+	} else
+		add_unrecognized_key_error (unrecognized_keys, line_number, key);
+}
+
+void
+load_tile_animation_config_file (char const * file_path, int path_is_relative_to_mod_dir, int log_missing, int drop_existing_configs)
+{
+	char path[MAX_PATH];
+	if (path_is_relative_to_mod_dir) {
+		if (is->mod_rel_dir == NULL)
+			return;
+		snprintf (path, sizeof path, "%s\\%s", is->mod_rel_dir, file_path);
+	} else
+		strncpy (path, file_path, sizeof path);
+	path[(sizeof path) - 1] = '\0';
+
+	char * text = file_to_string (path);
+	if (text == NULL) {
+		if (log_missing) {
+			char ss[256];
+			snprintf (ss, sizeof ss, "[C3X] Tile animations config file not found: %s", path);
+			(*p_OutputDebugStringA) (ss);
+		}
+		return;
+	}
+
+	if (drop_existing_configs)
+		clear_tile_animation_configs ();
+	snprintf (is->current_tile_animations_config_path, sizeof is->current_tile_animations_config_path, path);
+
+	struct parsed_tile_animation_definition def;
+	init_parsed_tile_animation_definition (&def);
+	bool in_section = false;
+	int section_start_line = 0;
+	int line_number = 0;
+	struct error_line * parse_errors = NULL;
+	struct error_line * unrecognized_keys = NULL;
+
+	char * cursor = text;
+	while (*cursor != '\0') {
+		line_number++;
+		char * line_start = cursor;
+		char * line_end = cursor;
+		while ((*line_end != '\0') && (*line_end != '\n'))
+			line_end++;
+		bool has_newline = (*line_end == '\n');
+		if (has_newline)
+			*line_end = '\0';
+		struct string_slice line = { .str = line_start, .len = line_end - line_start };
+		struct string_slice trimmed = trim_string_slice (&line, 0);
+		if (line_is_empty_or_comment (&trimmed)) {
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		if (trimmed.str[0] == '#') {
+			struct string_slice directive = trimmed;
+			directive.str++;
+			directive.len--;
+			directive = trim_string_slice (&directive, 0);
+			if ((directive.len > 0) && slice_matches_str (&directive, "Animation")) {
+				if (in_section)
+					finalize_parsed_tile_animation_definition (&def, section_start_line, &parse_errors);
+				in_section = true;
+				section_start_line = line_number;
+			}
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		if (! in_section) {
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		struct string_slice key = {0}, value = {0};
+		enum key_value_parse_status status = parse_trimmed_key_value (&trimmed, &key, &value);
+		if (status == KVP_NO_EQUALS) {
+			char * line_text = extract_slice (&trimmed);
+			struct error_line * err = add_error_line (&parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected '=')", line_number, line_text);
+			free (line_text);
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		} else if (status == KVP_EMPTY_KEY) {
+			struct error_line * err = add_error_line (&parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: (missing key)", line_number);
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		handle_tile_animation_definition_key (&def, &key, &value, line_number, &parse_errors, &unrecognized_keys);
+		cursor = has_newline ? line_end + 1 : line_end;
+	}
+
+	if (in_section)
+		finalize_parsed_tile_animation_definition (&def, section_start_line, &parse_errors);
+	free_parsed_tile_animation_definition (&def);
+	free (text);
+
+	struct loaded_config_name * top_lcn = is->loaded_config_names;
+	while (top_lcn->next != NULL)
+		top_lcn = top_lcn->next;
+	struct loaded_config_name * new_lcn = malloc (sizeof *new_lcn);
+	new_lcn->name = strdup (path);
+	new_lcn->next = NULL;
+	top_lcn->next = new_lcn;
+
+	if ((parse_errors != NULL) || (unrecognized_keys != NULL)) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "Tile animation config errors in %s:", path);
+		PopupForm_add_text (popup, __, s, false);
+		for (struct error_line * line = parse_errors; line != NULL; line = line->next)
+			PopupForm_add_text (popup, __, line->text, false);
+		if (unrecognized_keys != NULL) {
+			PopupForm_add_text (popup, __, "", false);
+			PopupForm_add_text (popup, __, "Unrecognized keys:", false);
+			for (struct error_line * line = unrecognized_keys; line != NULL; line = line->next)
+				PopupForm_add_text (popup, __, line->text, false);
+		}
+		patch_show_popup (popup, __, 0, 0);
+	}
+	free_error_lines (parse_errors);
+	free_error_lines (unrecognized_keys);
+}
+
+void
+add_natural_wonder_tile_animation_configs ()
+{
+	if (! is->current_config.enable_natural_wonders)
+		return;
+
+	for (int wonder_id = 0; wonder_id < is->natural_wonder_count; wonder_id++) {
+		struct natural_wonder_district_config const * nw = &is->natural_wonder_configs[wonder_id];
+		for (int i = 0; i < nw->animation_count; i++) {
+			struct natural_wonder_animation_config const * anim = &nw->animations[i];
+			if ((anim->ini_path == NULL) || (anim->ini_path[0] == '\0'))
+				continue;
+			if (is->tile_animation_count >= MAX_TILE_ANIMATION_CONFIGS)
+				return;
+
+			int dest = is->tile_animation_count++;
+			struct tile_animation_config * cfg = &is->tile_animation_configs[dest];
+			memset (cfg, 0, sizeof *cfg);
+			cfg->type = TAT_NATURAL_WONDER;
+			cfg->natural_wonder_id = wonder_id;
+			cfg->ini_path = strdup (anim->ini_path);
+			if (cfg->ini_path == NULL) {
+				is->tile_animation_count--;
+				continue;
+			}
+				cfg->day_night_hour_mask = anim->day_night_hour_mask;
+				cfg->season_mask = anim->season_mask;
+				if (anim->has_direction) {
+					cfg->direction = anim->direction;
+					cfg->has_direction = true;
+				}
+				if (anim->has_frame_time_seconds) {
+					cfg->frame_time_seconds = anim->frame_time_seconds;
+					cfg->has_frame_time_seconds = true;
+				}
+				if (anim->has_offsets) {
+					cfg->x_offset = anim->x_offset;
+					cfg->y_offset = anim->y_offset;
+					cfg->has_x_offset = true;
+					cfg->has_y_offset = true;
+				}
+				cfg->effect_id = is->tile_animation_effect_base + dest;
+				cfg->in_use = true;
+			}
+	}
+	refresh_tile_animation_pcx_rule_mask ();
+}
+
+void
+load_tile_animation_configs ()
+{
+	if (! is->current_config.enable_custom_animations) {
+		clear_tile_animation_configs ();
+		return;
+	}
+
+	if (is->tile_animation_effect_base <= 0)
+		is->tile_animation_effect_base = 1000;
+	load_tile_animation_config_file ("default.tile_animations.txt", 1, 1, 1);
+	load_tile_animation_config_file ("user.tile_animations.txt", 1, 0, 1);
+
+	char * scenario_filename = "scenario.tile_animations.txt";
+	char * scenario_path = BIC_get_asset_path (p_bic_data, __, scenario_filename, false);
+	if ((scenario_path != NULL) && (0 != strcmp (scenario_filename, scenario_path)))
+		load_tile_animation_config_file (scenario_path, 0, 0, 1);
+	add_natural_wonder_tile_animation_configs ();
+
+	rebuild_tile_animation_pcx_sprite_lookup ();
+	rebuild_tile_animation_rule_match_cache ();
+}
+
+int
+get_tile_animation_type_priority (enum tile_animation_type type)
+{
+	// Higher number = stronger winner preference.
+	// Keep this centralized so new animation types (district/natural wonder/etc.)
+	// can be assigned clearly without touching scheduler logic.
+	switch (type) {
+		case TAT_RESOURCE:       return 50;
+		case TAT_NATURAL_WONDER: return 40;
+		case TAT_PCX:            return 30;
+		case TAT_TERRAIN:        return 20;
+		case TAT_COASTAL_WAVE:   return 10;
+		default:                 return 0;
+	}
+}
+
+int
+pick_tile_animation_winner_for_tile (unsigned int * tile_mask)
+{
+	if ((tile_mask == NULL) || (is->tile_animation_count <= 0))
+		return -1;
+
+	int winner = -1;
+	int winner_score = -1;
+	for (int i = 0; i < is->tile_animation_count; i++) {
+		if ((tile_mask[i / 32] & (1u << (i % 32))) == 0)
+			continue;
+
+		struct tile_animation_config const * cfg = &is->tile_animation_configs[i];
+		if ((cfg == NULL) || (! cfg->in_use))
+			continue;
+
+		int score = get_tile_animation_type_priority (cfg->type);
+		if (cfg->season_mask != 0)
+			score += 1;
+		if (cfg->day_night_hour_mask != 0)
+			score += 1;
+
+		// Deterministic tie-break: higher config index wins for same score.
+		if ((winner < 0) || (score > winner_score) || ((score == winner_score) && (i > winner))) {
+			winner = i;
+			winner_score = score;
+		}
+	}
+	return winner;
+}
+
+void
+tile_animation_scheduler_tick ()
+{
+	if (! is->current_config.enable_custom_animations)
+		return;
+	// Trade_Net recompute_resources temporarily increases Map.TileCount to include synthetic
+	// resource tiles. Custom animation selection buffers are sized for real map tiles, so
+	// running the scheduler in that window can overrun those buffers.
+	if (is->saved_tile_count >= 0)
+		return;
+	if (p_main_screen_form->is_now_loading_game)
+		return;
+	if (is->tile_animation_count <= 0)
+		return;
+
+	if (tile_animation_cache_needs_rebuild ())
+		rebuild_tile_animation_rule_match_cache ();
+	if (! is->tile_animation_selected_valid ||
+	    (is->tile_animation_selected_mask_matrix == NULL) ||
+	    (is->tile_animation_selected_next_index == NULL) ||
+	    (is->tile_animation_selected_tile_indices == NULL))
+		return;
+
+	Map * map = &p_bic_data->Map;
+	int tile_count = map->TileCount;
+	if (tile_count != is->tile_animation_selected_tile_count)
+		return;
+
+	for (int n = 0; n < is->tile_animation_selected_match_count; n++) {
+		int tile_index = is->tile_animation_selected_tile_indices[n];
+		if ((tile_index < 0) || (tile_index >= tile_count))
+			continue;
+		int tile_x, tile_y;
+		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
+		if (! Main_Screen_Form_is_tile_on_screen (p_main_screen_form, __, tile_x, tile_y, 0, 0))
+			continue;
+			
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+
+		int i = is->tile_animation_selected_next_index[tile_index];
+		if ((i < 0) || (i >= is->tile_animation_count))
+			continue;
+
+		struct tile_animation_config * cfg = &is->tile_animation_configs[i];
+		if ((cfg == NULL) || (! cfg->in_use))
+			continue;
+
+		// Keep one ambient effect per tile. Runtime effect IDs are reused from vanilla,
+		// so don't key this check off effect_id.
+		if (tile->Body.active_tile_effect != NULL)
+			continue;
+		patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true, DIR_SW);
+	}
+}
+
+bool
+is_custom_tile_animation_effect (int effect_id)
+{
+	int e = effect_id;
+	int base = is->tile_animation_effect_base;
+	return (e >= base) && (e < base + is->tile_animation_count);
+}
+
+struct tile_animation_config *
+get_tile_animation_for_effect (int effect_id)
+{
+	if (! is_custom_tile_animation_effect (effect_id))
+		return NULL;
+	int idx = effect_id - is->tile_animation_effect_base;
+	if ((idx < 0) || (idx >= is->tile_animation_count))
+		return NULL;
+	return &is->tile_animation_configs[idx];
+}
+
+void
+clear_active_custom_resource_animation (Tile * tile)
+{
+	if ((tile == NULL) || (tile == p_null_tile) || (tile->Body.active_tile_effect == NULL))
+		return;
+
+	int active_effect_id = tile->Body.active_tile_effect->V[2];
+	struct tile_animation_config * cfg = get_tile_animation_for_effect (active_effect_id);
+	if ((cfg != NULL) && (cfg->type == TAT_RESOURCE))
+		Tile_clear_animated_effect (tile);
+}
+
+void
+clear_active_custom_tile_animation_if_different (Tile * tile, int effect_id)
+{
+	if ((tile == NULL) || (tile == p_null_tile) || (tile->Body.active_tile_effect == NULL))
+		return;
+
+	int active_effect_id = tile->Body.active_tile_effect->V[2];
+	if ((active_effect_id != effect_id) && is_custom_tile_animation_effect (active_effect_id))
+		Tile_clear_animated_effect (tile);
+}
+
+void
+clear_active_custom_tile_animation_effects ()
+{
+	Map * map = &p_bic_data->Map;
+	int tile_count = map->TileCount;
+	for (int tile_index = 0; tile_index < tile_count; tile_index++) {
+		int tile_x, tile_y;
+		tile_index_to_coords (map, tile_index, &tile_x, &tile_y);
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile == NULL) || (tile == p_null_tile) || (tile->Body.active_tile_effect == NULL))
+			continue;
+		if (is_custom_tile_animation_effect (tile->Body.active_tile_effect->V[2]))
+			Tile_clear_animated_effect (tile);
+	}
+}
+
+void __stdcall
+patch_on_timer_0x9F6500 (void)
+{
+	if (is->current_config.enable_custom_animations) {
+		if ((*p_debug_mode_bits & 0xC) != 0)
+			clear_active_custom_tile_animation_effects ();
+		else
+			tile_animation_scheduler_tick ();
+	}
+	on_timer_0x9F6500 ();
+}
+
+void __fastcall
+patch_Units_Image_Data_load_animated_effect (Units_Image_Data * this, int edx, FLC_Animation * anim, int effect_id)
+{
+	if (! is->current_config.enable_custom_animations) {
+		Units_Image_Data_load_animated_effect (this, __, anim, effect_id);
+		return;
+	}
+
+	int cfg_effect_id = effect_id;
+	if (is->tile_animation_spawn_effect_override_active)
+		cfg_effect_id = is->tile_animation_spawn_effect_override;
+	struct tile_animation_config * cfg = get_tile_animation_for_effect (cfg_effect_id);
+	if ((cfg == NULL) || (cfg->ini_path == NULL) || (cfg->ini_path[0] == '\0')) {
+		Units_Image_Data_load_animated_effect (this, __, anim, effect_id);
+		return;
+	}
+
+	char rel_art_path[MAX_PATH];
+	snprintf (rel_art_path, sizeof rel_art_path, "Animations\\%s", cfg->ini_path);
+	rel_art_path[(sizeof rel_art_path) - 1] = '\0';
+
+	char asset_path[MAX_PATH];
+	get_mod_art_path (rel_art_path, asset_path, sizeof asset_path);
+	asset_path[(sizeof asset_path) - 1] = '\0';
+
+	Units_Image_Data_load_animation (this, __, asset_path, anim, 0, -1, 1, true);
+	if ((anim == NULL) || (anim->Animation_Info == NULL)) {
+		Units_Image_Data_load_animated_effect (this, __, anim, effect_id);
+		return;
+	}
+
+	float frame_time_seconds = cfg->has_frame_time_seconds ? cfg->frame_time_seconds : 0.15f;
+	if (anim->Animation_Info->anim_frame_time_seconds != NULL)
+		anim->Animation_Info->anim_frame_time_seconds[AT_ATTACK1] = frame_time_seconds;
+}
+void __fastcall
+patch_Tile_spawn_animated_effect (Tile * this, int edx, enum AnimatedEffect effect, int tile_x, int tile_y, bool randomize_start_frame, enum direction dummy_dir)
+{
+	if (is->current_config.enable_custom_animations && is_custom_tile_animation_effect (effect)) {
+		if ((*p_debug_mode_bits & 0xC) != 0)
+			return;
+
+		struct tile_animation_config * cfg = get_tile_animation_for_effect (effect);
+		struct district_instance * inst = get_district_instance (this);
+		if (Tile_has_city (this))
+			return;
+		if (inst != NULL) {
+			bool allow_natural_wonder_tile = (cfg != NULL) && (cfg->type == TAT_NATURAL_WONDER) &&
+				(inst->district_id == NATURAL_WONDER_DISTRICT_ID) &&
+				((cfg->natural_wonder_id < 0) || (inst->natural_wonder_info.natural_wonder_id == cfg->natural_wonder_id));
+			if (! allow_natural_wonder_tile)
+				return;
+		}
+		enum direction effective_direction = DIR_ZERO;
+		bool has_effective_direction = false;
+		if (cfg != NULL) {
+			if (cfg->type == TAT_COASTAL_WAVE) {
+				if (! get_tile_animation_coastal_wave_direction (tile_x, tile_y, &effective_direction))
+					return;
+				has_effective_direction = true;
+			} else if (cfg->has_direction) {
+				effective_direction = cfg->direction;
+				has_effective_direction = true;
+			}
+		}
+		int prev_override = is->tile_animation_spawn_effect_override;
+		bool had_override = is->tile_animation_spawn_effect_override_active;
+		is->tile_animation_spawn_effect_override = effect;
+		is->tile_animation_spawn_effect_override_active = true;
+		Tile_spawn_animated_effect (this, __, AE_Disorder, tile_x, tile_y, randomize_start_frame, dummy_dir);
+
+		// Optional per-effect direction and pixel offsets after vanilla centers the animation on the tile.
+		// Positive X moves right, positive Y moves down.
+		Tile_Animated_Effect * fx = this->Body.active_tile_effect;
+		if ((fx != NULL) && (cfg != NULL)) {
+			fx->V[2] = effect;
+			if (has_effective_direction) {
+				fx->flc_animation.summary.direction = effective_direction;
+				fx->flc_animation.summary.direction_2 = effective_direction;
+			}
+			int x_off = cfg->has_x_offset ? cfg->x_offset : 0;
+			int y_off = cfg->has_y_offset ? cfg->y_offset : 0;
+			fx->flc_animation.summary.pixel_loc_x += x_off;
+			fx->flc_animation.summary.pixel_loc_y += y_off;
+			fx->flc_animation.summary.pixel_target_x += x_off;
+			fx->flc_animation.summary.pixel_target_y += y_off;
+		}
+
+		is->tile_animation_spawn_effect_override = prev_override;
+		is->tile_animation_spawn_effect_override_active = had_override;
+		return;
+	}
+	Tile_spawn_animated_effect (this, __, effect, tile_x, tile_y, randomize_start_frame, dummy_dir);
 }
 
 // TCC requires a main function be defined even though it's never used.

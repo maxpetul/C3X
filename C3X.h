@@ -77,16 +77,20 @@ struct unit_type_limit {
 	int cities_per;
 };
 
-/* ToC-26: Represents a named group of unit types that share a combined build limit.
-   Stored by pointer in unit_limit_groups (keyed by group name) and in unit_type_to_group
-   (keyed by unit_type_id).  The group struct is owned by unit_limit_groups; unit_type_to_group
-   holds non-owning pointers into it. */
-struct unit_limit_group {
-    int * unit_type_ids;        // Array of unit type IDs belonging to this group
-    int   count;                // Number of IDs in the array
-    struct unit_type_limit limit; // The shared limit value for this group
-    bool  has_limit;            // True once a limit has been assigned via unit_limits
-}; // END ToC-26
+// A named tag attached to one or more unit types. Tags are shared by unit limits and counter rules.
+struct unit_type_tag {
+	int id;
+	int * unit_type_ids;
+	int count_unit_type_ids;
+	struct unit_type_limit limit;
+	bool has_limit;
+};
+
+// Reverse-index entry for unit_type_id_to_tag_ids.
+struct unit_type_tag_id_list {
+	int * tag_ids;
+	int count;
+};
 
 struct work_area_improvement {
 	short improv_id;
@@ -254,24 +258,23 @@ enum perfume_kind {
 	COUNT_PERFUME_KINDS
 };
 
-struct unit_counter_group {
-	char * name;
-	int *  type_ids;
-	int    count_type_ids;
+struct perfume_amounts {
+	int flat;
+	int percent;
 };
 
 // Attacker/defender match modes
 #define UCM_ANY   -1  // * Any unit type
-#define UCM_GROUP -2  // Match using the group_name field
+#define UCM_TAG   -2
 
 struct counter_rule {
 	// Attacker side
-	int    attacker_match;    // UnitTypeID, or UCM_ANY / UCM_GROUP
-	char * attacker_group;    // Used when attacker_match == UCM_GROUP
+	int    attacker_match;    // UnitTypeID, or UCM_ANY / UCM_TAG
+	int    attacker_tag_id;   // Used when attacker_match == UCM_TAG
 
 	// Defender side
 	int    defender_match;
-	char * defender_group;
+	int    defender_tag_id;
 
 	// Environment conditions (0 / false means no restriction)
 	unsigned int terrain_mask; // SquareTypes mask, 0 = no restriction
@@ -334,7 +337,7 @@ struct c3x_config {
 	bool enable_land_sea_intersections;
 	bool disallow_trespassing;
 	bool show_detailed_tile_info;
-	struct table perfume_specs[COUNT_PERFUME_KINDS]; // Each table maps strings to i31b's. Each i31b combines an amount and whether it's a percent
+	struct table perfume_specs[COUNT_PERFUME_KINDS]; // Maps strings to struct perfume_amounts pointers
 	struct table building_unit_prereqs; // A mapping from int keys to int values. The keys are unit type IDs. If an ID is present as a key in the
 					    // table that means that unit type has one or more prereq buildings. The associated value is either a
 					    // pointer to a list of MAX_BUILDING_PREREQS_FOR_UNITS improvement IDs or a single encoded improv ID. The
@@ -426,10 +429,12 @@ struct c3x_config {
 	struct leader_era_alias_list * leader_era_alias_lists;
 	int count_leader_era_alias_lists;
 	struct table unit_limits; // Maps unit type names (strings) to pointers to limit objects (struct unit_type_limit *)
-	// ToC-26: Group-based unit limits. unit_limit_groups maps group name strings to struct unit_limit_group*.
-	// unit_type_to_group maps unit_type_id (int) to struct unit_limit_group* for O(1) runtime lookup.
-	struct table unit_limit_groups;
-	struct table unit_type_to_group; // END ToC-26
+	// unit_type_tags maps tag names to struct unit_type_tag*. unit_type_tags_by_id maps tag IDs
+	// back to those objects, and unit_type_id_to_tag_ids maps each unit type ID to all of its tags.
+	struct table unit_type_tags;
+	struct unit_type_tag ** unit_type_tags_by_id;
+	int count_unit_type_tags;
+	struct table unit_type_id_to_tag_ids;
 	bool allow_upgrades_in_any_city;
 	bool do_not_generate_volcanos;
 	bool do_not_pollute_impassable_tiles;
@@ -469,8 +474,6 @@ struct c3x_config {
 	enum barbarian_activity_override override_barbarian_activity_level_for_scenario_maps;
 	bool initialize_preplaced_scenario_leaders_as_mgls;
 	bool enable_unit_counters;
-	struct unit_counter_group * unit_counter_groups;
-	int count_unit_counter_groups;
 	struct counter_rule * counter_rules;
 	int count_counter_rules;
 
@@ -480,6 +483,7 @@ struct c3x_config {
 
 	bool use_offensive_artillery_ai;
 	int diplo_demand_rate_between_ai_players;
+	bool limit_ai_to_one_demand_per_turn;
 	bool show_ai_demand_info_popup;
 	bool dont_escort_unflagged_units;
 	int ai_build_artillery_ratio;
@@ -532,6 +536,7 @@ struct c3x_config {
 
 	bool enable_named_tiles;
 
+	bool enable_custom_animations;
 	char * aircraft_victory_animation; // NULL if set to "none" in config
 
 	int day_night_cycle_mode;
@@ -1051,6 +1056,19 @@ enum district_overlay_mask_bits {
 	DOM_AIRFIELD    = 1u << 10
 };
 
+struct natural_wonder_animation_config {
+	char const * ini_path;
+	unsigned int day_night_hour_mask; // bits 0..23
+	unsigned int season_mask; // bits 0..3
+	enum direction direction;
+	float frame_time_seconds;
+	int x_offset;
+	int y_offset;
+	bool has_direction;
+	bool has_frame_time_seconds;
+	bool has_offsets;
+};
+
 struct natural_wonder_district_config {
 	char const * name;
 	char const * img_path;
@@ -1069,6 +1087,8 @@ struct natural_wonder_district_config {
 	bool impassable;
 	bool impassable_to_wheeled;
 	bool is_dynamic;
+	struct natural_wonder_animation_config animations[8];
+	int animation_count;
 };
 
 struct natural_wonder_candidate {
@@ -1080,6 +1100,81 @@ struct natural_wonder_candidate_list {
 	struct natural_wonder_candidate * entries;
 	int count;
 	int capacity;
+};
+
+enum tile_animation_type {
+	TAT_TERRAIN = 0,
+	TAT_RESOURCE,
+	TAT_NATURAL_WONDER,
+	TAT_PCX,
+	TAT_COASTAL_WAVE
+};
+
+#define TILE_ANIM_PCX_FILE_UNKNOWN (-1)
+enum tile_animation_pcx_file {
+	TAPF_TERRAINBUILDINGS = 0,
+	TAPF_WATERFALLS,
+	TAPF_FLOODPLAINS,
+	TAPF_DELTARIVERS,
+	TAPF_MTNRIVERS,
+	TAPF_IRRIGATION_DESETT,
+	TAPF_IRRIGATION_PLAINS,
+	TAPF_IRRIGATION,
+	TAPF_IRRIGATION_TUNDRA,
+	TAPF_VOLCANOS,
+	TAPF_VOLCANOS_FORESTS,
+	TAPF_VOLCANOS_JUNGLES,
+	TAPF_VOLCANOS_SNOW,
+	TAPF_GRASSLAND_FORESTS,
+	TAPF_PLAINS_FORESTS,
+	TAPF_TUNDRA_FORESTS,
+	TAPF_LMFORESTS,
+	TAPF_MOUNTAINS,
+	TAPF_MOUNTAIN_FORESTS,
+	TAPF_MOUNTAIN_JUNGLES,
+	TAPF_MOUNTAINS_SNOW,
+	TAPF_XHILLS,
+	TAPF_HILL_FORESTS,
+	TAPF_HILL_JUNGLE,
+	TAPF_LMHILLS,
+	TAPF_ROADS,
+	TAPF_RAILROADS
+};
+
+#define MAX_TILE_ANIMATION_CONFIGS 128
+#define MAX_TILE_ANIMATION_ADJACENCY 8
+
+struct tile_animation_adjacent_requirement {
+	enum SquareTypes square_type;
+	enum direction direction;
+	bool has_direction;
+	bool is_land;
+};
+
+struct tile_animation_config {
+	char const * name;
+	char const * ini_path;
+	enum tile_animation_type type;
+	unsigned int terrain_types_mask;
+	bool terrain_types_include_land;
+	int resource_id;
+	int natural_wonder_id;
+	int pcx_file_id;
+	int pcx_index;
+	enum direction direction;
+	int x_offset;
+	int y_offset;
+	float frame_time_seconds;
+	bool has_direction;
+	bool has_x_offset;
+	bool has_y_offset;
+	bool has_frame_time_seconds;
+	struct tile_animation_adjacent_requirement adjacent_to[MAX_TILE_ANIMATION_ADJACENCY];
+	int adjacent_to_count;
+	unsigned int day_night_hour_mask; // bits 0..23
+	unsigned int season_mask; // bits 0..3
+	int effect_id;
+	bool in_use;
 };
 
 struct wonder_location {
@@ -1406,6 +1501,8 @@ struct parsed_natural_wonder_definition {
 	int happiness_bonus;
 	bool impassable;
 	bool impassable_to_wheeled;
+	struct natural_wonder_animation_config animations[8];
+	int animation_count;
 	bool has_name;
 	bool has_img_path;
 	bool has_img_row;
@@ -1421,6 +1518,41 @@ struct parsed_natural_wonder_definition {
 	bool has_happiness_bonus;
 	bool has_impassable;
 	bool has_impassable_to_wheeled;
+};
+
+struct parsed_tile_animation_definition {
+	char * name;
+	char * ini_path;
+	char * resource_type;
+	char * pcx_file;
+	enum tile_animation_type type;
+	unsigned int terrain_types_mask;
+	int natural_wonder_id;
+	int pcx_file_id;
+	int pcx_index;
+	bool terrain_types_include_land;
+	enum direction direction;
+	int x_offset;
+	int y_offset;
+	float frame_time_seconds;
+	struct tile_animation_adjacent_requirement adjacent_to[MAX_TILE_ANIMATION_ADJACENCY];
+	int adjacent_to_count;
+	unsigned int day_night_hour_mask;
+	unsigned int season_mask;
+	bool has_name;
+	bool has_ini_path;
+	bool has_type;
+	bool has_resource_type;
+	bool has_pcx_file;
+	bool has_pcx_index;
+	bool has_terrain_types;
+	bool has_direction;
+	bool has_x_offset;
+	bool has_y_offset;
+	bool has_frame_time_seconds;
+	bool has_adjacent_to;
+	bool has_day_night_hour_mask;
+	bool has_season_mask;
 };
 
 struct scenario_district_entry {
@@ -1671,6 +1803,11 @@ struct injected_state {
 
 	bool is_placing_scenario_things; // Set to true only while Map::place_scenario_things is running
 
+	// While an AI Leader::begin_turn is running, identifies the one player that AI may demand from, or -1 if there was no eligible player. The
+	// active flag distinguishes that state from times outside begin_turn, when demands are not limited by these fields.
+	bool ai_demand_target_selection_active;
+	int ai_demand_target_civ_id;
+
 	bool paused_for_popup; // Set to true while a popup, map message, or the diplo screen is open
 	long long time_spent_paused_during_popup; // Tracks time spent waiting for the three things above
 
@@ -1691,6 +1828,7 @@ struct injected_state {
 	} * loaded_config_names;
 
 	char current_districts_config_path[MAX_PATH];
+	char current_tile_animations_config_path[MAX_PATH];
 
 	char mod_script_path[MAX_PATH];
 
@@ -2135,6 +2273,7 @@ struct injected_state {
 	// Records how many units of each type we're going to upgrade to during an upgrade-all. This info will be used to impose the unit type limit
 	// during the upgrade. Keep in mind units all get upgraded from the same type but might end up as different types after upgrade-all.
 	struct penciled_in_upgrade {
+		int source_unit_type_id;
 		int unit_type_id;
 		int count;
 	} * penciled_in_upgrades;
@@ -2142,10 +2281,10 @@ struct injected_state {
 	int penciled_in_upgrade_capacity;
 
 	// ToC-27: Set to true while patch_City_can_build_upgrade_type is running. When true,
-	// patch_City_can_build_unit skips its unit-type limit check so that upgrades to group-limited
+	// patch_City_can_build_unit skips its unit-type limit check so that upgrades to tag-limited
 	// types are not blocked at the City_can_build level. patch_Unit_can_upgrade re-applies the
-	// limit with full source-type context, allowing same-group upgrades (net-zero count change)
-	// while still blocking over-limit production and cross-group upgrade attempts.
+	// limit with full source-type context, allowing same-tag upgrades (net-zero count change)
+	// while still blocking over-limit production and cross-tag upgrade attempts.
 	bool checking_upgrade_type_eligibility; // END ToC-27
 
 	// While in Leader::do_capture_city, the city in question is stored in this var. Otherwise it's NULL.
@@ -2434,6 +2573,35 @@ struct district_button_image_set {
 
 	// Natural Wonder labels: table mapping natural wonder name strings to their IDs, count of defined natural wonders,
 	struct table natural_wonder_name_to_id;
+	
+	// Tile animation definitions and effect ID mapping.
+	struct tile_animation_config tile_animation_configs[MAX_TILE_ANIMATION_CONFIGS];
+	int tile_animation_count;
+	int tile_animation_effect_base;
+	int tile_animation_spawn_effect_override;
+	bool tile_animation_spawn_effect_override_active;
+
+	// Core per-tile selection cache (required for rule matching lookups).
+	unsigned int * tile_animation_selected_mask_matrix;
+	int tile_animation_selected_tile_count;
+	int tile_animation_selected_animation_count;
+	int tile_animation_selected_hour;
+	int tile_animation_selected_season;
+	bool tile_animation_selected_valid;
+
+	// Optional scheduler optimization cache.
+	byte * tile_animation_selected_next_index; // Cached winner animation index per tile, 0xFF = none.
+	int * tile_animation_selected_tile_indices; // Tile indices currently having a cached winner.
+	int tile_animation_selected_match_count;
+
+	// PCX-driven animation rule lookups and active masks.
+	struct table tile_animation_pcx_sprite_lookup;
+	struct table tile_animation_pcx_rule_key_to_index;
+	int tile_animation_pcx_rule_key_count;
+	unsigned int tile_animation_pcx_rule_masks[MAX_TILE_ANIMATION_CONFIGS][(MAX_TILE_ANIMATION_CONFIGS + 31) / 32];
+	unsigned int tile_animation_pcx_word_mask[(MAX_TILE_ANIMATION_CONFIGS + 31) / 32];
+	unsigned int tile_animation_pcx_active_word_mask[(MAX_TILE_ANIMATION_CONFIGS + 31) / 32];
+	bool tile_animation_has_pcx_rules;
 
 	struct ai_candidate_bridge_or_canal_entry * ai_candidate_bridge_or_canals;
 	int ai_candidate_bridge_or_canals_count;
