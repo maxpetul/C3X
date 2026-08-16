@@ -1,3 +1,4 @@
+* RELEASE 28 PREVIEW 1
 - Allow for custom combat bonuses or maluses to be applied based on unit type, combat role (attack, defense, or bombard), terrain, city/district, and experience level
   - Option enable_unit_counters gates overall feature, counter_rules lists custom rules
 - Enable terrain and resource animations
