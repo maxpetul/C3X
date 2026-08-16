@@ -32893,22 +32893,11 @@ calc_attacker_win_chance_for_hud (Unit * attacker, Unit * defender,
 }
 
 double
-calc_bombard_round_damage_chance_for_hud (Unit * attacker, Unit * target,
-                                          UnitType * attacker_type,
-                                          Tile * target_tile)
+calc_bombard_round_damage_chance_for_hud (Unit * attacker, Unit * target)
 {
-	int bombard_pct = get_counter_rule_bombard_modifier (
-		&is->current_config, attacker, target, target_tile);
-	int bombard_strength = counter_adjusted_bombard_strength (
-		attacker_type->Bombard_Strength, bombard_pct);
-	int defense_strength = Unit_get_defense_strength (target);
-
-	if (bombard_strength <= 0)
-		return 0.0;
-	if (defense_strength <= 0)
-		return 1.0;
-	return (double)bombard_strength /
-	       (double)(bombard_strength + defense_strength);
+	int odds = patch_Fighter_get_odds_for_bombardment (
+		&p_bic_data->fighter, __, attacker, target, true, false);
+	return attacker_round_win_chance_from_fighter_odds (odds);
 }
 
 bool
@@ -32921,57 +32910,17 @@ is_attack_hud_move_validity_attackable (AdjacentMoveValidity validity)
 Unit *
 find_visible_defender_for_attack_hud (Main_Screen_Form * main_screen_form,
                                       Unit * attacker,
-                                      Tile * tile,
                                       int tile_x,
                                       int tile_y)
 {
-	Unit * best = NULL;
-	double best_attacker_win_chance = 2.0;
-	int best_hp = -1,
-	    best_cost = -1;
+	Unit * defender = NULL;
+	if (is->current_config.enable_unit_counters)
+		defender = find_counter_base_visible_defender_against (
+			main_screen_form, attacker, tile_x, tile_y, NULL);
+	if (defender == NULL)
+		defender = Main_Screen_Form_find_visible_unit (
+			main_screen_form, __, tile_x, tile_y, NULL);
 
-	FOR_UNITS_ON (uti, tile) {
-		Unit * unit = uti.unit;
-		if (! (unit_has_valid_type_id (unit) &&
-		       (unit->Body.Container_Unit < 0) &&
-		       (unit->Body.CivID != attacker->Body.CivID) &&
-		       unit->vtable->is_enemy_of_civ (unit, __, attacker->Body.CivID, 0) &&
-		       patch_Unit_is_visible_to_civ (unit, __, attacker->Body.CivID, 0) &&
-		       (Unit_get_defense_strength (unit) > 0)))
-			continue;
-
-		Fighter saved_fighter = p_bic_data->fighter;
-		bool can_defend =
-			set_fighter_context_for_combat_odds_hud (
-				&p_bic_data->fighter, attacker, unit,
-				tile_x, tile_y) &&
-			Fighter_unit_can_defend (
-				&p_bic_data->fighter, __, unit, tile_x, tile_y);
-
-		p_bic_data->fighter = saved_fighter;
-		if (! can_defend)
-			continue;
-
-		double attacker_win_chance = calc_attacker_win_chance_for_hud (
-			attacker, unit, tile_x, tile_y);
-		int hp = combat_odds_hud_unit_current_hp (unit),
-		    cost = p_bic_data->UnitTypes[unit->Body.UnitTypeID].Cost;
-		if ((best == NULL) ||
-		    (attacker_win_chance < best_attacker_win_chance) ||
-		    ((attacker_win_chance == best_attacker_win_chance) &&
-		     ((hp > best_hp) ||
-		      ((hp == best_hp) && (cost > best_cost))))) {
-			best = unit;
-			best_attacker_win_chance = attacker_win_chance;
-			best_hp = hp;
-			best_cost = cost;
-		}
-	}
-	if (best != NULL)
-		return best;
-
-	Unit * defender = Main_Screen_Form_find_visible_unit (
-		main_screen_form, __, tile_x, tile_y, NULL);
 	if (! (unit_has_valid_type_id (defender) &&
 	       (defender->Body.CivID != attacker->Body.CivID) &&
 	       defender->vtable->is_enemy_of_civ (defender, __, attacker->Body.CivID, 0) &&
@@ -33015,7 +32964,7 @@ build_attack_combat_odds_hud_state (Main_Screen_Form * main_screen_form,
 		return false;
 
 	Unit * defender = find_visible_defender_for_attack_hud (
-		main_screen_form, attacker, tile, tile_x, tile_y);
+		main_screen_form, attacker, tile_x, tile_y);
 	if (! unit_has_valid_type_id (defender))
 		return false;
 
@@ -33086,7 +33035,7 @@ build_bombard_combat_odds_hud_state (Main_Screen_Form * main_screen_form,
 		return false;
 
 	double round_chance = calc_bombard_round_damage_chance_for_hud (
-		attacker, target, attacker_type, tile);
+		attacker, target);
 	double no_damage_chance = 1.0;
 	for (int i = 0; i < fire_rate; i++)
 		no_damage_chance *= 1.0 - round_chance;
