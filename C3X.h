@@ -424,6 +424,7 @@ struct c3x_config {
 	bool exclude_passengers_from_stealth_attack;
 	bool convert_to_landmark_after_planting_forest;
 	int chance_for_nukes_to_destroy_max_one_hp_units;
+	bool allow_special_aqueducts_in_fresh_water_cities;
 	bool allow_sale_of_aqueducts_and_hospitals;
 	bool no_cross_shore_detection;
 	int radar_tower_detection_distance;
@@ -2586,8 +2587,8 @@ struct district_button_image_set {
 	unsigned int great_wall_auto_build_done_civs;  // Ha Luu line add - ToC-3 - to make EACH CIV able to get auto-build of walls, not just one civ
 	Tile * focused_tile;
 
-	// Stores the improve ID currently being evaluated inside patch_City_can_build_improvement.
-	int current_evaluating_improve_id;
+	// Stores the improvement ID for which patch_City_can_build_improvement is currently checking buildability.
+	int checking_can_build_for_improv_id;
 
 	// Stores the index in the list of target civs currently being drawn on the espionage form. Used to replace the civ name with its era-specific alias.
 	int espionage_form_drawing_target_index;

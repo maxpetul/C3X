@@ -1,3 +1,5 @@
+- Option allow_special_aqueducts_in_fresh_water_cities to stop the allows-size-level-2 flag from blocking construction of aqueduct-like buildings or wonders
+
 * RELEASE 28 PREVIEW 1
 - Allow for custom combat bonuses or maluses to be applied based on unit type, combat role (attack, defense, or bombard), terrain, city/district, and experience level
   - Option enable_unit_counters gates overall feature, counter_rules lists custom rules

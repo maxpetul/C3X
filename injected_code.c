@@ -19912,6 +19912,7 @@ patch_init_floating_point ()
 		{"exclude_invisible_units_from_stealth_attack"           , false, offsetof (struct c3x_config, exclude_invisible_units_from_stealth_attack)},
 		{"exclude_passengers_from_stealth_attack"                , false, offsetof (struct c3x_config, exclude_passengers_from_stealth_attack)},
 		{"convert_to_landmark_after_planting_forest"             , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
+		{"allow_special_aqueducts_in_fresh_water_cities"         , false, offsetof (struct c3x_config, allow_special_aqueducts_in_fresh_water_cities)},
 		{"allow_sale_of_aqueducts_and_hospitals"                 , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
 		{"no_cross_shore_detection"                              , false, offsetof (struct c3x_config, no_cross_shore_detection)},
 		{"limit_unit_loading_to_one_transport_per_turn"          , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
@@ -20227,6 +20228,7 @@ patch_init_floating_point ()
 	is->mill_input_resource_bits = NULL;
 
 	is->drawing_icons_for_improv_id = -1;
+	is->checking_can_build_for_improv_id = -1;
 
 	is->resources_sheet = NULL;
 
@@ -25161,7 +25163,7 @@ int __fastcall
 patch_City_get_largest_adjacent_sea_within_work_area (City * this)
 {
 	if (is->current_config.enable_districts && is->current_config.expand_water_tile_checks_to_city_work_area) {
-		int improv_id = is->current_evaluating_improve_id;
+		int improv_id = is->checking_can_build_for_improv_id;
 		if ((improv_id >= 0) && (improv_id < p_bic_data->ImprovementsCount)) {
 
 			// If Coastal Fortress, default to original logic (city must be next to coast)
@@ -25227,10 +25229,40 @@ patch_Map_impl_is_near_lake_within_work_area (Map * this, int edx, int x, int y,
 }
 
 bool __fastcall
-patch_Map_impl_has_fresh_water_within_work_area (Map * this, int edx, int tile_x, int tile_y)
+patch_Map_impl_has_fresh_water_to_build_improv (Map * this, int edx, int tile_x, int tile_y)
 {
+	int improv_id = is->checking_can_build_for_improv_id;
+	if (is->current_config.allow_special_aqueducts_in_fresh_water_cities &&
+	    (improv_id >= 0) && (improv_id < p_bic_data->ImprovementsCount)) {
+		Improvement * improv = &p_bic_data->Improvements[improv_id];
+		enum ImprovementTypeFlags non_benefit_flags =
+			ITF_Allows_City_Level_2 |
+			ITF_Replaces_Other_Buildings |
+			ITF_Must_Be_Near_Water |
+			ITF_Must_Be_Near_River |
+			ITF_Vulnerable_To_Charm_Bombard |
+			ITF_Required_Goods_Must_Be_In_City_Radius;
+		bool has_other_benefit =
+			(improv->ImprovementFlags & ~non_benefit_flags) ||
+			(improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) ||
+			improv->SmallWonderFlags || improv->WonderFlags ||
+			(improv->Double_Happiness_Building >= 0) ||
+			(improv->Gain_Building_Global >= 0) ||
+			(improv->Gain_Building_Continent >= 0) ||
+			(improv->Culture > 0) || (improv->Combat_Bombard > 0) ||
+			(improv->Naval_Bombard_Defence > 0) || (improv->Combat_Defence > 0) ||
+			(improv->NavalDefenceBonus > 0) || (improv->Happy_Faces_All > 0) ||
+			(improv->Happy_Faces > 0) || (improv->Pollution < 0) ||
+			(improv->Production > 0) ||
+			((improv->Unit_Produced >= 0) && (improv->Unit_Frequency > 0));
+
+		// The base game rejects level-2 growth improvements when this query returns true.
+		// Hide the city's fresh water only for variants that still provide another benefit.
+		if ((improv->ImprovementFlags & ITF_Allows_City_Level_2) && has_other_benefit)
+			return false;
+	}
+
 	if (is->current_config.enable_districts && is->current_config.expand_water_tile_checks_to_city_work_area) {
-		int improv_id = is->current_evaluating_improve_id;
 		if ((improv_id >= 0) && (improv_id < p_bic_data->ImprovementsCount)) {
 
 			// If an Aqueduct, default to original logic (city must be next to coast)
@@ -25352,16 +25384,14 @@ city_meets_district_prereqs_to_build_improvement (City * city, int i_improv, boo
 bool __fastcall
 patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply_strict_rules)
 {	
-	is->current_evaluating_improve_id = i_improv;
+	is->checking_can_build_for_improv_id = i_improv;
 
 	// First defer to the base game's logic
-	bool base = City_can_build_improvement (this, __, i_improv, apply_strict_rules);
-	if (! base) return false;
-	if (! is->current_config.enable_districts) return base;
+	bool can_build = City_can_build_improvement (this, __, i_improv, apply_strict_rules);
+	if (can_build && is->current_config.enable_districts)
+		can_build = city_meets_district_prereqs_to_build_improvement (this, i_improv, apply_strict_rules);
 
-	bool can_build = city_meets_district_prereqs_to_build_improvement (this, i_improv, apply_strict_rules);
-	is->current_evaluating_improve_id = -1;
-
+	is->checking_can_build_for_improv_id = -1;
 	return can_build;
 }
 
