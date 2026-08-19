@@ -19790,6 +19790,7 @@ patch_init_floating_point ()
 		{"autofill_best_gold_amount_when_trading"                , true , offsetof (struct c3x_config, autofill_best_gold_amount_when_trading)},
 		{"disallow_founding_next_to_foreign_city"                , true , offsetof (struct c3x_config, disallow_founding_next_to_foreign_city)},
 		{"enable_trade_screen_scroll"                            , true , offsetof (struct c3x_config, enable_trade_screen_scroll)},
+		{"sort_trade_screen_cities_alphabetically"               , true , offsetof (struct c3x_config, sort_trade_screen_cities_alphabetically)},
 		{"group_units_on_right_click_menu"                       , true , offsetof (struct c3x_config, group_units_on_right_click_menu)},
 		{"gray_out_units_on_menu_with_no_remaining_moves"        , true , offsetof (struct c3x_config, gray_out_units_on_menu_with_no_remaining_moves)},
 		{"put_movement_icons_on_units_on_menu"                   , true , offsetof (struct c3x_config, put_movement_icons_on_units_on_menu)},
@@ -20172,6 +20173,10 @@ patch_init_floating_point ()
 	is->trade_scroll_button_images = NULL;
 	is->trade_scroll_button_state = IS_UNINITED;
 	is->eligible_for_trade_scroll = 0;
+	is->trade_city_sort_storage = NULL;
+	is->trade_city_sort_capacity = 0;
+	is->active_trade_city_name_map = NULL;
+	is->trade_city_sort_maps_locked = false;
 
 	memset (&is->saved_code_areas, 0, sizeof is->saved_code_areas);
 
@@ -22010,6 +22015,146 @@ patch_DiploForm_m22_Draw (DiploForm * this)
 	}
 
 	DiploForm_m22_Draw (this);
+}
+
+bool
+trade_city_is_available (DiploForm * diplo, int city_id, bool for_sale)
+{
+	TradableItem * item = &diplo->tradable_cities[city_id];
+	return (for_sale ? item->listed_for_sale : item->listed_for_purchase) &&
+	       ((item->field_8 & (for_sale ? 2 : 1)) == 0) &&
+	       (get_city_ptr (city_id) != NULL);
+}
+
+int
+compare_trade_city_names (void const * a, void const * b)
+{
+	int city_id_a = *(int const *)a, city_id_b = *(int const *)b;
+	int comparison = _stricmp (get_city_ptr (city_id_a)->Body.CityName, get_city_ptr (city_id_b)->Body.CityName);
+	return comparison != 0 ? comparison : city_id_a - city_id_b;
+}
+
+void
+build_trade_city_name_map (DiploForm * diplo, bool for_sale, int * map, int * sorted_ids)
+{
+	int count = 0;
+	for (int city_id = 0; city_id < is->city_limit; city_id++) {
+		map[city_id] = city_id;
+		if (trade_city_is_available (diplo, city_id, for_sale))
+			sorted_ids[count++] = city_id;
+	}
+
+	qsort (sorted_ids, count, sizeof sorted_ids[0], compare_trade_city_names);
+
+	int sorted_index = 0;
+	for (int city_id = 0; city_id < is->city_limit; city_id++)
+		if (trade_city_is_available (diplo, city_id, for_sale))
+			map[city_id] = sorted_ids[sorted_index++];
+}
+
+bool
+prepare_trade_city_name_maps (DiploForm * diplo)
+{
+	if ((! is->current_config.sort_trade_screen_cities_alphabetically) || is_online_game ())
+		return false;
+
+	if (is->trade_city_sort_capacity < is->city_limit) {
+		int * larger = realloc (is->trade_city_sort_storage, 3 * is->city_limit * sizeof is->trade_city_sort_storage[0]);
+		if (larger == NULL)
+			return false;
+		is->trade_city_sort_storage = larger;
+		is->trade_city_sort_capacity = is->city_limit;
+	}
+
+	if (! is->trade_city_sort_maps_locked) {
+		int * sale_map     = is->trade_city_sort_storage,
+		    * purchase_map = sale_map + is->trade_city_sort_capacity,
+		    * sorted_ids   = purchase_map + is->trade_city_sort_capacity;
+		build_trade_city_name_map (diplo, true , sale_map    , sorted_ids);
+		build_trade_city_name_map (diplo, false, purchase_map, sorted_ids);
+	}
+	return true;
+}
+
+void __fastcall
+patch_DiploForm_draw_tradeable_items (DiploForm * this, int edx, int whose)
+{
+	int * previous_map = is->active_trade_city_name_map;
+	if (prepare_trade_city_name_maps (this))
+		is->active_trade_city_name_map = is->trade_city_sort_storage + ((whose == 2) ? 0 : is->trade_city_sort_capacity);
+
+	DiploForm_draw_tradeable_items (this, __, whose);
+	is->active_trade_city_name_map = previous_map;
+}
+
+void __fastcall
+patch_DiploForm_print_tradable_item_name (DiploForm * this, int edx, char * out,
+	TradableItemKind kind, int item_object_id, char * label, int param_5, int param_6)
+{
+	if ((kind == TIK_CITY) &&
+	    (is->active_trade_city_name_map != NULL) &&
+	    (item_object_id >= 0) && (item_object_id < is->city_limit))
+		item_object_id = is->active_trade_city_name_map[item_object_id];
+	DiploForm_print_tradable_item_name (this, __, out, kind, item_object_id, label, param_5, param_6);
+}
+
+bool
+translate_new_trade_city_offer (DiploForm * diplo, TradeOfferList * list,
+	int old_length, TradeOffer * old_first, TradeOffer * old_last, int * city_map, int offered_bit)
+{
+	if (list->length != old_length + 1)
+		return false;
+
+	TradeOffer * offer = list->last != old_last ? list->last :
+	                     list->first != old_first ? list->first : NULL;
+	if ((offer == NULL) || (offer->kind != TIK_CITY) ||
+	    (offer->param_1 < 0) || (offer->param_1 >= is->city_limit))
+		return false;
+
+	int displayed_city_id = offer->param_1,
+	    actual_city_id = city_map[displayed_city_id];
+	if (actual_city_id != displayed_city_id) {
+		offer->param_1 = actual_city_id;
+		diplo->tradable_cities[displayed_city_id].field_8 &= ~offered_bit;
+		diplo->tradable_cities[actual_city_id].field_8 |= offered_bit;
+		return true;
+	}
+	return false;
+}
+
+void __fastcall
+patch_DiploForm_handle_left_click (DiploForm * this, int edx, int mouse_x, int mouse_y)
+{
+	// The available-item columns occupy the far left and right sides of the trade screen. Limiting
+	// the bookkeeping to those columns avoids touching the form after a click that may close it.
+	bool in_available_item_column =
+		((mouse_x < 0x130) || (mouse_x > 0x2D8)) && (mouse_y >= 0xE4) && (mouse_y < 0x266);
+	if ((! in_available_item_column) || ((this->mode != 2) && (this->mode != 3)) ||
+	    (! prepare_trade_city_name_maps (this))) {
+		DiploForm_handle_left_click (this, __, mouse_x, mouse_y);
+		return;
+	}
+
+	int other_id = this->other_party_civ_id;
+	TradeOfferList * our_list = &this->our_offer_lists[other_id],
+	               * their_list = &this->their_offer_lists[other_id];
+	int old_our_length = our_list->length, old_their_length = their_list->length;
+	TradeOffer * old_our_first = our_list->first, * old_our_last = our_list->last,
+	           * old_their_first = their_list->first, * old_their_last = their_list->last;
+
+	// A click ends by redrawing the form. Lock the pre-click maps until we have translated any new
+	// city offer; otherwise that redraw would rebuild them after the base code marks the placeholder ID.
+	is->trade_city_sort_maps_locked = true;
+	DiploForm_handle_left_click (this, __, mouse_x, mouse_y);
+	is->trade_city_sort_maps_locked = false;
+
+	int * sale_map = is->trade_city_sort_storage,
+	    * purchase_map = sale_map + is->trade_city_sort_capacity;
+	bool translated =
+		translate_new_trade_city_offer (this, our_list, old_our_length, old_our_first, old_our_last, sale_map, 2) |
+		translate_new_trade_city_offer (this, their_list, old_their_length, old_their_first, old_their_last, purchase_map, 1);
+	if (translated)
+		patch_DiploForm_m22_Draw (this);
 }
 
 void
