@@ -299,7 +299,7 @@ struct c3x_config {
 	int minimum_city_separation;
 	bool disallow_founding_next_to_foreign_city;
 	bool enable_trade_screen_scroll;
-	bool sort_trade_screen_cities_alphabetically;
+	bool sort_city_lists_alphabetically;
 	bool group_units_on_right_click_menu;
 	bool gray_out_units_on_menu_with_no_remaining_moves;
 	bool put_movement_icons_on_units_on_menu;
@@ -1993,10 +1993,13 @@ struct injected_state {
 	Sprite * trade_scroll_button_images; // inited to NULL, array of 6 images: normal, rollover, and highlight for left & right
 	enum init_state trade_scroll_button_state;
 	int eligible_for_trade_scroll;
-	int * trade_city_sort_storage;
-	int trade_city_sort_capacity;
+	int * city_sort_storage;
+	int city_sort_capacity;
 	int * active_trade_city_name_map;
 	bool trade_city_sort_maps_locked;
+	bool drawing_espionage_city_list;
+	int espionage_city_row;
+	int espionage_sorted_city_count;
 
 	char ask_gold_default[32];
 

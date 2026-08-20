@@ -5577,12 +5577,13 @@ struct Espionage_Form
   Sprite field_147C[4];
   Sprite field_152C[2];
   int field_1584;
-  int field_1588;
+  int city_list_scroll_offset;
   Scroll_Bar Scroll_Bar;
   int field_294C[1264];
   int target_civ_id_count;
   int target_civ_ids[32];
-  int field_3D90[14];
+  int visible_city_ids[13];
+  int eligible_city_count;
   int field_3DC8[174];
   int mouse_over_control;
   int selected_civ_list_index;

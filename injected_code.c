@@ -19790,7 +19790,7 @@ patch_init_floating_point ()
 		{"autofill_best_gold_amount_when_trading"                , true , offsetof (struct c3x_config, autofill_best_gold_amount_when_trading)},
 		{"disallow_founding_next_to_foreign_city"                , true , offsetof (struct c3x_config, disallow_founding_next_to_foreign_city)},
 		{"enable_trade_screen_scroll"                            , true , offsetof (struct c3x_config, enable_trade_screen_scroll)},
-		{"sort_trade_screen_cities_alphabetically"               , true , offsetof (struct c3x_config, sort_trade_screen_cities_alphabetically)},
+		{"sort_city_lists_alphabetically"                        , true , offsetof (struct c3x_config, sort_city_lists_alphabetically)},
 		{"group_units_on_right_click_menu"                       , true , offsetof (struct c3x_config, group_units_on_right_click_menu)},
 		{"gray_out_units_on_menu_with_no_remaining_moves"        , true , offsetof (struct c3x_config, gray_out_units_on_menu_with_no_remaining_moves)},
 		{"put_movement_icons_on_units_on_menu"                   , true , offsetof (struct c3x_config, put_movement_icons_on_units_on_menu)},
@@ -20173,10 +20173,13 @@ patch_init_floating_point ()
 	is->trade_scroll_button_images = NULL;
 	is->trade_scroll_button_state = IS_UNINITED;
 	is->eligible_for_trade_scroll = 0;
-	is->trade_city_sort_storage = NULL;
-	is->trade_city_sort_capacity = 0;
+	is->city_sort_storage = NULL;
+	is->city_sort_capacity = 0;
 	is->active_trade_city_name_map = NULL;
 	is->trade_city_sort_maps_locked = false;
+	is->drawing_espionage_city_list = false;
+	is->espionage_city_row = -1;
+	is->espionage_sorted_city_count = 0;
 
 	memset (&is->saved_code_areas, 0, sizeof is->saved_code_areas);
 
@@ -22027,7 +22030,7 @@ trade_city_is_available (DiploForm * diplo, int city_id, bool for_sale)
 }
 
 int
-compare_trade_city_names (void const * a, void const * b)
+compare_city_names (void const * a, void const * b)
 {
 	int city_id_a = *(int const *)a, city_id_b = *(int const *)b;
 	int comparison = _stricmp (get_city_ptr (city_id_a)->Body.CityName, get_city_ptr (city_id_b)->Body.CityName);
@@ -22044,7 +22047,7 @@ build_trade_city_name_map (DiploForm * diplo, bool for_sale, int * map, int * so
 			sorted_ids[count++] = city_id;
 	}
 
-	qsort (sorted_ids, count, sizeof sorted_ids[0], compare_trade_city_names);
+	qsort (sorted_ids, count, sizeof sorted_ids[0], compare_city_names);
 
 	int sorted_index = 0;
 	for (int city_id = 0; city_id < is->city_limit; city_id++)
@@ -22053,23 +22056,28 @@ build_trade_city_name_map (DiploForm * diplo, bool for_sale, int * map, int * so
 }
 
 bool
-prepare_trade_city_name_maps (DiploForm * diplo)
+ensure_city_sort_capacity ()
 {
-	if ((! is->current_config.sort_trade_screen_cities_alphabetically) || is_online_game ())
-		return false;
-
-	if (is->trade_city_sort_capacity < is->city_limit) {
-		int * larger = realloc (is->trade_city_sort_storage, 3 * is->city_limit * sizeof is->trade_city_sort_storage[0]);
+	if (is->city_sort_capacity < is->city_limit) {
+		int * larger = realloc (is->city_sort_storage, 3 * is->city_limit * sizeof is->city_sort_storage[0]);
 		if (larger == NULL)
 			return false;
-		is->trade_city_sort_storage = larger;
-		is->trade_city_sort_capacity = is->city_limit;
+		is->city_sort_storage = larger;
+		is->city_sort_capacity = is->city_limit;
 	}
+	return true;
+}
+
+bool
+prepare_trade_city_name_maps (DiploForm * diplo)
+{
+	if ((! is->current_config.sort_city_lists_alphabetically) || is_online_game () || (! ensure_city_sort_capacity ()))
+		return false;
 
 	if (! is->trade_city_sort_maps_locked) {
-		int * sale_map     = is->trade_city_sort_storage,
-		    * purchase_map = sale_map + is->trade_city_sort_capacity,
-		    * sorted_ids   = purchase_map + is->trade_city_sort_capacity;
+		int * sale_map = is->city_sort_storage,
+		    * purchase_map = sale_map + is->city_sort_capacity,
+		    * sorted_ids = purchase_map + is->city_sort_capacity;
 		build_trade_city_name_map (diplo, true , sale_map    , sorted_ids);
 		build_trade_city_name_map (diplo, false, purchase_map, sorted_ids);
 	}
@@ -22081,7 +22089,7 @@ patch_DiploForm_draw_tradeable_items (DiploForm * this, int edx, int whose)
 {
 	int * previous_map = is->active_trade_city_name_map;
 	if (prepare_trade_city_name_maps (this))
-		is->active_trade_city_name_map = is->trade_city_sort_storage + ((whose == 2) ? 0 : is->trade_city_sort_capacity);
+		is->active_trade_city_name_map = is->city_sort_storage + ((whose == 2) ? 0 : is->city_sort_capacity);
 
 	DiploForm_draw_tradeable_items (this, __, whose);
 	is->active_trade_city_name_map = previous_map;
@@ -22148,8 +22156,8 @@ patch_DiploForm_handle_left_click (DiploForm * this, int edx, int mouse_x, int m
 	DiploForm_handle_left_click (this, __, mouse_x, mouse_y);
 	is->trade_city_sort_maps_locked = false;
 
-	int * sale_map = is->trade_city_sort_storage,
-	    * purchase_map = sale_map + is->trade_city_sort_capacity;
+	int * sale_map = is->city_sort_storage,
+	    * purchase_map = sale_map + is->city_sort_capacity;
 	bool translated =
 		translate_new_trade_city_offer (this, our_list, old_our_length, old_our_first, old_our_last, sale_map, 2) |
 		translate_new_trade_city_offer (this, their_list, old_their_length, old_their_first, old_their_last, purchase_map, 1);
@@ -41261,6 +41269,78 @@ patch_Sprite_draw_espionage_screen_target_civ_bkg (Sprite * this, int edx, PCX_I
 	is->espionage_form_drawing_target_index = (pixel_y - top - 0x5C) / 0x3a + p_espionage_form->field_1584;
 
 	return Sprite_draw (this, __, canvas, pixel_x, pixel_y, color_table);
+}
+
+bool
+prepare_sorted_espionage_city_ids (Espionage_Form * form)
+{
+	if ((! is->current_config.sort_city_lists_alphabetically) || is_online_game () || (! ensure_city_sort_capacity ()) ||
+	    (form->selected_civ_list_index < 0) || (form->selected_civ_list_index >= form->target_civ_id_count))
+		return false;
+
+	int target_civ_id = form->target_civ_ids[form->selected_civ_list_index],
+	    count = 0;
+	for (int city_id = 0; city_id < is->city_limit && city_id <= p_cities->LastIndex; city_id++) {
+		City * city = get_city_ptr (city_id);
+		if ((city != NULL) && ((byte)city->Body.CivID == target_civ_id)) {
+			Tile * tile = tile_at (city->Body.X, city->Body.Y);
+			if ((tile != NULL) && (tile != p_null_tile) && ((tile->Body.Fog_Of_War & (1u << leaders[p_main_screen_form->Player_CivID].ID)) != 0))
+				is->city_sort_storage[count++] = city_id;
+		}
+	}
+
+	qsort (is->city_sort_storage, count, sizeof is->city_sort_storage[0], compare_city_names);
+	is->espionage_sorted_city_count = count;
+	return true;
+}
+
+void __fastcall
+patch_Espionage_Form_m22_Draw (Espionage_Form * this)
+{
+	int previous_row = is->espionage_city_row, previous_count = is->espionage_sorted_city_count;
+	bool previous_drawing = is->drawing_espionage_city_list, sorting = prepare_sorted_espionage_city_ids (this);
+	is->drawing_espionage_city_list = sorting;
+	is->espionage_city_row = -1;
+
+	Espionage_Form_m22_Draw (this);
+
+	if (sorting)
+		for (int row = 0; row < 13; row++) {
+			int sorted_index = this->city_list_scroll_offset + row;
+			this->visible_city_ids[row] = sorted_index < is->espionage_sorted_city_count ? is->city_sort_storage[sorted_index] : -1;
+		}
+
+	is->drawing_espionage_city_list = previous_drawing;
+	is->espionage_city_row = previous_row;
+	is->espionage_sorted_city_count = previous_count;
+}
+
+int __fastcall
+patch_Espionage_Form_get_city_button_state (Espionage_Form * this, int edx, City * city, int row)
+{
+	if (is->drawing_espionage_city_list) {
+		int sorted_index = this->city_list_scroll_offset + row;
+		is->espionage_city_row = row;
+		if (sorted_index < is->espionage_sorted_city_count)
+			city = get_city_ptr (is->city_sort_storage[sorted_index]);
+	}
+	return Espionage_Form_get_city_button_state (this, __, city, row);
+}
+
+int __fastcall
+patch_PCX_Image_draw_espionage_city_name (PCX_Image * this, int edx, int font, char * str, int x, int y, int str_len)
+{
+	if (is->drawing_espionage_city_list && (is->espionage_city_row >= 0)) {
+		int sorted_index = p_espionage_form->city_list_scroll_offset + is->espionage_city_row;
+		if (sorted_index < is->espionage_sorted_city_count) {
+			City * city = get_city_ptr (is->city_sort_storage[sorted_index]);
+			if (city != NULL) {
+				str = city->Body.CityName;
+				str_len = strlen (str);
+			}
+		}
+	}
+	return PCX_Image_draw_text_with_font (this, __, font, str, x, y, str_len);
 }
 
 char * __fastcall
