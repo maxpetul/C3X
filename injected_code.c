@@ -25135,14 +25135,11 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 			 is->current_config.enable_port_districts && is->current_config.naval_units_use_port_districts_not_cities);
 
 		if (is_district_air_or_sea_unit) {
-
 			// If excluding upgradable units, following standard game logic in allowing Golden Age-triggering units ignore to upgrade 
 			// obsolescence until the civ has had its Golden Age
 			if (exclude_upgradable &&
-			    ((! UnitType_has_ability (type, __, UTA_Starts_Golden_Age)) ||
-			     (leaders[this->Body.CivID].Golden_Age_End != -1))) {
-				for (int upgrade_id = type->UpgradeToID; upgrade_id != -1;
-				     upgrade_id = p_bic_data->UnitTypes[upgrade_id].UpgradeToID) {
+			    ((! UnitType_has_ability (type, __, UTA_Starts_Golden_Age)) || (leaders[this->Body.CivID].Golden_Age_End != -1))) {
+				for (int upgrade_id = type->UpgradeToID; upgrade_id != -1; upgrade_id = p_bic_data->UnitTypes[upgrade_id].UpgradeToID) {
 					if (patch_City_can_build_unit (this, __, upgrade_id, false, param_3, allow_kings))
 						return false;
 				}
