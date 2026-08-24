@@ -25116,11 +25116,6 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 		bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
 		UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
 
-		// Bail if tech reqs are not met
-		int prereq_id = type->AdvReq;
-		if (prereq_id >= 0 && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id))
-			return false;
-
 		if (! Leader_can_build_unit (&leaders[this->Body.CivID], __, unit_type_id, 1, allow_kings))
 			return false;
 
@@ -25128,23 +25123,51 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 		// If a disallowed air/naval unit is chosen in ai_choose_production, we'll swap it out for a feasible fallback later
 		// after prioritizing the aerodrome/port to be built
 		if (! is_human && (
-			(type->Unit_Class == UTC_Air || city_can_build_district (this, AERODROME_DISTRICT_ID)) || 
-			(type->Unit_Class == UTC_Sea || city_can_build_district (this, PORT_DISTRICT_ID)))
+			(type->Unit_Class == UTC_Air && city_can_build_district (this, AERODROME_DISTRICT_ID)) ||
+			(type->Unit_Class == UTC_Sea && city_can_build_district (this, PORT_DISTRICT_ID)))
 		)
 			return base;
 
-		// Air units
-		if (type->Unit_Class == UTC_Air) {
-			if (is->current_config.enable_aerodrome_districts && is->current_config.air_units_use_aerodrome_districts_not_cities) {
+		bool is_district_air_or_sea_unit =
+			((type->Unit_Class == UTC_Air) &&
+			 is->current_config.enable_aerodrome_districts && is->current_config.air_units_use_aerodrome_districts_not_cities) ||
+			((type->Unit_Class == UTC_Sea) &&
+			 is->current_config.enable_port_districts && is->current_config.naval_units_use_port_districts_not_cities);
+
+		if (is_district_air_or_sea_unit) {
+
+			// If excluding upgradable units, following standard game logic in allowing Golden Age-triggering units ignore to upgrade 
+			// obsolescence until the civ has had its Golden Age
+			if (exclude_upgradable &&
+			    ((! UnitType_has_ability (type, __, UTA_Starts_Golden_Age)) ||
+			     (leaders[this->Body.CivID].Golden_Age_End != -1))) {
+				for (int upgrade_id = type->UpgradeToID; upgrade_id != -1;
+				     upgrade_id = p_bic_data->UnitTypes[upgrade_id].UpgradeToID) {
+					if (patch_City_can_build_unit (this, __, upgrade_id, false, param_3, allow_kings))
+						return false;
+				}
+			}
+
+			// Bail if resource reqs are not met
+			for (int n = 0; n < 3; n++)
+				if ((type->ResReq[n] != -1) && ! patch_City_has_resource (this, __, type->ResReq[n]))
+					return false;
+
+			// Bail if tech reqs are not met
+			int prereq_id = type->AdvReq;
+			if (prereq_id >= 0 && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id))
+				return false;
+
+			// Air units
+			if (type->Unit_Class == UTC_Air) {
 				if (find_pending_district_request (this, AERODROME_DISTRICT_ID) != NULL)
 					return false;
 				if (! city_can_build_district (this, AERODROME_DISTRICT_ID))
 					return false;
 				return city_has_required_district (this, AERODROME_DISTRICT_ID);
-			}
-		// Naval units
-		} else if (type->Unit_Class == UTC_Sea) {
-			if (is->current_config.enable_port_districts && is->current_config.naval_units_use_port_districts_not_cities) {
+
+			// Naval units
+			} else if (type->Unit_Class == UTC_Sea) {
 				if (find_pending_district_request (this, PORT_DISTRICT_ID) != NULL)
 					return false;
 				if (! city_can_build_district (this, PORT_DISTRICT_ID))
