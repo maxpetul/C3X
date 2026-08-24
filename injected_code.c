@@ -14776,6 +14776,34 @@ district_tile_bonus_applies_to_city (Tile * tile, int district_id, City * city)
 	return tile->Body.CityAreaID == city->Body.ID;
 }
 
+City *
+get_city_for_district_tile_yield (Tile * tile, int district_id, int tile_x, int tile_y, City * city)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return NULL;
+	if (! district_uses_tile_improvement_rules (district_id))
+		return city;
+
+	int assigned_city_id = tile->Body.CityAreaID;
+	if (assigned_city_id >= 0) {
+		City * assigned_city = get_city_ptr (assigned_city_id);
+		if ((city != NULL) && (assigned_city != NULL) && (assigned_city->Body.ID != city->Body.ID))
+			return NULL;
+		return assigned_city;
+	}
+
+	if (city == NULL)
+		return NULL;
+
+	int ni = patch_Map_compute_ni_for_work_area (&p_bic_data->Map, __, city->Body.X, city->Body.Y, tile_x, tile_y, is->workable_tile_count);
+	if (ni <= 0)
+		return NULL;
+	if (! patch_City_controls_tile (city, __, ni, true))
+		return NULL;
+
+	return city;
+}
+
 bool
 district_tile_should_be_unworkable (int district_id)
 {
@@ -14866,8 +14894,8 @@ patch_Map_calc_food_yield_at (Map * this, int edx, int tile_x, int tile_y, int t
 		    district_is_complete (tile, inst->district_id)) {
 			if (! district_uses_tile_improvement_rules (inst->district_id))
 				return 0;
-			City * yield_city = get_city_ptr (tile->Body.CityAreaID);
-			if (! district_tile_bonus_applies_to_city (tile, inst->district_id, yield_city))
+			City * yield_city = get_city_for_district_tile_yield (tile, inst->district_id, tile_x, tile_y, city);
+			if (yield_city == NULL)
 				return 0;
 			struct district_config * cfg = &is->district_configs[inst->district_id];
 			int food_bonus = 0;
@@ -14886,10 +14914,10 @@ patch_Map_calc_food_yield_at (Map * this, int edx, int tile_x, int tile_y, int t
 }
 
 int __fastcall
-patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int civ_id, City * city, int param_5, int param_6)
+patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city)
 {
 	if (! is->current_config.enable_districts)
-		return Map_calc_shield_yield_at (this, __, tile_x, tile_y, civ_id, city, param_5, param_6);
+		return Map_calc_shield_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
 
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile != NULL) && (tile != p_null_tile)) {
@@ -14898,8 +14926,8 @@ patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int
 		    district_is_complete (tile, inst->district_id)) {
 			if (! district_uses_tile_improvement_rules (inst->district_id))
 				return 0;
-			City * yield_city = get_city_ptr (tile->Body.CityAreaID);
-			if (! district_tile_bonus_applies_to_city (tile, inst->district_id, yield_city))
+			City * yield_city = get_city_for_district_tile_yield (tile, inst->district_id, tile_x, tile_y, city);
+			if (yield_city == NULL)
 				return 0;
 			struct district_config * cfg = &is->district_configs[inst->district_id];
 			int shield_bonus = 0;
@@ -14914,7 +14942,7 @@ patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int
 		}
 	}
 
-	return Map_calc_shield_yield_at (this, __, tile_x, tile_y, civ_id, city, param_5, param_6);
+	return Map_calc_shield_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
 }
 
 int __fastcall
@@ -14930,8 +14958,8 @@ patch_Map_calc_commerce_yield_at (Map * this, int edx, int tile_x, int tile_y, i
 		    district_is_complete (tile, inst->district_id)) {
 			if (! district_uses_tile_improvement_rules (inst->district_id))
 				return 0;
-			City * yield_city = get_city_ptr (tile->Body.CityAreaID);
-			if (! district_tile_bonus_applies_to_city (tile, inst->district_id, yield_city))
+			City * yield_city = get_city_for_district_tile_yield (tile, inst->district_id, tile_x, tile_y, city);
+			if (yield_city == NULL)
 				return 0;
 			struct district_config * cfg = &is->district_configs[inst->district_id];
 			int commerce_bonus = 0;
