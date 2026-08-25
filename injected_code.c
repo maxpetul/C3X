@@ -42071,8 +42071,9 @@ spawn_selected_tile_animation_for_tile (int tile_x, int tile_y, bool destruct_on
 		if (! can_spawn) {
 			struct tile_animation_config * active_cfg = get_tile_animation_for_effect (tile->Body.active_tile_effect->V[2]);
 			can_spawn = (active_cfg != NULL) &&
+				(destruct_only ||
 				(is_tile_destruct_animation_type (active_cfg->type) ||
-				 (get_tile_animation_type_priority (active_cfg->type) < get_tile_animation_type_priority (cfg->type)));
+				 (get_tile_animation_type_priority (active_cfg->type) < get_tile_animation_type_priority (cfg->type))));
 		}
 		if (can_spawn)
 			patch_Tile_spawn_animated_effect (tile, __, cfg->effect_id, tile_x, tile_y, true, DIR_SW);
