@@ -1007,3 +1007,5 @@ ignore,	   0x4B9F60,	0x4C15D0,	0x4B9FF0,	"City_add_population",				"void (__fast
 ignore,	   0x670234,	0x68D2E0,	0x670234,	"Tile_m27_Check_Shield_Bonus",			"bool (__fastcall *) (Tile * this)"
 ignore,	   0x5f3448,	0x6032DF,	0x5F3378,	"CHECK_SHIELD_BONUS_TO_CAN_SPAWN_RES_RETURN",	"int"
 
+repl vptr, 0x66572C,	0x682780,	0x66572C,	"Button_m22_Draw",				"void (__fastcall *) (Button * this)"
+inlead,	   0x4A5D60,	0x4A5D60,	0x4A5D60,	"GUI_Form_1_process_mouse_hover",		"void (__fastcall *) (Base_Form * this, int edx, int local_x, int local_y)"

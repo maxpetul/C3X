@@ -19850,6 +19850,10 @@ patch_init_floating_point ()
 		{"patch_division_by_zero_in_ai_alliance_eval"            , true , offsetof (struct c3x_config, patch_division_by_zero_in_ai_alliance_eval)},
 		{"patch_empty_army_movement"                             , true , offsetof (struct c3x_config, patch_empty_army_movement)},
 		{"patch_empty_army_combat_crash"                         , true , offsetof (struct c3x_config, patch_empty_army_combat_crash)},
+		// ToC-418 add - Mobile-friendly big buttons (large popup confirm/cancel pair + city build-picker
+		// scroll arrows for touchscreen play). Key deliberately has no ToC_ prefix (upstreamable).
+		{"Mobile_Friendly_Icons"                                 , false, offsetof (struct c3x_config, mobile_friendly_icons)},
+		// END ToC-418
 		{"patch_premature_truncation_of_found_paths"             , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
 		{"patch_zero_production_crash"                           , true , offsetof (struct c3x_config, patch_zero_production_crash)},
 		{"patch_ai_can_form_army_without_special_ability"        , true , offsetof (struct c3x_config, patch_ai_can_form_army_without_special_ability)},
@@ -22953,6 +22957,443 @@ cleanup:
 	pcx.vtable->destruct (&pcx, __, 0);
 }
 
+// ToC-418: MOBILE-FRIENDLY BIG BUTTONS (config: Mobile_Friendly_Icons — deliberately no ToC_
+// prefix, intended for upstreaming to mainline C3X; default false).
+// Vanilla button ART is replaceable but the HIT RECTS are hard-coded in the exe, so instead of
+// resizing anything the big buttons are pure CLICK TRANSLATORS: pressing one redirects the
+// mouse message to the tiny vanilla control's own coordinates, and vanilla does everything
+// else.  Two surfaces:
+//   1. City screen: two 40x40 arrows at the bottom of the build-queue panel, redirecting to
+//      the queue scrollbar's up/down arrows.
+//   2. Vanilla popups (GUI_Form_1 family): a big confirm + cancel pair drawn on the popup,
+//      redirecting to OK_Btn / Cancel_Btn (their Base_Data rects give live positions).
+// Art: ToC_Mobile_Buttons_City_Screen.pcx (83x42, 2 cells of 40x40, 1px grid, magenta
+// transparency) + ToC_Mobile_Buttons_Popup_Screen.pcx (103x52, 2 cells of 50x50).  Missing
+// art = feature silently stands down.
+#define TOC418_CITY_BTN_SZ   40
+#define TOC418_POPUP_BTN_SZ  50
+
+// ToC-418: lazily load + slice both button sheets (once per process; missing file latches IS_INIT_FAILED).
+static void
+init_toc418_mobile_buttons ()
+{
+	struct {
+		enum init_state * st; Sprite * spr; char * file; int sz; char * errmsg;
+	} t418_sheets[2] = {
+		{ &is->toc418_city_btns_state,  is->toc418_city_btns,  "interface/ToC_Mobile_Buttons_City_Screen.pcx",  TOC418_CITY_BTN_SZ,
+		  "[C3X] ToC-418: ToC_Mobile_Buttons_City_Screen.pcx not found - city-screen big arrows disabled.\n" },
+		{ &is->toc418_popup_btns_state, is->toc418_popup_btns, "interface/ToC_Mobile_Buttons_Popup_Screen.pcx", TOC418_POPUP_BTN_SZ,
+		  "[C3X] ToC-418: ToC_Mobile_Buttons_Popup_Screen.pcx not found - popup big buttons disabled.\n" },
+	};
+	for (int si = 0; si < 2; si++) {
+		if (*t418_sheets[si].st != IS_UNINITED)
+			continue;
+		*t418_sheets[si].st = IS_INIT_FAILED;
+		PCX_Image pcx;
+		PCX_Image_construct (&pcx);
+		char temp_path[2*MAX_PATH];
+		get_mod_art_path (t418_sheets[si].file, temp_path, sizeof temp_path);
+		PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+		if (pcx.JGL.Image == NULL)
+			(*p_OutputDebugStringA) (t418_sheets[si].errmsg);
+		else {
+			int sz = t418_sheets[si].sz;
+			for (int b = 0; b < 2; b++) {
+				Sprite_construct (&t418_sheets[si].spr[b]);
+				Sprite_slice_pcx (&t418_sheets[si].spr[b], __, &pcx, 1 + b * (sz + 1), 1, sz, sz, 1, 1);
+			}
+			*t418_sheets[si].st = IS_OK;
+		}
+		pcx.vtable->destruct (&pcx, __, 0);
+	}
+}
+
+// ToC-418: ALL geometry comes from LIVE vanilla control rects, identification is by OBJECT IDENTITY,
+// and screen positions come from hover calibration (each earlier guess — hardcoded offsets,
+// ControlID fingerprints, Base_Form Left/Top as a screen origin — was disproven in playtests).
+
+// ToC-418: the popup registry slot for a parent form (shared by the Button draw hook, the
+// hover-calibration inlead, and the click remap).  add=true claims a slot (slot 0 evicted
+// when full) and RESETS the per-popup calibration + drawn flags.
+static int
+toc418_par_slot (void * par, bool add)
+{
+	for (int n = 0; n < 4; n++)
+		if (is->toc418_live_par[n] == par)
+			return n;
+	if (! add)
+		return -1;
+	int slot = 0;
+	for (int n = 0; n < 4; n++)
+		if (is->toc418_live_par[n] == NULL) { slot = n; break; }
+	is->toc418_live_par[slot] = par;
+	is->toc418_par_cal[slot] = false;
+	is->toc418_par_drawn[slot][0] = is->toc418_par_drawn[slot][1] = false;
+	return slot;
+}
+
+// ToC-418: a structurally valid checkbox-class button: vtable checked against the self-calibrated
+// Button-class vtable (a stale or garbage object can never pass), checkbox-sized, not
+// parked at the canvas origin (template junk).  NO Status2 test: a button's Status2 is
+// 5 only WHILE IT IS ITSELF DRAWING (each button of a pair always sees its partner as != 5,
+// flapping the layout between pair and single spacing and stamping ghost twins at both
+// positions).  Visibility is instead conveyed by the fact that a button DRAWS (its own m22
+// wrap fires) — see toc418_par_drawn.
+static bool
+toc418_btn_is_active (Button * b)
+{
+	if ((is->toc418_button_vtable == NULL) || ((void *) b->vtable != is->toc418_button_vtable))
+		return false;
+	int W = b->Base_Data.Right - b->Base_Data.Left, H = b->Base_Data.Bottom - b->Base_Data.Top;
+	if ((W < 12) || (W > 30) || (H < 12) || (H > 30))
+		return false;
+	if ((b->Base_Data.Left <= 2) && (b->Base_Data.Top <= 2))
+		return false;
+	return true;
+}
+
+// ToC-418: twin layout for one popup form (any GUI_Form_1-derived class — the global PopupForm and
+// every stack-allocated popup embed their confirm/cancel as OK_Btn/Cancel_Btn at the same
+// offsets).  The big pair sits SIDE BY SIDE immediately right of the vanilla pair
+// ([OK][X] [big-OK][big-X]), flipping to its left when the popup edge is too close,
+// vertically centered on the vanilla buttons.  All coordinates are parent-canvas-local —
+// the frame the button rects live in (proven: popup Base_Form Left/Top hold border offsets
+// like (3,35), NOT a screen origin — a "-parent origin" shift pushes every twin 35px up).
+// Returns false when neither button is usable.
+static bool
+toc418_popup_pair_layout (GUI_Form_1 * g, bool * out_ok_shown, bool * out_x_shown,
+                          int * out_ok_bx, int * out_x_bx, int * out_by)
+{
+	bool ok_shown = toc418_btn_is_active (&g->OK_Btn);
+	bool x_shown  = toc418_btn_is_active (&g->Cancel_Btn);
+	// A cancel wildly far from the confirm means the Cancel_Btn slot read garbage (a class
+	// that embeds only an OK): trust the pair only when both look like one control group.
+	if (ok_shown && x_shown) {
+		int dt = g->Cancel_Btn.Base_Data.Top - g->OK_Btn.Base_Data.Top;
+		int dx = g->Cancel_Btn.Base_Data.Left - g->OK_Btn.Base_Data.Right;
+		if ((dt < -30) || (dt > 30) || (dx < -80) || (dx > 80))
+			x_shown = false;
+	}
+	if (! ok_shown && ! x_shown)
+		return false;
+	PCX_Image * cv = &g->Base_Data.Canvas;
+	if (cv->JGL.Image == NULL)
+		return false;
+	int cw = cv->JGL.Image->vtable->m54_Get_Width (cv->JGL.Image);
+	int ch = cv->JGL.Image->vtable->m55_Get_Height (cv->JGL.Image);
+	if ((cw < 80) || (ch < 60))
+		return false;
+	int L = 0x7FFFFFFF, T = 0x7FFFFFFF, R = -0x7FFFFFFF, B = -0x7FFFFFFF;
+	if (ok_shown) {
+		Base_Form_Data * d = &g->OK_Btn.Base_Data;
+		if (d->Left < L) L = d->Left;  if (d->Top < T)    T = d->Top;
+		if (d->Right > R) R = d->Right; if (d->Bottom > B) B = d->Bottom;
+	}
+	if (x_shown) {
+		Base_Form_Data * d = &g->Cancel_Btn.Base_Data;
+		if (d->Left < L) L = d->Left;  if (d->Top < T)    T = d->Top;
+		if (d->Right > R) R = d->Right; if (d->Bottom > B) B = d->Bottom;
+	}
+	int n418 = (ok_shown && x_shown) ? 2 : 1;
+	int need = n418 * TOC418_POPUP_BTN_SZ + (n418 - 1) * 6;
+	int bx0 = (R + 8 + need <= cw - 2) ? (R + 8)          // right of the vanilla pair
+	                                   : (L - 8 - need);  // popup edge too close: left of it
+	if (bx0 < 2)
+		bx0 = 2;
+	int by = (T + B) / 2 - TOC418_POPUP_BTN_SZ / 2 + 2;   // slight downward bias
+	if (by > ch - TOC418_POPUP_BTN_SZ - 2) by = ch - TOC418_POPUP_BTN_SZ - 2;
+	if (by < 2) by = 2;
+	*out_ok_shown = ok_shown;
+	*out_x_shown  = x_shown;
+	*out_ok_bx = bx0;
+	*out_x_bx  = (ok_shown && x_shown) ? bx0 + TOC418_POPUP_BTN_SZ + 6 : bx0;
+	*out_by    = by;
+	return true;
+}
+
+// ToC-418: geometry for big city queue arrow i (0 = up, 1 = down) in DIALOG-LOCAL coordinates (the
+// build-order window composites itself AFTER the city form draw, so the arrows are drawn on
+// ITS canvas from toc418_dlg_draw — anything painted from patch_City_Form_draw gets covered
+// while the window is open).  Also outputs the dialog-local remap targets: the window's tiny
+// scrollbar arrows at its right edge.  Gate: city form shown AND dialog Status2 == 5
+// (5 = open, 4 = closed — each click on the current-build box toggles it; a {4,5} gate
+// shows the arrows on a CLOSED window).
+static bool
+toc418_city_arrow_geometry (int i, int * out_bx, int * out_by, int * out_vcx, int * out_vcy)
+{
+	City_Form * cf = p_city_form;
+	if ((cf == NULL) || (cf->Base.Data.Status2 != 5))
+		return false;
+	Base_Form_Data * dd = &cf->Order_Queue_Dialog.Data;
+	if (dd->Status2 != 5)
+		return false;
+	int W = dd->Right - dd->Left, H = dd->Bottom - dd->Top;
+	if ((W < 60) || (H < 100))
+		return false; // sane window rect only
+	*out_bx  = W - (2 - i) * (TOC418_CITY_BTN_SZ + 6) - 14;
+	*out_by  = H - TOC418_CITY_BTN_SZ - 6;
+	*out_vcx = W - 13;
+	// Down target H-21 NOT H-8: up presses at local (W-13,72) scroll fine, but the scroll
+	// column ends above the frame — H-8 lands on the window's bottom BORDER a few px below
+	// the vanilla down-arrow and does nothing.
+	*out_vcy = (i == 0) ? 72 : H - 21;
+	return true;
+}
+
+// ToC-418: the build-order window's origin in the wndproc client frame = its own Base_Data rect
+// corner (proven visually: arrows drawn at dialog-local (bx,by) appear on screen at exactly
+// (Left+bx, Top+by)).  NOT the canvas abs rect — control canvases are DETACHED buffers
+// whose rect is (0,0,W,H); a canvas-derived origin of (0,0) kills every city arrow click.
+static void
+toc418_city_dlg_origin (int * out_px, int * out_py)
+{
+	Base_Form_Data * dd = &p_city_form->Order_Queue_Dialog.Data;
+	*out_px = dd->Left;
+	*out_py = dd->Top;
+}
+
+// ToC-418: the click translator.  Returns true and fills the redirect target when (x,y) lies inside a
+// ToC-418 big button that is currently on screen.  Called from the wndproc for L-button
+// down/up/dblclk; the caller rewrites the message's lparam so vanilla handles the click at
+// the tiny control's own coordinates.
+static bool
+toc418_remap_click (int x, int y, int * out_tx, int * out_ty)
+{
+	if (! is->current_config.mobile_friendly_icons || (p_bic_data == NULL))
+		return false;
+	// City queue arrows: dialog-local geometry translated to the client frame by the
+	// window's live rect origin.
+	if ((is->toc418_city_btns_state == IS_OK) && (p_city_form != NULL))
+		for (int i = 0; i < 2; i++) {
+			int bx, by, vcx, vcy;
+			if (! toc418_city_arrow_geometry (i, &bx, &by, &vcx, &vcy))
+				continue;
+			int px, py;
+			toc418_city_dlg_origin (&px, &py);
+			if (x >= px + bx && x < px + bx + TOC418_CITY_BTN_SZ &&
+			    y >= py + by && y < py + by + TOC418_CITY_BTN_SZ) {
+				*out_tx = px + vcx; *out_ty = py + vcy;
+				return true;
+			}
+		}
+	// Popup twins hit-test against the LIVE-POPUP REGISTRY filled by patch_Button_m22_Draw
+	// (any GUI_Form_1-derived popup, global or stack-allocated).  Each entry is re-validated
+	// live — embedded-button vtable identity, sane geometry — and cleared when validation
+	// fails, so a destroyed stack popup can never redirect a click.  Twin rects come from the
+	// SAME layout function the draw uses (popup-local frame), translated to the client frame
+	// by the popup's HOVER-CALIBRATED origin (client mouse minus popup-local hover coords,
+	// captured by the GUI_Form_1_process_mouse_hover inlead — no form field or canvas rect
+	// stores the popup's screen position; control canvases are detached (0,0) buffers).  A
+	// twin is only accepted if its sprite was actually drawn (toc418_par_drawn).
+	if (is->toc418_popup_btns_state == IS_OK)
+		for (int n = 0; n < 4; n++) {
+			GUI_Form_1 * g = (GUI_Form_1 *) is->toc418_live_par[n];
+			if (g == NULL)
+				continue;
+			bool oks, xs;
+			int obx, xbx, tby;
+			if (! toc418_popup_pair_layout (g, &oks, &xs, &obx, &xbx, &tby)) {
+				is->toc418_live_par[n] = NULL;
+				continue;
+			}
+			if (! is->toc418_par_cal[n])
+				continue; // no origin yet — the mouse has not moved over this popup
+			int px = is->toc418_par_ox[n], py = is->toc418_par_oy[n];
+			for (int k = 0; k < 2; k++) {
+				if (! is->toc418_par_drawn[n][k])
+					continue;
+				if ((k == 0) ? ! oks : ! xs)
+					continue;
+				Button * b = (k == 0) ? &g->OK_Btn : &g->Cancel_Btn;
+				int sx = px + ((k == 0) ? obx : xbx), sy = py + tby;
+				if (x >= sx && x < sx + TOC418_POPUP_BTN_SZ &&
+				    y >= sy && y < sy + TOC418_POPUP_BTN_SZ) {
+					*out_tx = px + (b->Base_Data.Left + b->Base_Data.Right) / 2;
+					*out_ty = py + (b->Base_Data.Top + b->Base_Data.Bottom) / 2;
+					return true;
+				}
+			}
+		}
+	return false;
+}
+
+// ToC-418: minimal WndProc subclass (this branch has no other WndProc subclass, so ToC-418
+// carries its own; state fields keep their toc109_* names from the originating ToC branch,
+// where ToC-109 owns the shared subclass).  It does ONLY three things: store the mouse
+// position on WM_MOUSEMOVE (feeds hover calibration), remap L-button messages that land on
+// a big button, and chain EVERYTHING to the original game WndProc via CallWindowProcA.
+// The subclass stays installed across exit-to-menu — proven safe.
+static LRESULT WINAPI
+toc109_wndproc (HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+	if (msg == 0x0200) { // WM_MOUSEMOVE
+		// Must run BEFORE chaining to the engine, so that when the engine's dispatch of this
+		// same mousemove reaches GUI_Form_1_process_mouse_hover, the stored client position
+		// and the popup-local arguments describe the SAME mouse event.
+		is->toc109_mouse_x = (int)(short)(lparam & 0xFFFF);
+		is->toc109_mouse_y = (int)(short)((lparam >> 16) & 0xFFFF);
+	} else if ((msg == 0x0201) || (msg == 0x0203) || (msg == 0x0202)) { // WM_LBUTTONDOWN, WM_LBUTTONDBLCLK, WM_LBUTTONUP
+		// ToC-418: presses inside a big button are redirected to the tiny vanilla control's
+		// own coordinates BEFORE anything else sees the message.  The RELEASE must land on
+		// the same redirected coordinates as the press, or the vanilla control never
+		// registers a completed click — that's why WM_LBUTTONUP is remapped too.
+		int t418_tx, t418_ty;
+		if (toc418_remap_click ((int)(short)(lparam & 0xFFFF), (int)(short)((lparam >> 16) & 0xFFFF), &t418_tx, &t418_ty))
+			lparam = ((unsigned)(t418_ty & 0xFFFF) << 16) | (unsigned)(t418_tx & 0xFFFF);
+	}
+	return is->toc109_CallWindowProcA (is->toc109_orig_wndproc, hwnd, msg, wparam, lparam);
+}
+
+// ToC-418: install the WndProc subclass (idempotent, gated on toc109_wndproc_installed).
+// Called both from patch_Button_m22_Draw (covers a FRESH LAUNCH: pregame popups like the
+// "Saved Game" info box on load would otherwise draw dead twins) and from toc418_dlg_draw
+// (covers the city arrows even if no popup has ever been shown).  Only subclasses the
+// window whose client rect equals ScreenWidth x ScreenHeight — i.e. the game window.
+static void
+toc418_try_install_wndproc ()
+{
+	if (is->toc109_wndproc_installed)
+		return;
+	if (is->toc109_SetWindowLongA == NULL) {
+		HMODULE t418_u32 = (*p_GetModuleHandleA) ("user32.dll");
+		if (t418_u32) {
+			is->toc109_SetWindowLongA  = (void *) (*p_GetProcAddress) (t418_u32, "SetWindowLongA");
+			is->toc109_CallWindowProcA = (void *) (*p_GetProcAddress) (t418_u32, "CallWindowProcA");
+			is->toc109_GetActiveWindow = (void *) (*p_GetProcAddress) (t418_u32, "GetActiveWindow");
+			is->toc109_GetClientRect   = (void *) (*p_GetProcAddress) (t418_u32, "GetClientRect");
+		}
+	}
+	if (is->toc109_SetWindowLongA != NULL && is->toc109_CallWindowProcA != NULL &&
+	    is->toc109_GetActiveWindow != NULL && is->toc109_GetClientRect != NULL &&
+	    (p_bic_data != NULL)) {
+		HWND t418_hwnd = is->toc109_GetActiveWindow ();
+		RECT t418_rc;
+		if (t418_hwnd != NULL && is->toc109_GetClientRect (t418_hwnd, &t418_rc) &&
+		    t418_rc.right == p_bic_data->ScreenWidth && t418_rc.bottom == p_bic_data->ScreenHeight) {
+			is->toc109_orig_wndproc = (void *) is->toc109_SetWindowLongA (t418_hwnd, -4, (LONG) toc109_wndproc);
+			if (is->toc109_orig_wndproc != NULL) is->toc109_wndproc_installed = true;
+		}
+	}
+}
+
+// ToC-418: the wrapped draw for the city build-order window, installed by a runtime per-object
+// vtable swap in patch_City_Form_draw (this window is a static singleton embedded in
+// City_Form; slot 22 = draw per the Base_Form-derived decimal rule).  Drawing right after
+// the window's own draw guarantees the arrows sit ON TOP of it.
+static void __fastcall
+toc418_dlg_draw (Base_Form * this)
+{
+	((void (__fastcall *) (Base_Form *)) is->toc418_dlg_orig_draw) (this);
+	if (! is->current_config.mobile_friendly_icons ||
+	    (p_city_form == NULL) || (this != &p_city_form->Order_Queue_Dialog))
+		return;
+	init_toc418_mobile_buttons ();
+	if (is->toc418_city_btns_state != IS_OK)
+		return;
+	toc418_try_install_wndproc (); // city arrows need the click remap even if no popup was ever shown
+	Base_Form_Data * dd = &this->Data;
+	int W = dd->Right - dd->Left;
+	// Adaptive local origin for DRAWING on this canvas: window-sized canvas -> (0,0);
+	// client-frame canvas -> the window's own rect corner.
+	int ox = 0, oy = 0;
+	if (dd->Canvas.JGL.Image != NULL) {
+		int cw = dd->Canvas.JGL.Image->vtable->m54_Get_Width (dd->Canvas.JGL.Image);
+		if (cw > W + 60) { ox = dd->Left; oy = dd->Top; }
+	}
+	for (int i = 0; i < 2; i++) {
+		int bx, by, vx, vy;
+		if (toc418_city_arrow_geometry (i, &bx, &by, &vx, &vy))
+			Sprite_draw (&is->toc418_city_btns[i], __, &dd->Canvas, ox + bx, oy + by, NULL);
+	}
+}
+// End ToC-418 core
+
+// ToC-418: draw big popup twins from the Button's OWN class draw.  Buttons ARE
+// Base_Form-derived — slot 22 = m22_Draw — and a button draws AFTER its owning form, so
+// drawing the big twin right after the vanilla button guarantees correct z-order and live
+// geometry, and the coordinate frame is automatically the one the button itself just drew
+// in.  The wrap runs for EVERY button in the game: one bool test of overhead, then bail.
+void __fastcall
+patch_Button_m22_Draw (Button * this)
+{
+	Button_m22_Draw (this);
+
+	if (! is->current_config.mobile_friendly_icons)
+		return;
+
+	// Self-calibrating Button-class identity (used by the remap to validate registry entries
+	// without a hardcoded per-install vtable address).
+	is->toc418_button_vtable = (void *) this->vtable;
+
+	// Recognize confirm/cancel by OBJECT IDENTITY, never ControlID (the same checkbox pair
+	// carries ids (0,-1) on the pre-game setup screens but (-1,-2) in-game — the id is some
+	// per-form counter, not a role).  Every vanilla popup class — the global PopupForm
+	// included — derives from GUI_Form_1, which embeds the pair as OK_Btn/Cancel_Btn at
+	// fixed offsets, so a button whose ADDRESS equals &parent->OK_Btn IS the confirm
+	// (pointer arithmetic only, no reads of unproven memory).
+	Base_Form * t418_par = this->Base_Data.Parent;
+	if (t418_par == NULL)
+		return;
+	GUI_Form_1 * t418_g = (GUI_Form_1 *) t418_par;
+	int t418_kind;
+	if      (this == &t418_g->OK_Btn)     t418_kind = 0;
+	else if (this == &t418_g->Cancel_Btn) t418_kind = 1;
+	else
+		return;
+	if (! toc418_btn_is_active (this))
+		return;
+	init_toc418_mobile_buttons ();
+	if (is->toc418_popup_btns_state != IS_OK)
+		return;
+
+	// Register the PARENT popup for the click remap and the hover calibration.
+	int t418_slot = toc418_par_slot ((void *) t418_par, true);
+
+	// Draw this button's big twin on the PARENT form's canvas (the button's own canvas is
+	// button-sized).  Coordinates are parent-canvas-local, the same frame the button rects
+	// live in: NO origin shift.  Layout membership is STRUCTURAL (no Status2), so the
+	// positions are stable across every draw — no pair/single flapping ghosts; a hidden
+	// partner simply never draws its own twin.
+	bool t418_oks, t418_xs;
+	int t418_obx, t418_xbx, t418_by;
+	if (! toc418_popup_pair_layout (t418_g, &t418_oks, &t418_xs, &t418_obx, &t418_xbx, &t418_by))
+		return;
+	if ((t418_kind == 0) ? ! t418_oks : ! t418_xs)
+		return;
+	int t418_bx = (t418_kind == 0) ? t418_obx : t418_xbx;
+	Sprite_draw (&is->toc418_popup_btns[t418_kind], __, &t418_par->Data.Canvas, t418_bx, t418_by, NULL);
+	is->toc418_par_drawn[t418_slot][t418_kind] = true;
+
+	// On a FRESH LAUNCH nothing else may have installed the WndProc subclass (click remap +
+	// mouse capture for hover calibration), so PREGAME popups (the "Saved Game" info box on
+	// load) would draw dead twins.  Install it from here too; idempotent.
+	toc418_try_install_wndproc ();
+}
+// End ToC-418 popup pair
+
+// ToC-418: hover-calibration inlead on the popups' SHARED m27_process_mouse_hover (one
+// implementation for the whole GUI_Form_1 family, global PopupForm included).  The engine
+// calls it with POPUP-LOCAL coordinates (it forwards them straight to the popup's
+// local-rect row hit-tests), while our wndproc has just stored the same message's
+// CLIENT-frame mouse position — the difference IS the popup's live screen origin, which no
+// form field or canvas rect provides (control canvases are detached (0,0) buffers).
+// Calibration is continuous, so drag-moved popups stay correct.  Only popups already
+// registered by the Button draw wrap are tracked.
+void __fastcall
+patch_GUI_Form_1_process_mouse_hover (Base_Form * this, int edx, int local_x, int local_y)
+{
+	if (is->current_config.mobile_friendly_icons && is->toc109_wndproc_installed) {
+		int t418_slot = toc418_par_slot ((void *) this, false);
+		if (t418_slot >= 0) {
+			is->toc418_par_ox[t418_slot] = is->toc109_mouse_x - local_x;
+			is->toc418_par_oy[t418_slot] = is->toc109_mouse_y - local_y;
+			is->toc418_par_cal[t418_slot] = true;
+		}
+	}
+	GUI_Form_1_process_mouse_hover (this, __, local_x, local_y);
+}
+// End ToC-418 hover calibration
+
 void __fastcall
 patch_City_Form_draw (City_Form * this)
 {
@@ -22968,6 +23409,28 @@ patch_City_Form_draw (City_Form * this)
 		patch_City_recompute_culture_income(this->CurrentCity);
 
 	City_Form_draw (this);
+
+	// ToC-418: the big build-queue scroll arrows are NOT drawn here — the build-order
+	// window (Order_Queue_Dialog) composites AFTER this draw and covers them whenever it
+	// is open.  Instead this hook INSTALLS a per-object vtable swap on that window,
+	// wrapping its own draw (slot 22) with toc418_dlg_draw so the arrows land on top.
+	// The copy lives in is-> (writable); a re-run constructor restores the class vtable
+	// and the next city draw simply re-installs — self-healing, no csv row needed.
+	if (is->current_config.mobile_friendly_icons) {
+		init_toc418_mobile_buttons ();
+		if (is->toc418_city_btns_state == IS_OK) {
+			Base_Form * t418_dlg = &this->Order_Queue_Dialog;
+			void * t418_cur = *(void **) t418_dlg;
+			if ((t418_cur != NULL) && (t418_cur != (void *) is->toc418_dlg_vtbl)) {
+				memcpy (is->toc418_dlg_vtbl, t418_cur, sizeof is->toc418_dlg_vtbl);
+				is->toc418_dlg_orig_vtbl = t418_cur;
+				is->toc418_dlg_orig_draw = is->toc418_dlg_vtbl[22];
+				is->toc418_dlg_vtbl[22]  = (void *) toc418_dlg_draw;
+				*(void **) t418_dlg = (void *) is->toc418_dlg_vtbl;
+			}
+		}
+	}
+	// End ToC-418
 
 	if (is->current_config.show_detailed_city_production_info) {
 		City * city = this->CurrentCity;
