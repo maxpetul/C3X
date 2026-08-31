@@ -19945,6 +19945,7 @@ patch_init_floating_point ()
 		{"remove_land_artillery_target_restrictions"             , false, offsetof (struct c3x_config, remove_land_artillery_target_restrictions)},
 		{"allow_bombard_of_other_improvs_on_occupied_airfield"   , false, offsetof (struct c3x_config, allow_bombard_of_other_improvs_on_occupied_airfield)},
 		{"show_total_city_count"                                 , false, offsetof (struct c3x_config, show_total_city_count)},
+		{"persist_combat_win_rate_display"                       , false, offsetof (struct c3x_config, persist_combat_win_rate_display)},
 		{"strengthen_forbidden_palace_ocn_effect"                , false, offsetof (struct c3x_config, strengthen_forbidden_palace_ocn_effect)},
 		{"allow_upgrades_in_any_city"                            , false, offsetof (struct c3x_config, allow_upgrades_in_any_city)},
 		{"do_not_generate_volcanos"                              , false, offsetof (struct c3x_config, do_not_generate_volcanos)},
@@ -20666,6 +20667,29 @@ deinit_large_minimap_frame ()
 		is->double_size_box_left_alpha_pcx.vtable->destruct (&is->double_size_box_left_alpha_pcx, __, 0);
 	}
 	is->large_minimap_frame_img_state = IS_UNINITED;
+}
+
+void
+deinit_combat_odds_hud_backdrop (PCX_Image * backdrop, enum init_state * state)
+{
+	if (*state == IS_UNINITED)
+		return;
+	if (backdrop->vtable != NULL)
+		backdrop->vtable->destruct (backdrop, __, 0);
+	*state = IS_UNINITED;
+}
+
+void
+deinit_combat_odds_hud_backdrops ()
+{
+	deinit_combat_odds_hud_backdrop (
+		&is->combat_odds_hud_compact_backdrop,
+		&is->combat_odds_hud_compact_backdrop_state);
+	deinit_combat_odds_hud_backdrop (
+		&is->combat_odds_hud_detailed_backdrop,
+		&is->combat_odds_hud_detailed_backdrop_state);
+	memset (&is->combat_odds_hud, 0, sizeof is->combat_odds_hud);
+	is->combat_odds_hud_redrawing = false;
 }
 
 int __cdecl
@@ -23936,6 +23960,7 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 	deinit_unit_rcm_icons ();
 	deinit_red_food_icon ();
 	deinit_large_minimap_frame ();
+	deinit_combat_odds_hud_backdrops ();
 	if (is->tile_already_worked_zoomed_out_sprite_init_state != IS_UNINITED) {
 		enum init_state * state = &is->tile_already_worked_zoomed_out_sprite_init_state;
 		if (*state == IS_OK) {
@@ -28487,12 +28512,21 @@ draw_detailed_combat_odds_hud (PCX_Image * canvas,
 	                           text_width);
 }
 
+// The band just above Mini_Map_Click_Rect.top is not free space: the visual
+// minimap well overdraws it (which punched a black band through the bottom of
+// the box) and vanilla puts its "Turns Left" / "剩余回合数" banner there when
+// remaining turns <= 20. Clear the whole band instead of hugging the well.
+#define COMBAT_ODDS_HUD_MINIMAP_CLEARANCE 64
+
 void
 draw_combat_odds_hud (Main_Screen_Form * main_screen_form, PCX_Image * canvas)
 {
 	enum combat_win_rate_display_mode display_mode =
 		is->current_config.combat_win_rate_display_mode;
+	bool persist = is->current_config.persist_combat_win_rate_display;
+	bool show = persist || is->combat_odds_hud.active;
 	if (! ((display_mode != CWRDM_OFF) &&
+	       show &&
 	       (main_screen_form != NULL) &&
 	       (canvas != NULL) &&
 	       (canvas->JGL.Image != NULL) &&
@@ -28526,15 +28560,12 @@ draw_combat_odds_hud (Main_Screen_Form * main_screen_form, PCX_Image * canvas)
 	RECT minimap = main_screen_form->GUI.Mini_Map_Click_Rect;
 	int max_left = (canvas_w > box_w) ? canvas_w - box_w : 0,
 	    max_top  = (canvas_h > box_h) ? canvas_h - box_h : 0;
-	int left = clamp (0, max_left, minimap.right - box_w),
-	    top  = clamp (0, max_top, minimap.top - box_h - 1);
+	int left = clamp (0, max_left, minimap.left),
+	    top  = clamp (0, max_top,
+	                  minimap.top - box_h - COMBAT_ODDS_HUD_MINIMAP_CLEARANCE);
 
 	if (backdrop != NULL)
 		PCX_Image_draw_onto (backdrop, __, canvas, left, top);
-	else {
-		RECT rect = {left, top, left + box_w, top + box_h};
-		PCX_Image_fill_area (canvas, __, &rect, 0);
-	}
 
 	if (display_mode == CWRDM_DETAILED)
 		draw_detailed_combat_odds_hud (canvas, left, top, box_w);
@@ -32762,10 +32793,18 @@ set_combat_odds_hud_state (struct combat_odds_hud_state const * next)
 		return;
 
 	is->combat_odds_hud = *next;
-	if ((p_main_screen_form != NULL) &&
-	    (p_main_screen_form->vtable != NULL) &&
-	    ! p_main_screen_form->is_now_loading_game)
-		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+	// The redraw below runs the whole main screen draw path, which can lead
+	// back here. Injected code pages are read-only so this flag has to live
+	// in the injected state, not in a local static.
+	if (is->combat_odds_hud_redrawing ||
+	    (p_main_screen_form == NULL) ||
+	    (p_main_screen_form->vtable == NULL) ||
+	    p_main_screen_form->is_now_loading_game)
+		return;
+
+	is->combat_odds_hud_redrawing = true;
+	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+	is->combat_odds_hud_redrawing = false;
 }
 
 void
@@ -33071,6 +33110,11 @@ update_combat_odds_hud_for_hover (Main_Screen_Form * main_screen_form,
 	       (main_screen_form == p_main_screen_form) &&
 	       (*p_player_bits != 0) &&
 	       ! main_screen_form->is_now_loading_game))
+		goto done;
+
+	RECT minimap = main_screen_form->GUI.Mini_Map_Click_Rect;
+	if ((local_x >= minimap.left) && (local_x < minimap.right) &&
+	    (local_y >= minimap.top) && (local_y < minimap.bottom))
 		goto done;
 
 	Unit * attacker = main_screen_form->Current_Unit;
@@ -40607,6 +40651,9 @@ patch_Sprite_draw_minimap_frame (Sprite * this, int edx, Sprite * alpha, int par
 	else
 		tr = Sprite_draw_for_hud (this, __, alpha, param_2, canvas, x, y, param_6);
 
+	// Must be drawn here, after the frame sprite, so the box lands on top of
+	// the HUD chrome. Drawing it with the map layer instead gets it painted
+	// over by the chrome.
 	draw_combat_odds_hud (p_main_screen_form, canvas);
 	return tr;
 }

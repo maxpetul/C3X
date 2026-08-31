@@ -420,6 +420,7 @@ struct c3x_config {
 	bool allow_bombard_of_other_improvs_on_occupied_airfield;
 	bool show_total_city_count;
 	enum combat_win_rate_display_mode combat_win_rate_display_mode;
+	bool persist_combat_win_rate_display;
 	bool strengthen_forbidden_palace_ocn_effect;
 	int extra_unit_maintenance_per_shields;
 	enum special_zone_of_control_rules special_zone_of_control_rules;
@@ -2182,6 +2183,7 @@ struct injected_state {
 		struct counter_effect_summary counter_effects;
 		char text[64];
 	} combat_odds_hud;
+	bool combat_odds_hud_redrawing;
 	PCX_Image combat_odds_hud_compact_backdrop;
 	enum init_state combat_odds_hud_compact_backdrop_state;
 	PCX_Image combat_odds_hud_detailed_backdrop;
