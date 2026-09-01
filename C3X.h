@@ -2184,6 +2184,8 @@ struct injected_state {
 		char text[64];
 	} combat_odds_hud;
 	bool combat_odds_hud_redrawing;
+	bool combat_odds_hud_hide_pending;
+	LARGE_INTEGER combat_odds_hud_hide_started_at;
 	// Rect the box was last composited into. The Main_GUI canvas is not
 	// cleared under it, so preserve the covered pixels and restore them when
 	// the box moves or disappears. A fill would paint a black hole instead.

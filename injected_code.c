@@ -20690,6 +20690,7 @@ deinit_combat_odds_hud_backdrops ()
 		&is->combat_odds_hud_detailed_backdrop_state);
 	memset (&is->combat_odds_hud, 0, sizeof is->combat_odds_hud);
 	is->combat_odds_hud_redrawing = false;
+	is->combat_odds_hud_hide_pending = false;
 	is->combat_odds_hud_rect_drawn = false;
 	free (is->combat_odds_hud_background_pixels);
 	is->combat_odds_hud_background_pixels = NULL;
@@ -28524,6 +28525,7 @@ draw_detailed_combat_odds_hud (PCX_Image * canvas,
 // the countdown when that is above 20 or not positive.
 #define VANILLA_TURNS_LEFT_RECT_HEIGHT 60
 #define VANILLA_TURNS_LEFT_MAX_REMAINING 20
+#define COMBAT_ODDS_HUD_HIDE_DELAY_MS 200
 
 bool
 vanilla_turns_left_countdown_visible (void)
@@ -28537,6 +28539,57 @@ vanilla_turns_left_countdown_visible (void)
 }
 
 void request_combat_odds_hud_redraw (void);
+void init_empty_combat_odds_hud_state (struct combat_odds_hud_state * state);
+bool combat_odds_hud_states_equal (struct combat_odds_hud_state const * a,
+                                   struct combat_odds_hud_state const * b);
+
+void
+schedule_combat_odds_hud_hide (void)
+{
+	if (is->combat_odds_hud_hide_pending)
+		return;
+	is->combat_odds_hud_hide_pending = true;
+	if (! QueryPerformanceCounter (&is->combat_odds_hud_hide_started_at))
+		is->combat_odds_hud_hide_started_at.QuadPart = 0;
+}
+
+bool
+combat_odds_hud_hide_delay_elapsed (void)
+{
+	if (! is->combat_odds_hud_hide_pending)
+		return false;
+
+	LARGE_INTEGER now, frequency;
+	if ((is->combat_odds_hud_hide_started_at.QuadPart == 0) ||
+	    ! QueryPerformanceCounter (&now) ||
+	    ! QueryPerformanceFrequency (&frequency) ||
+	    (frequency.QuadPart <= 0))
+		return true;
+
+	long long elapsed = now.QuadPart -
+	                    is->combat_odds_hud_hide_started_at.QuadPart;
+	return (elapsed >= 0) &&
+	       (elapsed * 1000 >=
+	        frequency.QuadPart * COMBAT_ODDS_HUD_HIDE_DELAY_MS);
+}
+
+bool
+apply_pending_combat_odds_hud_hide (bool request_redraw)
+{
+	if (! combat_odds_hud_hide_delay_elapsed ())
+		return false;
+
+	is->combat_odds_hud_hide_pending = false;
+	struct combat_odds_hud_state empty;
+	init_empty_combat_odds_hud_state (&empty);
+	if (combat_odds_hud_states_equal (&is->combat_odds_hud, &empty))
+		return false;
+
+	is->combat_odds_hud = empty;
+	if (request_redraw)
+		request_combat_odds_hud_redraw ();
+	return true;
+}
 
 void
 discard_combat_odds_hud_background (void)
@@ -28697,7 +28750,20 @@ draw_combat_odds_hud (Main_Screen_Form * main_screen_form, PCX_Image * canvas)
 	       ! main_screen_form->is_now_loading_game))
 		return;
 
-	bool active = combat_odds_hud_target_still_hovered (main_screen_form);
+	bool active;
+	if (! persist) {
+		apply_pending_combat_odds_hud_hide (false);
+		if ((! is->combat_odds_hud_hide_pending) &&
+		    is->combat_odds_hud.active &&
+		    ! combat_odds_hud_target_still_hovered (main_screen_form))
+			schedule_combat_odds_hud_hide ();
+		// While a hide is pending, keep showing the last committed target.
+		// A new valid target cancels the pending hide in the hover path.
+		active = is->combat_odds_hud.active;
+	} else {
+		is->combat_odds_hud_hide_pending = false;
+		active = combat_odds_hud_target_still_hovered (main_screen_form);
+	}
 	bool show = persist || active;
 
 	PCX_Image * backdrop;
@@ -32969,8 +33035,10 @@ combat_odds_hud_states_equal (struct combat_odds_hud_state const * a,
 }
 
 // Call from outside the draw path only. Nested Draw from inside m22 is ignored
-// by the engine. The redraw runs the whole main screen draw, so it is guarded
-// by a flag in the injected state (injected code pages are read-only).
+// by the engine. Leave the existing box in place until draw_combat_odds_hud:
+// that function restores its background only if the box moves or disappears,
+// while a same-position update paints the new backdrop and text over the old
+// content without exposing a blank frame in between.
 void
 request_combat_odds_hud_redraw (void)
 {
@@ -32981,8 +33049,6 @@ request_combat_odds_hud_redraw (void)
 		return;
 
 	is->combat_odds_hud_redrawing = true;
-	restore_combat_odds_hud_background (
-		&p_main_screen_form->GUI.Base.Data.Canvas);
 	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 	is->combat_odds_hud_redrawing = false;
 }
@@ -32990,6 +33056,7 @@ request_combat_odds_hud_redraw (void)
 void
 set_combat_odds_hud_state (struct combat_odds_hud_state const * next)
 {
+	is->combat_odds_hud_hide_pending = false;
 	if (combat_odds_hud_states_equal (&is->combat_odds_hud, next))
 		return;
 
@@ -33333,7 +33400,13 @@ update_combat_odds_hud_for_hover (Main_Screen_Form * main_screen_form,
 	}
 
 done:
-	set_combat_odds_hud_state (&next);
+	if ((! is->current_config.persist_combat_win_rate_display) &&
+	    (is->current_config.combat_win_rate_display_mode != CWRDM_OFF) &&
+	    (! next.active) && is->combat_odds_hud.active) {
+		schedule_combat_odds_hud_hide ();
+		apply_pending_combat_odds_hud_hide (true);
+	} else
+		set_combat_odds_hud_state (&next);
 }
 
 void __fastcall
