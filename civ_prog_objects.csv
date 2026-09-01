@@ -182,6 +182,7 @@ inlead,	   0x53A860,	0x544B80,	0x53A8E0,	"get_anarchy_length",				"int (__stdcal
 repl call, 0x5557DE,	0x56136E,	0x55578E,	"PCX_Image_process_tech_ga_status",		""
 define,	   0x5FE560,	0x612F50,	0x5FE440,	"PCX_Image_process_text",			"int (__fastcall *) (PCX_Image * this, int edx, char * str)"
 define,	   0xA526AC,	0xA74EA4,	0xA5266C,	"p_current_turn_no",				"int *"
+define,	   0xA528C4,	0xA750BC,	0xA52884,	"p_turn_limit",					"int *"
 define,	   0xCADC0C,	0xCD0504,	0xCADBCC,	"p_labels",					"char ***"
 define,	   497,		498,		497,		"LBL_GOLDEN_AGE",				"int"
 define,	   0xA5267C,	0xA74E74,	0xA5263C,	"p_toggleable_rules",				"int *"

@@ -20690,6 +20690,11 @@ deinit_combat_odds_hud_backdrops ()
 		&is->combat_odds_hud_detailed_backdrop_state);
 	memset (&is->combat_odds_hud, 0, sizeof is->combat_odds_hud);
 	is->combat_odds_hud_redrawing = false;
+	is->combat_odds_hud_rect_drawn = false;
+	free (is->combat_odds_hud_background_pixels);
+	is->combat_odds_hud_background_pixels = NULL;
+	is->combat_odds_hud_background_pixel_capacity = 0;
+	is->combat_odds_hud_background_canvas = NULL;
 }
 
 int __cdecl
@@ -28431,8 +28436,6 @@ draw_detailed_combat_odds_hud (PCX_Image * canvas,
                                int left, int top, int box_w)
 {
 	struct combat_odds_hud_state * hud = &is->combat_odds_hud;
-	if (! hud->active)
-		return;
 
 	char attacker_name[32] = "",
 	     target_name[32] = "",
@@ -28512,11 +28515,173 @@ draw_detailed_combat_odds_hud (PCX_Image * canvas,
 	                           text_width);
 }
 
-// The band just above Mini_Map_Click_Rect.top is not free space: the visual
-// minimap well overdraws it (which punched a black band through the bottom of
-// the box) and vanilla puts its "Turns Left" / "剩余回合数" banner there when
-// remaining turns <= 20. Clear the whole band instead of hugging the well.
-#define COMBAT_ODDS_HUD_MINIMAP_CLEARANCE 64
+// Vanilla's "Turns Left" countdown is drawn into the rect from
+// Mini_Map_Click_Rect.left + 10 (width 255) and .top - 60 (height 46), so a
+// left-aligned box hugging the minimap gets its middle overwritten there while
+// the countdown is up. Lift the box clear of that rect for those turns only.
+//
+// This mirrors vanilla's own test: it takes turn_limit - current_turn and skips
+// the countdown when that is above 20 or not positive.
+#define VANILLA_TURNS_LEFT_RECT_HEIGHT 60
+#define VANILLA_TURNS_LEFT_MAX_REMAINING 20
+
+bool
+vanilla_turns_left_countdown_visible (void)
+{
+	int limit = *p_turn_limit;
+	if ((limit <= 0) || (limit > 1000000)) // Cap matches remove_cap_on_turn_limit
+		return false;
+
+	int remaining = limit - *p_current_turn_no;
+	return (remaining > 0) && (remaining <= VANILLA_TURNS_LEFT_MAX_REMAINING);
+}
+
+void request_combat_odds_hud_redraw (void);
+
+void
+discard_combat_odds_hud_background (void)
+{
+	is->combat_odds_hud_rect_drawn = false;
+	is->combat_odds_hud_background_canvas = NULL;
+}
+
+void
+restore_combat_odds_hud_background (PCX_Image * canvas)
+{
+	if (! is->combat_odds_hud_rect_drawn)
+		return;
+
+	JGL_Image * image = (canvas != NULL) ? canvas->JGL.Image : NULL;
+	if ((image != NULL) &&
+	    (image == is->combat_odds_hud_background_canvas) &&
+	    (is->combat_odds_hud_background_pixels != NULL)) {
+		int n = 0;
+		for (int y = 0; y < is->combat_odds_hud_drawn_h; y++) {
+			for (int x = 0; x < is->combat_odds_hud_drawn_w; x++, n++) {
+				unsigned short * pixel = image->vtable->m07_m05_Get_Pixel (
+					image, __,
+					is->combat_odds_hud_drawn_left + x,
+					is->combat_odds_hud_drawn_top + y);
+				if (pixel != NULL)
+					*pixel = is->combat_odds_hud_background_pixels[n];
+			}
+		}
+	}
+	discard_combat_odds_hud_background ();
+}
+
+bool
+save_combat_odds_hud_background (PCX_Image * canvas,
+                                 int left, int top, int width, int height)
+{
+	if ((canvas == NULL) || (canvas->JGL.Image == NULL) ||
+	    (width <= 0) || (height <= 0))
+		return false;
+
+	int pixel_count = width * height;
+	if ((pixel_count <= 0) || (pixel_count / width != height))
+		return false;
+	if (pixel_count > is->combat_odds_hud_background_pixel_capacity) {
+		unsigned short * larger = realloc (
+			is->combat_odds_hud_background_pixels,
+			pixel_count * sizeof *larger);
+		if (larger == NULL)
+			return false;
+		is->combat_odds_hud_background_pixels = larger;
+		is->combat_odds_hud_background_pixel_capacity = pixel_count;
+	}
+
+	JGL_Image * image = canvas->JGL.Image;
+	int n = 0;
+	for (int y = 0; y < height; y++) {
+		for (int x = 0; x < width; x++, n++) {
+			unsigned short * pixel = image->vtable->m07_m05_Get_Pixel (
+				image, __, left + x, top + y);
+			if (pixel == NULL) {
+				discard_combat_odds_hud_background ();
+				return false;
+			}
+			is->combat_odds_hud_background_pixels[n] = *pixel;
+		}
+	}
+
+	is->combat_odds_hud_drawn_left = left;
+	is->combat_odds_hud_drawn_top = top;
+	is->combat_odds_hud_drawn_w = width;
+	is->combat_odds_hud_drawn_h = height;
+	is->combat_odds_hud_background_canvas = image;
+	is->combat_odds_hud_rect_drawn = true;
+	return true;
+}
+
+void
+combat_odds_hud_get_target_pos (Main_Screen_Form * main_screen_form,
+                                PCX_Image * canvas,
+                                int box_w,
+                                int box_h,
+                                int * out_left,
+                                int * out_top)
+{
+	int canvas_w = canvas->JGL.Image->vtable->m54_Get_Width (canvas->JGL.Image),
+	    canvas_h = canvas->JGL.Image->vtable->m55_Get_Height (canvas->JGL.Image);
+	RECT minimap = main_screen_form->GUI.Mini_Map_Click_Rect;
+	int max_left = (canvas_w > box_w) ? canvas_w - box_w : 0,
+	    max_top  = (canvas_h > box_h) ? canvas_h - box_h : 0;
+	int clearance = vanilla_turns_left_countdown_visible () ?
+		VANILLA_TURNS_LEFT_RECT_HEIGHT : 1;
+	*out_left = clamp (0, max_left, minimap.left);
+	*out_top  = clamp (0, max_top, minimap.top - box_h - clearance);
+}
+
+// Full-canvas redraw from outside the draw path, used when the box must move
+// (Turns Left appearing/disappearing). Nested Draw from inside m22 is ignored
+// by the engine, so this must not be called during a draw.
+void
+combat_odds_hud_request_redraw_if_layout_stale (Main_Screen_Form * main_screen_form)
+{
+	if (! is->combat_odds_hud_rect_drawn ||
+	    is->combat_odds_hud_redrawing ||
+	    (main_screen_form == NULL) ||
+	    (main_screen_form != p_main_screen_form) ||
+	    main_screen_form->is_now_loading_game)
+		return;
+
+	// The minimap frame call receives Main_GUI's canvas, not the outer
+	// Main_Screen_Form canvas. The saved background is tied to this image.
+	PCX_Image * canvas = &main_screen_form->GUI.Base.Data.Canvas;
+	if ((canvas == NULL) || (canvas->JGL.Image == NULL))
+		return;
+
+	int left, top;
+	combat_odds_hud_get_target_pos (
+		main_screen_form, canvas,
+		is->combat_odds_hud_drawn_w, is->combat_odds_hud_drawn_h,
+		&left, &top);
+	if ((left != is->combat_odds_hud_drawn_left) ||
+	    (top != is->combat_odds_hud_drawn_top))
+		request_combat_odds_hud_redraw ();
+}
+
+// The stored state is refreshed from mouse-hover events, which stop arriving
+// once the cursor leaves the map. Re-check it here so the box is a function of
+// where the mouse is now instead of getting stuck on the last hovered target.
+bool
+combat_odds_hud_target_still_hovered (Main_Screen_Form * main_screen_form)
+{
+	struct combat_odds_hud_state * hud = &is->combat_odds_hud;
+	if (! hud->active)
+		return false;
+
+	int tile_x = -1, tile_y = -1;
+	if (Main_Screen_Form_get_tile_coords_under_mouse (
+		    main_screen_form, __,
+		    main_screen_form->mouse_x, main_screen_form->mouse_y,
+		    &tile_x, &tile_y))
+		return false;
+
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	return (tile_x == hud->tile_x) && (tile_y == hud->tile_y);
+}
 
 void
 draw_combat_odds_hud (Main_Screen_Form * main_screen_form, PCX_Image * canvas)
@@ -28524,15 +28689,16 @@ draw_combat_odds_hud (Main_Screen_Form * main_screen_form, PCX_Image * canvas)
 	enum combat_win_rate_display_mode display_mode =
 		is->current_config.combat_win_rate_display_mode;
 	bool persist = is->current_config.persist_combat_win_rate_display;
-	bool show = persist || is->combat_odds_hud.active;
 	if (! ((display_mode != CWRDM_OFF) &&
-	       show &&
 	       (main_screen_form != NULL) &&
 	       (canvas != NULL) &&
 	       (canvas->JGL.Image != NULL) &&
 	       (*p_player_bits != 0) &&
 	       ! main_screen_form->is_now_loading_game))
 		return;
+
+	bool active = combat_odds_hud_target_still_hovered (main_screen_form);
+	bool show = persist || active;
 
 	PCX_Image * backdrop;
 	enum init_state * backdrop_state;
@@ -28555,21 +28721,33 @@ draw_combat_odds_hud (Main_Screen_Form * main_screen_form, PCX_Image * canvas)
 	} else
 		backdrop = NULL;
 
-	int canvas_w = canvas->JGL.Image->vtable->m54_Get_Width (canvas->JGL.Image),
-	    canvas_h = canvas->JGL.Image->vtable->m55_Get_Height (canvas->JGL.Image);
-	RECT minimap = main_screen_form->GUI.Mini_Map_Click_Rect;
-	int max_left = (canvas_w > box_w) ? canvas_w - box_w : 0,
-	    max_top  = (canvas_h > box_h) ? canvas_h - box_h : 0;
-	int left = clamp (0, max_left, minimap.left),
-	    top  = clamp (0, max_top,
-	                  minimap.top - box_h - COMBAT_ODDS_HUD_MINIMAP_CLEARANCE);
+	int left, top;
+	combat_odds_hud_get_target_pos (main_screen_form, canvas, box_w, box_h, &left, &top);
+
+	bool old_rect_differs =
+		is->combat_odds_hud_rect_drawn &&
+		((left != is->combat_odds_hud_drawn_left) ||
+		 (top != is->combat_odds_hud_drawn_top) ||
+		 (box_w != is->combat_odds_hud_drawn_w) ||
+		 (box_h != is->combat_odds_hud_drawn_h) ||
+		 (canvas->JGL.Image != is->combat_odds_hud_background_canvas));
+	if ((! show) || old_rect_differs)
+		restore_combat_odds_hud_background (canvas);
+	if (! show)
+		return;
+	if (! is->combat_odds_hud_rect_drawn)
+		save_combat_odds_hud_background (
+			canvas, left, top, box_w, box_h);
 
 	if (backdrop != NULL)
 		PCX_Image_draw_onto (backdrop, __, canvas, left, top);
 
+	if (! active)
+		return;
+
 	if (display_mode == CWRDM_DETAILED)
 		draw_detailed_combat_odds_hud (canvas, left, top, box_w);
-	else if (is->combat_odds_hud.active) {
+	else {
 		Object_66C3FC * font = get_font (14, FSF_NONE);
 		int text_width = (box_w > 16) ? box_w - 16 : box_w;
 		PCX_Image_set_text_effects (canvas, __, 0x80000000, -1, 2, 2);
@@ -29790,6 +29968,10 @@ patch_Leader_begin_turn (Leader * this)
 
 	Leader_begin_turn (this);
 	is->ai_demand_target_selection_active = false;
+
+	if ((p_main_screen_form != NULL) &&
+	    (this->ID == p_main_screen_form->Player_CivID))
+		combat_odds_hud_request_redraw_if_layout_stale (p_main_screen_form);
 }
 
 int __fastcall
@@ -32786,16 +32968,12 @@ combat_odds_hud_states_equal (struct combat_odds_hud_state const * a,
 	       (strcmp (a->text, b->text) == 0);
 }
 
+// Call from outside the draw path only. Nested Draw from inside m22 is ignored
+// by the engine. The redraw runs the whole main screen draw, so it is guarded
+// by a flag in the injected state (injected code pages are read-only).
 void
-set_combat_odds_hud_state (struct combat_odds_hud_state const * next)
+request_combat_odds_hud_redraw (void)
 {
-	if (combat_odds_hud_states_equal (&is->combat_odds_hud, next))
-		return;
-
-	is->combat_odds_hud = *next;
-	// The redraw below runs the whole main screen draw path, which can lead
-	// back here. Injected code pages are read-only so this flag has to live
-	// in the injected state, not in a local static.
 	if (is->combat_odds_hud_redrawing ||
 	    (p_main_screen_form == NULL) ||
 	    (p_main_screen_form->vtable == NULL) ||
@@ -32803,8 +32981,20 @@ set_combat_odds_hud_state (struct combat_odds_hud_state const * next)
 		return;
 
 	is->combat_odds_hud_redrawing = true;
+	restore_combat_odds_hud_background (
+		&p_main_screen_form->GUI.Base.Data.Canvas);
 	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 	is->combat_odds_hud_redrawing = false;
+}
+
+void
+set_combat_odds_hud_state (struct combat_odds_hud_state const * next)
+{
+	if (combat_odds_hud_states_equal (&is->combat_odds_hud, next))
+		return;
+
+	is->combat_odds_hud = *next;
+	request_combat_odds_hud_redraw ();
 }
 
 void
@@ -33151,6 +33341,7 @@ patch_Main_Screen_Form_process_mouse_hover (Main_Screen_Form * this, int edx, in
 {
 	Main_Screen_Form_process_mouse_hover (this, __, local_x, local_y);
 	update_combat_odds_hud_for_hover (this, local_x, local_y);
+	combat_odds_hud_request_redraw_if_layout_stale (this);
 }
 
 bool __fastcall
@@ -41902,6 +42093,8 @@ patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit
 
 	if (is->combat_odds_hud.active)
 		clear_combat_odds_hud_state ();
+
+	combat_odds_hud_request_redraw_if_layout_stale (this);
 
 	if (redraw && ! this->is_now_loading_game)
 		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);

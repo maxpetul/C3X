@@ -2184,6 +2184,15 @@ struct injected_state {
 		char text[64];
 	} combat_odds_hud;
 	bool combat_odds_hud_redrawing;
+	// Rect the box was last composited into. The Main_GUI canvas is not
+	// cleared under it, so preserve the covered pixels and restore them when
+	// the box moves or disappears. A fill would paint a black hole instead.
+	int combat_odds_hud_drawn_left, combat_odds_hud_drawn_top,
+	    combat_odds_hud_drawn_w, combat_odds_hud_drawn_h;
+	bool combat_odds_hud_rect_drawn;
+	unsigned short * combat_odds_hud_background_pixels;
+	int combat_odds_hud_background_pixel_capacity;
+	JGL_Image * combat_odds_hud_background_canvas;
 	PCX_Image combat_odds_hud_compact_backdrop;
 	enum init_state combat_odds_hud_compact_backdrop_state;
 	PCX_Image combat_odds_hud_detailed_backdrop;
