@@ -2284,6 +2284,17 @@ read_minimap_doubling_mode (struct string_slice const * s, int * out_val)
 }
 
 bool
+read_combat_win_rate_display_mode (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "off"     )) { *out_val = CWRDM_OFF;      return true; }
+	else if (slice_matches_str (&trimmed, "compact" )) { *out_val = CWRDM_COMPACT;  return true; }
+	else if (slice_matches_str (&trimmed, "detailed")) { *out_val = CWRDM_DETAILED; return true; }
+	else
+		return false;
+}
+
+bool
 read_unit_cycle_search_criteria (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
@@ -3056,6 +3067,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "double_minimap_size")) {
 					if (! read_minimap_doubling_mode (&value, (int *)&cfg->double_minimap_size))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "combat_win_rate_display_mode")) {
+					if (! read_combat_win_rate_display_mode (&value, (int *)&cfg->combat_win_rate_display_mode))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "unit_cycle_search_criteria")) {
 					if (! read_unit_cycle_search_criteria (&value, (int *)&cfg->unit_cycle_search_criteria))
@@ -9006,29 +9020,43 @@ counter_rule_environment_matches (struct c3x_config * cfg,
 }
 
 void
-apply_counter_rules (struct c3x_config * cfg,
-                     Unit * attacker, Unit * defender, Tile * def_tile,
-                     int * out_attacker_atk, int * out_defender_def,
-                     bool * out_ignore_defensive_bonuses)
+init_neutral_counter_effect_summary (struct counter_effect_summary * out)
 {
-	int a_type   = attacker->Body.UnitTypeID;
-	int d_type   = defender->Body.UnitTypeID;
+	out->attacker_atk_pct = 100;
+	out->defender_def_pct = 100;
+	out->bombard_pct = 100;
+	out->ignore_defensive_bonuses = false;
+}
 
-	int aa = 100, dd = 100;
-	bool ignore_defensive_bonuses = false;
+void
+get_counter_effect_summary (struct c3x_config * cfg,
+                            Unit * attacker, Unit * defender,
+                            Tile * def_tile,
+                            struct counter_effect_summary * out)
+{
+	init_neutral_counter_effect_summary (out);
+	if (! (cfg->enable_unit_counters &&
+	       (attacker != NULL) &&
+	       (defender != NULL) &&
+	       (attacker->Body.UnitTypeID >= 0) &&
+	       (attacker->Body.UnitTypeID < p_bic_data->UnitTypeCount) &&
+	       (defender->Body.UnitTypeID >= 0) &&
+	       (defender->Body.UnitTypeID < p_bic_data->UnitTypeCount)))
+		return;
+
+	int a_type = attacker->Body.UnitTypeID;
+	int d_type = defender->Body.UnitTypeID;
 
 	for (int i = 0; i < cfg->count_counter_rules; i++) {
 		struct counter_rule * r = &cfg->counter_rules[i];
 
-		// Check forward match (attacker=rule attacker side, defender=rule defender side)
-		// Applied fields: self-atk (attacker attack), enemy-def (defender defense)
+		// Check forward match (attacker=rule attacker side, defender=rule defender side).
 		bool forward = unit_matches_counter_side (cfg, a_type,
 		                   r->attacker_match, r->attacker_tag_id) &&
 		               unit_matches_counter_side (cfg, d_type,
 		                   r->defender_match, r->defender_tag_id);
 
-		// Check reverse match (attacker=rule defender side, defender=rule attacker side)
-		// Applied fields: self-def (rule attacker side is now defending), enemy-atk (rule defender side is now attacking)
+		// Check reverse match (attacker=rule defender side, defender=rule attacker side).
 		bool reverse = unit_matches_counter_side (cfg, a_type,
 		                   r->defender_match, r->defender_tag_id) &&
 		               unit_matches_counter_side (cfg, d_type,
@@ -9048,30 +9076,44 @@ apply_counter_rules (struct c3x_config * cfg,
 		        attacker->Body.Combat_Experience))
 			reverse = false;
 
-		if (! forward && ! reverse)
-			continue;
-
-		// Environment checks are based on the defender's tile
-		if (! counter_rule_environment_matches (cfg, r, def_tile))
+		if ((! forward && ! reverse) ||
+		    ! counter_rule_environment_matches (cfg, r, def_tile))
 			continue;
 
 		if (forward) {
-			aa = aa * r->self_atk_pct  / 100;  // self-atk: attacker attack
-			dd = dd * r->enemy_def_pct / 100;  // enemy-def: defender defense
+			out->attacker_atk_pct =
+				out->attacker_atk_pct * r->self_atk_pct / 100;
+			out->bombard_pct =
+				out->bombard_pct * r->self_bombard_pct / 100;
+			if (r->ignore_defensive_bonuses) {
+				// ignore-defensive-bonuses replaces this rule's enemy-def effect.
+				out->ignore_defensive_bonuses = true;
+			} else
+				out->defender_def_pct =
+					out->defender_def_pct * r->enemy_def_pct / 100;
 		}
 		if (reverse) {
-			aa = aa * r->enemy_atk_pct / 100;  // enemy-atk: rule defender side now acts as attacker
-			dd = dd * r->self_def_pct  / 100;  // self-def: rule attacker side now acts as defender
+			out->attacker_atk_pct =
+				out->attacker_atk_pct * r->enemy_atk_pct / 100;
+			out->defender_def_pct =
+				out->defender_def_pct * r->self_def_pct / 100;
+			out->bombard_pct =
+				out->bombard_pct * r->enemy_bombard_pct / 100;
 		}
-		if (forward || reverse)
-			ignore_defensive_bonuses =
-				ignore_defensive_bonuses ||
-				r->ignore_defensive_bonuses;
 	}
+}
 
-	*out_attacker_atk  = aa;
-	*out_defender_def  = dd;
-	*out_ignore_defensive_bonuses = ignore_defensive_bonuses;
+void
+apply_counter_rules (struct c3x_config * cfg,
+                     Unit * attacker, Unit * defender, Tile * def_tile,
+                     int * out_attacker_atk, int * out_defender_def,
+                     bool * out_ignore_defensive_bonuses)
+{
+	struct counter_effect_summary effects;
+	get_counter_effect_summary (cfg, attacker, defender, def_tile, &effects);
+	*out_attacker_atk = effects.attacker_atk_pct;
+	*out_defender_def = effects.defender_def_pct;
+	*out_ignore_defensive_bonuses = effects.ignore_defensive_bonuses;
 }
 
 int
@@ -19903,6 +19945,7 @@ patch_init_floating_point ()
 		{"remove_land_artillery_target_restrictions"             , false, offsetof (struct c3x_config, remove_land_artillery_target_restrictions)},
 		{"allow_bombard_of_other_improvs_on_occupied_airfield"   , false, offsetof (struct c3x_config, allow_bombard_of_other_improvs_on_occupied_airfield)},
 		{"show_total_city_count"                                 , false, offsetof (struct c3x_config, show_total_city_count)},
+		{"persist_combat_win_rate_display"                       , false, offsetof (struct c3x_config, persist_combat_win_rate_display)},
 		{"strengthen_forbidden_palace_ocn_effect"                , false, offsetof (struct c3x_config, strengthen_forbidden_palace_ocn_effect)},
 		{"allow_upgrades_in_any_city"                            , false, offsetof (struct c3x_config, allow_upgrades_in_any_city)},
 		{"do_not_generate_volcanos"                              , false, offsetof (struct c3x_config, do_not_generate_volcanos)},
@@ -20084,6 +20127,7 @@ patch_init_floating_point ()
 	base_config.work_area_limit = WAL_NONE;
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
 	base_config.double_minimap_size = MDM_HIGH_DEF;
+	base_config.combat_win_rate_display_mode = CWRDM_DETAILED;
 	base_config.override_no_ai_patrol = NAPO_NONE;
 	base_config.override_barbarian_activity_level_for_scenario_maps = BAO_NONE;
 	base_config.unit_cycle_search_criteria = UCSC_STANDARD;
@@ -20623,6 +20667,35 @@ deinit_large_minimap_frame ()
 		is->double_size_box_left_alpha_pcx.vtable->destruct (&is->double_size_box_left_alpha_pcx, __, 0);
 	}
 	is->large_minimap_frame_img_state = IS_UNINITED;
+}
+
+void
+deinit_combat_odds_hud_backdrop (PCX_Image * backdrop, enum init_state * state)
+{
+	if (*state == IS_UNINITED)
+		return;
+	if (backdrop->vtable != NULL)
+		backdrop->vtable->destruct (backdrop, __, 0);
+	*state = IS_UNINITED;
+}
+
+void
+deinit_combat_odds_hud_backdrops ()
+{
+	deinit_combat_odds_hud_backdrop (
+		&is->combat_odds_hud_compact_backdrop,
+		&is->combat_odds_hud_compact_backdrop_state);
+	deinit_combat_odds_hud_backdrop (
+		&is->combat_odds_hud_detailed_backdrop,
+		&is->combat_odds_hud_detailed_backdrop_state);
+	memset (&is->combat_odds_hud, 0, sizeof is->combat_odds_hud);
+	is->combat_odds_hud_redrawing = false;
+	is->combat_odds_hud_hide_pending = false;
+	is->combat_odds_hud_rect_drawn = false;
+	free (is->combat_odds_hud_background_pixels);
+	is->combat_odds_hud_background_pixels = NULL;
+	is->combat_odds_hud_background_pixel_capacity = 0;
+	is->combat_odds_hud_background_canvas = NULL;
 }
 
 int __cdecl
@@ -23893,6 +23966,7 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 	deinit_unit_rcm_icons ();
 	deinit_red_food_icon ();
 	deinit_large_minimap_frame ();
+	deinit_combat_odds_hud_backdrops ();
 	if (is->tile_already_worked_zoomed_out_sprite_init_state != IS_UNINITED) {
 		enum init_state * state = &is->tile_already_worked_zoomed_out_sprite_init_state;
 		if (*state == IS_OK) {
@@ -28316,6 +28390,441 @@ draw_map_tile_text (Main_Screen_Form * this, PCX_Image * canvas, char * text, in
 	}
 }
 
+char const *
+c3x_label_or_fallback (enum c3x_label label, char const * fallback);
+
+void
+init_combat_odds_hud_backdrop (PCX_Image * backdrop,
+                               enum init_state * state,
+                               char const * file_name)
+{
+	if (*state != IS_UNINITED)
+		return;
+
+	char temp_path[2*MAX_PATH];
+	PCX_Image_construct (backdrop);
+	get_mod_art_path ((char *)file_name, temp_path, sizeof temp_path);
+	PCX_Image_read_file (backdrop, __, temp_path, NULL, 0, 0x100, 2);
+	*state = (backdrop->JGL.Image != NULL) ? IS_OK : IS_INIT_FAILED;
+}
+
+void
+format_combat_odds_hud_unit_name (char * out, int out_capacity,
+                                  char const * name)
+{
+	int max_chars = 18;
+	if ((name != NULL) && ((int)strlen (name) > max_chars))
+		snprintf (out, out_capacity, "%.*s...", max_chars - 3, name);
+	else
+		snprintf (out, out_capacity, "%s", (name != NULL) ? name : "");
+	out[out_capacity - 1] = '\0';
+}
+
+void
+draw_combat_odds_hud_line (PCX_Image * canvas,
+                           Object_66C3FC * font,
+                           char * text,
+                           int left, int top, int width)
+{
+	if ((font == NULL) || (text == NULL) || (text[0] == '\0'))
+		return;
+	PCX_Image_draw_centered_text (canvas, __, font, text,
+	                              left, top, width, strlen (text));
+}
+
+void
+draw_detailed_combat_odds_hud (PCX_Image * canvas,
+                               int left, int top, int box_w)
+{
+	struct combat_odds_hud_state * hud = &is->combat_odds_hud;
+
+	char attacker_name[32] = "",
+	     target_name[32] = "",
+	     matchup[96] = "",
+	     effect_1[64] = "",
+	     effect_2[64] = "",
+	     status[96] = "";
+	if ((hud->attacker_unit_type_id >= 0) &&
+	    (hud->attacker_unit_type_id < p_bic_data->UnitTypeCount))
+		format_combat_odds_hud_unit_name (
+			attacker_name, sizeof attacker_name,
+			p_bic_data->UnitTypes[hud->attacker_unit_type_id].Name);
+	if ((hud->target_unit_type_id >= 0) &&
+	    (hud->target_unit_type_id < p_bic_data->UnitTypeCount))
+		format_combat_odds_hud_unit_name (
+			target_name, sizeof target_name,
+			p_bic_data->UnitTypes[hud->target_unit_type_id].Name);
+	snprintf (matchup, sizeof matchup, "%s %s %s",
+	          attacker_name,
+	          c3x_label_or_fallback (CL_COMBAT_VS, "vs"),
+	          target_name);
+	matchup[(sizeof matchup) - 1] = '\0';
+
+	bool has_counter_effect = false;
+	if (hud->mode == COHM_BOMBARD) {
+		if (hud->counter_effects.bombard_pct != 100) {
+			snprintf (effect_1, sizeof effect_1, "%s x%d%%",
+			          c3x_label_or_fallback (CL_COUNTER_BOMBARD, "Bombard"),
+			          hud->counter_effects.bombard_pct);
+			has_counter_effect = true;
+		}
+	} else if (hud->mode == COHM_ATTACK) {
+		if (hud->counter_effects.attacker_atk_pct != 100) {
+			snprintf (effect_1, sizeof effect_1, "%s x%d%%",
+			          c3x_label_or_fallback (CL_COUNTER_ATTACK, "Attack"),
+			          hud->counter_effects.attacker_atk_pct);
+			has_counter_effect = true;
+		}
+		if (hud->counter_effects.defender_def_pct != 100) {
+			snprintf (effect_2, sizeof effect_2, "%s x%d%%",
+			          c3x_label_or_fallback (CL_COUNTER_DEFENSE, "Defense"),
+			          hud->counter_effects.defender_def_pct);
+			has_counter_effect = true;
+		}
+		if (hud->counter_effects.ignore_defensive_bonuses) {
+			snprintf (status, sizeof status, "%s",
+			          c3x_label_or_fallback (
+				          CL_COUNTER_IGNORES_DEFENSIVE_BONUSES,
+				          "Ignores defensive bonuses"));
+			has_counter_effect = true;
+		}
+	}
+	if (! has_counter_effect)
+		snprintf (status, sizeof status, "%s",
+		          c3x_label_or_fallback (CL_COUNTER_NO_EFFECT,
+		                                 "No counter effect"));
+	effect_1[(sizeof effect_1) - 1] = '\0';
+	effect_2[(sizeof effect_2) - 1] = '\0';
+	status[(sizeof status) - 1] = '\0';
+
+	int text_width = (box_w > 16) ? box_w - 16 : box_w;
+	int text_left = left + (box_w - text_width) / 2;
+	Object_66C3FC * small_font = get_font (10, FSF_NONE),
+	              * chance_font = get_font (14, FSF_NONE);
+	PCX_Image_set_text_effects (canvas, __, 0x80000000, -1, 2, 2);
+	draw_combat_odds_hud_line (canvas, small_font, matchup,
+	                           text_left, top + 8, text_width);
+	draw_combat_odds_hud_line (canvas, chance_font, hud->text,
+	                           text_left, top + 25, text_width);
+	draw_combat_odds_hud_line (canvas, small_font, effect_1,
+	                           text_left, top + 50, text_width);
+	draw_combat_odds_hud_line (canvas, small_font, effect_2,
+	                           text_left, top + 64, text_width);
+	draw_combat_odds_hud_line (canvas, small_font, status,
+	                           text_left,
+	                           top + (has_counter_effect ? 78 : 64),
+	                           text_width);
+}
+
+// Vanilla's "Turns Left" countdown is drawn into the rect from
+// Mini_Map_Click_Rect.left + 10 (width 255) and .top - 60 (height 46), so a
+// left-aligned box hugging the minimap gets its middle overwritten there while
+// the countdown is up. Lift the box clear of that rect for those turns only.
+//
+// This mirrors vanilla's own test: it takes turn_limit - current_turn and skips
+// the countdown when that is above 20 or not positive.
+#define VANILLA_TURNS_LEFT_RECT_HEIGHT 60
+#define VANILLA_TURNS_LEFT_MAX_REMAINING 20
+#define COMBAT_ODDS_HUD_HIDE_DELAY_MS 200
+
+bool
+vanilla_turns_left_countdown_visible (void)
+{
+	int limit = *p_turn_limit;
+	if ((limit <= 0) || (limit > 1000000)) // Cap matches remove_cap_on_turn_limit
+		return false;
+
+	int remaining = limit - *p_current_turn_no;
+	return (remaining > 0) && (remaining <= VANILLA_TURNS_LEFT_MAX_REMAINING);
+}
+
+void request_combat_odds_hud_redraw (void);
+void init_empty_combat_odds_hud_state (struct combat_odds_hud_state * state);
+bool combat_odds_hud_states_equal (struct combat_odds_hud_state const * a,
+                                   struct combat_odds_hud_state const * b);
+
+void
+schedule_combat_odds_hud_hide (void)
+{
+	if (is->combat_odds_hud_hide_pending)
+		return;
+	is->combat_odds_hud_hide_pending = true;
+	if (! QueryPerformanceCounter (&is->combat_odds_hud_hide_started_at))
+		is->combat_odds_hud_hide_started_at.QuadPart = 0;
+}
+
+bool
+combat_odds_hud_hide_delay_elapsed (void)
+{
+	if (! is->combat_odds_hud_hide_pending)
+		return false;
+
+	LARGE_INTEGER now, frequency;
+	if ((is->combat_odds_hud_hide_started_at.QuadPart == 0) ||
+	    ! QueryPerformanceCounter (&now) ||
+	    ! QueryPerformanceFrequency (&frequency) ||
+	    (frequency.QuadPart <= 0))
+		return true;
+
+	long long elapsed = now.QuadPart -
+	                    is->combat_odds_hud_hide_started_at.QuadPart;
+	return (elapsed >= 0) &&
+	       (elapsed * 1000 >=
+	        frequency.QuadPart * COMBAT_ODDS_HUD_HIDE_DELAY_MS);
+}
+
+bool
+apply_pending_combat_odds_hud_hide (bool request_redraw)
+{
+	if (! combat_odds_hud_hide_delay_elapsed ())
+		return false;
+
+	is->combat_odds_hud_hide_pending = false;
+	struct combat_odds_hud_state empty;
+	init_empty_combat_odds_hud_state (&empty);
+	if (combat_odds_hud_states_equal (&is->combat_odds_hud, &empty))
+		return false;
+
+	is->combat_odds_hud = empty;
+	if (request_redraw)
+		request_combat_odds_hud_redraw ();
+	return true;
+}
+
+void
+discard_combat_odds_hud_background (void)
+{
+	is->combat_odds_hud_rect_drawn = false;
+	is->combat_odds_hud_background_canvas = NULL;
+}
+
+void
+restore_combat_odds_hud_background (PCX_Image * canvas)
+{
+	if (! is->combat_odds_hud_rect_drawn)
+		return;
+
+	JGL_Image * image = (canvas != NULL) ? canvas->JGL.Image : NULL;
+	if ((image != NULL) &&
+	    (image == is->combat_odds_hud_background_canvas) &&
+	    (is->combat_odds_hud_background_pixels != NULL)) {
+		int n = 0;
+		for (int y = 0; y < is->combat_odds_hud_drawn_h; y++) {
+			for (int x = 0; x < is->combat_odds_hud_drawn_w; x++, n++) {
+				unsigned short * pixel = image->vtable->m07_m05_Get_Pixel (
+					image, __,
+					is->combat_odds_hud_drawn_left + x,
+					is->combat_odds_hud_drawn_top + y);
+				if (pixel != NULL)
+					*pixel = is->combat_odds_hud_background_pixels[n];
+			}
+		}
+	}
+	discard_combat_odds_hud_background ();
+}
+
+bool
+save_combat_odds_hud_background (PCX_Image * canvas,
+                                 int left, int top, int width, int height)
+{
+	if ((canvas == NULL) || (canvas->JGL.Image == NULL) ||
+	    (width <= 0) || (height <= 0))
+		return false;
+
+	int pixel_count = width * height;
+	if ((pixel_count <= 0) || (pixel_count / width != height))
+		return false;
+	if (pixel_count > is->combat_odds_hud_background_pixel_capacity) {
+		unsigned short * larger = realloc (
+			is->combat_odds_hud_background_pixels,
+			pixel_count * sizeof *larger);
+		if (larger == NULL)
+			return false;
+		is->combat_odds_hud_background_pixels = larger;
+		is->combat_odds_hud_background_pixel_capacity = pixel_count;
+	}
+
+	JGL_Image * image = canvas->JGL.Image;
+	int n = 0;
+	for (int y = 0; y < height; y++) {
+		for (int x = 0; x < width; x++, n++) {
+			unsigned short * pixel = image->vtable->m07_m05_Get_Pixel (
+				image, __, left + x, top + y);
+			if (pixel == NULL) {
+				discard_combat_odds_hud_background ();
+				return false;
+			}
+			is->combat_odds_hud_background_pixels[n] = *pixel;
+		}
+	}
+
+	is->combat_odds_hud_drawn_left = left;
+	is->combat_odds_hud_drawn_top = top;
+	is->combat_odds_hud_drawn_w = width;
+	is->combat_odds_hud_drawn_h = height;
+	is->combat_odds_hud_background_canvas = image;
+	is->combat_odds_hud_rect_drawn = true;
+	return true;
+}
+
+void
+combat_odds_hud_get_target_pos (Main_Screen_Form * main_screen_form,
+                                PCX_Image * canvas,
+                                int box_w,
+                                int box_h,
+                                int * out_left,
+                                int * out_top)
+{
+	int canvas_w = canvas->JGL.Image->vtable->m54_Get_Width (canvas->JGL.Image),
+	    canvas_h = canvas->JGL.Image->vtable->m55_Get_Height (canvas->JGL.Image);
+	RECT minimap = main_screen_form->GUI.Mini_Map_Click_Rect;
+	int max_left = (canvas_w > box_w) ? canvas_w - box_w : 0,
+	    max_top  = (canvas_h > box_h) ? canvas_h - box_h : 0;
+	int clearance = vanilla_turns_left_countdown_visible () ?
+		VANILLA_TURNS_LEFT_RECT_HEIGHT : 1;
+	*out_left = clamp (0, max_left, minimap.left);
+	*out_top  = clamp (0, max_top, minimap.top - box_h - clearance);
+}
+
+// Full-canvas redraw from outside the draw path, used when the box must move
+// (Turns Left appearing/disappearing). Nested Draw from inside m22 is ignored
+// by the engine, so this must not be called during a draw.
+void
+combat_odds_hud_request_redraw_if_layout_stale (Main_Screen_Form * main_screen_form)
+{
+	if (! is->combat_odds_hud_rect_drawn ||
+	    is->combat_odds_hud_redrawing ||
+	    (main_screen_form == NULL) ||
+	    (main_screen_form != p_main_screen_form) ||
+	    main_screen_form->is_now_loading_game)
+		return;
+
+	// The minimap frame call receives Main_GUI's canvas, not the outer
+	// Main_Screen_Form canvas. The saved background is tied to this image.
+	PCX_Image * canvas = &main_screen_form->GUI.Base.Data.Canvas;
+	if ((canvas == NULL) || (canvas->JGL.Image == NULL))
+		return;
+
+	int left, top;
+	combat_odds_hud_get_target_pos (
+		main_screen_form, canvas,
+		is->combat_odds_hud_drawn_w, is->combat_odds_hud_drawn_h,
+		&left, &top);
+	if ((left != is->combat_odds_hud_drawn_left) ||
+	    (top != is->combat_odds_hud_drawn_top))
+		request_combat_odds_hud_redraw ();
+}
+
+// The stored state is refreshed from mouse-hover events, which stop arriving
+// once the cursor leaves the map. Re-check it here so the box is a function of
+// where the mouse is now instead of getting stuck on the last hovered target.
+bool
+combat_odds_hud_target_still_hovered (Main_Screen_Form * main_screen_form)
+{
+	struct combat_odds_hud_state * hud = &is->combat_odds_hud;
+	if (! hud->active)
+		return false;
+
+	int tile_x = -1, tile_y = -1;
+	if (Main_Screen_Form_get_tile_coords_under_mouse (
+		    main_screen_form, __,
+		    main_screen_form->mouse_x, main_screen_form->mouse_y,
+		    &tile_x, &tile_y))
+		return false;
+
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	return (tile_x == hud->tile_x) && (tile_y == hud->tile_y);
+}
+
+void
+draw_combat_odds_hud (Main_Screen_Form * main_screen_form, PCX_Image * canvas)
+{
+	enum combat_win_rate_display_mode display_mode =
+		is->current_config.combat_win_rate_display_mode;
+	bool persist = is->current_config.persist_combat_win_rate_display;
+	if (! ((display_mode != CWRDM_OFF) &&
+	       (main_screen_form != NULL) &&
+	       (canvas != NULL) &&
+	       (canvas->JGL.Image != NULL) &&
+	       (*p_player_bits != 0) &&
+	       ! main_screen_form->is_now_loading_game))
+		return;
+
+	bool active;
+	if (! persist) {
+		apply_pending_combat_odds_hud_hide (false);
+		if ((! is->combat_odds_hud_hide_pending) &&
+		    is->combat_odds_hud.active &&
+		    ! combat_odds_hud_target_still_hovered (main_screen_form))
+			schedule_combat_odds_hud_hide ();
+		// While a hide is pending, keep showing the last committed target.
+		// A new valid target cancels the pending hide in the hover path.
+		active = is->combat_odds_hud.active;
+	} else {
+		is->combat_odds_hud_hide_pending = false;
+		active = combat_odds_hud_target_still_hovered (main_screen_form);
+	}
+	bool show = persist || active;
+
+	PCX_Image * backdrop;
+	enum init_state * backdrop_state;
+	char const * backdrop_file;
+	int box_w = 280,
+	    box_h = (display_mode == CWRDM_DETAILED) ? 96 : 40;
+	if (display_mode == CWRDM_DETAILED) {
+		backdrop = &is->combat_odds_hud_detailed_backdrop;
+		backdrop_state = &is->combat_odds_hud_detailed_backdrop_state;
+		backdrop_file = "WinrateDetailedBackground.pcx";
+	} else {
+		backdrop = &is->combat_odds_hud_compact_backdrop;
+		backdrop_state = &is->combat_odds_hud_compact_backdrop_state;
+		backdrop_file = "WinrateBackground.pcx";
+	}
+	init_combat_odds_hud_backdrop (backdrop, backdrop_state, backdrop_file);
+	if (*backdrop_state == IS_OK) {
+		box_w = backdrop->JGL.Image->vtable->m54_Get_Width (backdrop->JGL.Image);
+		box_h = backdrop->JGL.Image->vtable->m55_Get_Height (backdrop->JGL.Image);
+	} else
+		backdrop = NULL;
+
+	int left, top;
+	combat_odds_hud_get_target_pos (main_screen_form, canvas, box_w, box_h, &left, &top);
+
+	bool old_rect_differs =
+		is->combat_odds_hud_rect_drawn &&
+		((left != is->combat_odds_hud_drawn_left) ||
+		 (top != is->combat_odds_hud_drawn_top) ||
+		 (box_w != is->combat_odds_hud_drawn_w) ||
+		 (box_h != is->combat_odds_hud_drawn_h) ||
+		 (canvas->JGL.Image != is->combat_odds_hud_background_canvas));
+	if ((! show) || old_rect_differs)
+		restore_combat_odds_hud_background (canvas);
+	if (! show)
+		return;
+	if (! is->combat_odds_hud_rect_drawn)
+		save_combat_odds_hud_background (
+			canvas, left, top, box_w, box_h);
+
+	if (backdrop != NULL)
+		PCX_Image_draw_onto (backdrop, __, canvas, left, top);
+
+	if (! active)
+		return;
+
+	if (display_mode == CWRDM_DETAILED)
+		draw_detailed_combat_odds_hud (canvas, left, top, box_w);
+	else {
+		Object_66C3FC * font = get_font (14, FSF_NONE);
+		int text_width = (box_w > 16) ? box_w - 16 : box_w;
+		PCX_Image_set_text_effects (canvas, __, 0x80000000, -1, 2, 2);
+		draw_combat_odds_hud_line (
+			canvas, font, is->combat_odds_hud.text,
+			left + (box_w - text_width) / 2,
+			top + (box_h - 14) / 2,
+			text_width);
+	}
+}
+
 void __fastcall
 patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Image * canvas)
 {
@@ -28324,8 +28833,6 @@ patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Imag
 	bool draw_natural_wonders = is->current_config.enable_natural_wonders &&
 	                            is->current_config.show_natural_wonder_name_on_map;
 	bool draw_named_tiles = is->current_config.enable_named_tiles;
-	if (!draw_natural_wonders && !draw_named_tiles)
-		return;
 
 	if (canvas == NULL)
 		canvas = &this->Base_Data.Canvas;
@@ -28391,6 +28898,7 @@ patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Imag
 			draw_map_tile_text (this, canvas, entry->name, screen_x, screen_y, 64, 3);
 		}
 	}
+
 }
 
 // Returns whether or not city has an "extra palace", a concept used by the AI multi-city start. Extra palaces are small wonders that reduce
@@ -29526,6 +30034,10 @@ patch_Leader_begin_turn (Leader * this)
 
 	Leader_begin_turn (this);
 	is->ai_demand_target_selection_active = false;
+
+	if ((p_main_screen_form != NULL) &&
+	    (this->ID == p_main_screen_form->Player_CivID))
+		combat_odds_hud_request_redraw_if_layout_stale (p_main_screen_form);
 }
 
 int __fastcall
@@ -31769,7 +32281,7 @@ counter_attack_crosses_river (Unit * attacker, Unit * defender, Tile * def_tile)
 		&p_bic_data->Map, __,
 		defender->Body.X, defender->Body.Y,
 		attacker->Body.X, attacker->Body.Y,
-		8);
+		9); // The limit is exclusive; include DIR_N (neighbor index 8).
 
 	return (def_to_atk > 0) && (def_to_atk <= 8) &&
 	       counter_tile_has_river_edge (def_tile, (enum direction)def_to_atk);
@@ -32468,6 +32980,441 @@ patch_Unit_check_bombard_target (Unit * this, int edx, int tile_x, int tile_y)
 
 	} else
 		return base;
+}
+
+bool
+is_combat_odds_hud_bombard_mode (int mode_action)
+{
+	return (mode_action == UMA_Bombard) ||
+	       (mode_action == UMA_Air_Bombard) ||
+	       (mode_action == UMA_Auto_Bombard) ||
+	       (mode_action == UMA_Auto_Air_Bombard);
+}
+
+char const *
+c3x_label_or_fallback (enum c3x_label label, char const * fallback)
+{
+	char const * text = "";
+	if ((label >= 0) && (label < COUNT_C3X_LABELS) && (is->c3x_labels[label] != NULL))
+		text = is->c3x_labels[label];
+	return (text[0] != '\0') ? text : fallback;
+}
+
+void
+init_empty_combat_odds_hud_state (struct combat_odds_hud_state * state)
+{
+	memset (state, 0, sizeof *state);
+	state->mode = COHM_NONE;
+	state->tile_x = state->tile_y = -1;
+	state->attacker_unit_id = state->target_unit_id = -1;
+	state->attacker_unit_type_id = state->target_unit_type_id = -1;
+	init_neutral_counter_effect_summary (&state->counter_effects);
+}
+
+bool
+combat_odds_hud_states_equal (struct combat_odds_hud_state const * a,
+                              struct combat_odds_hud_state const * b)
+{
+	if (a->active != b->active)
+		return false;
+	if (! a->active)
+		return true;
+	return (a->mode == b->mode) &&
+	       (a->tile_x == b->tile_x) &&
+	       (a->tile_y == b->tile_y) &&
+	       (a->attacker_unit_id == b->attacker_unit_id) &&
+	       (a->target_unit_id == b->target_unit_id) &&
+	       (a->attacker_unit_type_id == b->attacker_unit_type_id) &&
+	       (a->target_unit_type_id == b->target_unit_type_id) &&
+	       (a->percent_basis_points == b->percent_basis_points) &&
+	       (a->counter_effects.attacker_atk_pct == b->counter_effects.attacker_atk_pct) &&
+	       (a->counter_effects.defender_def_pct == b->counter_effects.defender_def_pct) &&
+	       (a->counter_effects.bombard_pct == b->counter_effects.bombard_pct) &&
+	       (a->counter_effects.ignore_defensive_bonuses == b->counter_effects.ignore_defensive_bonuses) &&
+	       (strcmp (a->text, b->text) == 0);
+}
+
+// Call from outside the draw path only. Nested Draw from inside m22 is ignored
+// by the engine. Leave the existing box in place until draw_combat_odds_hud:
+// that function restores its background only if the box moves or disappears,
+// while a same-position update paints the new backdrop and text over the old
+// content without exposing a blank frame in between.
+void
+request_combat_odds_hud_redraw (void)
+{
+	if (is->combat_odds_hud_redrawing ||
+	    (p_main_screen_form == NULL) ||
+	    (p_main_screen_form->vtable == NULL) ||
+	    p_main_screen_form->is_now_loading_game)
+		return;
+
+	is->combat_odds_hud_redrawing = true;
+	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+	is->combat_odds_hud_redrawing = false;
+}
+
+void
+set_combat_odds_hud_state (struct combat_odds_hud_state const * next)
+{
+	is->combat_odds_hud_hide_pending = false;
+	if (combat_odds_hud_states_equal (&is->combat_odds_hud, next))
+		return;
+
+	is->combat_odds_hud = *next;
+	request_combat_odds_hud_redraw ();
+}
+
+void
+clear_combat_odds_hud_state ()
+{
+	struct combat_odds_hud_state empty;
+	init_empty_combat_odds_hud_state (&empty);
+	set_combat_odds_hud_state (&empty);
+}
+
+int
+combat_odds_basis_points_from_chance (double chance)
+{
+	if (chance <= 0.0)
+		return 0;
+	if (chance >= 1.0)
+		return 10000;
+
+	int basis_points = (int)(chance * 10000.0 + 0.5);
+	return clamp (1, 9999, basis_points);
+}
+
+int
+combat_odds_hud_unit_current_hp (Unit * unit)
+{
+	return (unit != NULL) ? Unit_get_max_hp (unit) - unit->Body.Damage : 0;
+}
+
+void
+format_combat_odds_hud_text (char * out,
+                             int out_capacity,
+                             enum c3x_label label,
+                             char const * fallback,
+                             int percent_basis_points)
+{
+	snprintf (out, out_capacity, "%s %d.%02d%%",
+	          c3x_label_or_fallback (label, fallback),
+	          percent_basis_points / 100,
+	          percent_basis_points % 100);
+	out[out_capacity - 1] = '\0';
+}
+
+double
+calc_attacker_combat_win_chance_from_round_chance (double round_win_chance,
+                                                   int attacker_hp,
+                                                   int defender_hp)
+{
+	if (round_win_chance <= 0.0)
+		return 0.0;
+	if (round_win_chance >= 1.0)
+		return 1.0;
+	if (attacker_hp <= 0)
+		return 0.0;
+	if (defender_hp <= 0)
+		return 1.0;
+
+	double round_loss_chance = 1.0 - round_win_chance;
+	double term = 1.0;
+	for (int i = 0; i < defender_hp; i++)
+		term *= round_win_chance;
+
+	double result = 0.0;
+	for (int attacker_losses = 0; attacker_losses < attacker_hp; attacker_losses++) {
+		result += term;
+		term *= ((double)(defender_hp + attacker_losses) /
+		         (double)(attacker_losses + 1)) *
+		        round_loss_chance;
+	}
+	return result;
+}
+
+double
+attacker_round_win_chance_from_fighter_odds (int odds)
+{
+	if (odds <= 0)
+		return 1.0;
+	if (odds >= 1024)
+		return 0.0;
+	return 1.0 - ((double)odds / 1024.0);
+}
+
+bool
+set_fighter_context_for_combat_odds_hud (Fighter * fighter,
+                                         Unit * attacker,
+                                         Unit * defender,
+                                         int defender_x,
+                                         int defender_y)
+{
+	int attack_direction = Map_compute_neighbor_index (
+		&p_bic_data->Map, __, attacker->Body.X, attacker->Body.Y,
+		defender_x, defender_y, 9); // The limit is exclusive; include DIR_N.
+	if ((attack_direction <= 0) || (attack_direction > 8))
+		return false;
+
+	fighter->attacker = attacker;
+	fighter->defender = defender;
+	fighter->attack_direction = attack_direction;
+	fighter->defense_direction = reverse_dir ((enum direction)attack_direction);
+	fighter->attacker_location_x = attacker->Body.X;
+	fighter->attacker_location_y = attacker->Body.Y;
+	fighter->defender_location_x = defender_x;
+	fighter->defender_location_y = defender_y;
+	return true;
+}
+
+double
+calc_attacker_win_chance_for_hud (Unit * attacker, Unit * defender,
+                                  int defender_x, int defender_y)
+{
+	Fighter saved_fighter = p_bic_data->fighter;
+	if (! set_fighter_context_for_combat_odds_hud (
+		    &p_bic_data->fighter, attacker, defender,
+		    defender_x, defender_y))
+		return 0.0;
+
+	int odds = patch_Fighter_get_odds_for_main_combat_loop (
+		&p_bic_data->fighter, __, attacker, defender, false, false);
+	double round_win_chance = attacker_round_win_chance_from_fighter_odds (odds);
+
+	p_bic_data->fighter = saved_fighter;
+	is->counter_combat_ctx.active = false;
+	return calc_attacker_combat_win_chance_from_round_chance (
+		round_win_chance, combat_odds_hud_unit_current_hp (attacker),
+		combat_odds_hud_unit_current_hp (defender));
+}
+
+double
+calc_bombard_round_damage_chance_for_hud (Unit * attacker, Unit * target)
+{
+	int odds = patch_Fighter_get_odds_for_bombardment (
+		&p_bic_data->fighter, __, attacker, target, true, false);
+	return attacker_round_win_chance_from_fighter_odds (odds);
+}
+
+bool
+is_attack_hud_move_validity_attackable (AdjacentMoveValidity validity)
+{
+	return (validity == AMV_OK) ||
+	       (validity == AMV_TRIGGERS_WAR);
+}
+
+Unit *
+find_visible_defender_for_attack_hud (Main_Screen_Form * main_screen_form,
+                                      Unit * attacker,
+                                      int tile_x,
+                                      int tile_y)
+{
+	Unit * defender = NULL;
+	if (is->current_config.enable_unit_counters)
+		defender = find_counter_base_visible_defender_against (
+			main_screen_form, attacker, tile_x, tile_y, NULL);
+	if (defender == NULL)
+		defender = Main_Screen_Form_find_visible_unit (
+			main_screen_form, __, tile_x, tile_y, NULL);
+
+	if (! (unit_has_valid_type_id (defender) &&
+	       (defender->Body.CivID != attacker->Body.CivID) &&
+	       defender->vtable->is_enemy_of_civ (defender, __, attacker->Body.CivID, 0) &&
+	       patch_Unit_is_visible_to_civ (defender, __, attacker->Body.CivID, 0) &&
+	       (Unit_get_defense_strength (defender) > 0)))
+		return NULL;
+
+	Fighter saved_fighter = p_bic_data->fighter;
+	bool can_defend =
+		set_fighter_context_for_combat_odds_hud (
+			&p_bic_data->fighter, attacker, defender,
+			tile_x, tile_y) &&
+		Fighter_unit_can_defend (
+			&p_bic_data->fighter, __, defender, tile_x, tile_y);
+
+	p_bic_data->fighter = saved_fighter;
+	return can_defend ? defender : NULL;
+}
+
+bool
+build_attack_combat_odds_hud_state (Main_Screen_Form * main_screen_form,
+                                    Unit * attacker,
+                                    int tile_x,
+                                    int tile_y,
+                                    struct combat_odds_hud_state * out)
+{
+	if (! unit_has_valid_type_id (attacker))
+		return false;
+
+	int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __,
+		attacker->Body.X, attacker->Body.Y, tile_x, tile_y, 9); // Include DIR_N.
+	if ((neighbor_index <= 0) || (neighbor_index > 8))
+		return false;
+	AdjacentMoveValidity move_validity = patch_Unit_can_move_to_adjacent_tile (
+		attacker, __, neighbor_index, 0);
+	if (! is_attack_hud_move_validity_attackable (move_validity))
+		return false;
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	Unit * defender = find_visible_defender_for_attack_hud (
+		main_screen_form, attacker, tile_x, tile_y);
+	if (! unit_has_valid_type_id (defender))
+		return false;
+
+	int attacker_hp = combat_odds_hud_unit_current_hp (attacker),
+	    defender_hp = combat_odds_hud_unit_current_hp (defender);
+	if ((attacker_hp <= 0) || (defender_hp <= 0))
+		return false;
+
+	double combat_chance = calc_attacker_win_chance_for_hud (
+		attacker, defender, tile_x, tile_y);
+
+	out->active = true;
+	out->mode = COHM_ATTACK;
+	out->tile_x = tile_x;
+	out->tile_y = tile_y;
+	out->attacker_unit_id = attacker->Body.ID;
+	out->target_unit_id = defender->Body.ID;
+	out->attacker_unit_type_id = attacker->Body.UnitTypeID;
+	out->target_unit_type_id = defender->Body.UnitTypeID;
+	out->percent_basis_points = combat_odds_basis_points_from_chance (combat_chance);
+	get_counter_effect_summary (&is->current_config, attacker, defender, tile,
+	                            &out->counter_effects);
+	format_combat_odds_hud_text (
+		out->text, sizeof out->text,
+		CL_COMBAT_WIN_CHANCE, "Win rate:",
+		out->percent_basis_points);
+	return true;
+}
+
+bool
+build_bombard_combat_odds_hud_state (Main_Screen_Form * main_screen_form,
+                                     Unit * attacker,
+                                     int tile_x,
+                                     int tile_y,
+                                     struct combat_odds_hud_state * out)
+{
+	if (! unit_has_valid_type_id (attacker))
+		return false;
+
+	UnitType * attacker_type = &p_bic_data->UnitTypes[attacker->Body.UnitTypeID];
+	if (attacker_type->Bombard_Strength <= 0)
+		return false;
+	if (! patch_Unit_check_bombard_target (attacker, __, tile_x, tile_y))
+		return false;
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	Unit * target = find_counter_best_bombard_defender_against (
+		attacker, tile_x, tile_y, attacker->Body.CivID, true, NULL);
+	if (target == NULL) {
+		bool land_lethal = Unit_has_ability (attacker, __, UTA_Lethal_Land_Bombardment),
+		     sea_lethal  = Unit_has_ability (attacker, __, UTA_Lethal_Sea_Bombardment);
+		target = Fighter_find_defender_against_bombardment (
+			&p_bic_data->fighter, __, attacker, tile_x, tile_y,
+			attacker->Body.CivID, land_lethal, sea_lethal);
+	}
+
+	if (! (unit_has_valid_type_id (target) &&
+	       target->vtable->is_enemy_of_civ (target, __, attacker->Body.CivID, 0) &&
+	       patch_Unit_is_visible_to_civ (target, __, attacker->Body.CivID, 0) &&
+	       can_damage_bombarding (attacker_type, target, tile)))
+		return false;
+
+	int fire_rate = attacker_type->FireRate;
+	if (fire_rate <= 0)
+		return false;
+
+	double round_chance = calc_bombard_round_damage_chance_for_hud (
+		attacker, target);
+	double no_damage_chance = 1.0;
+	for (int i = 0; i < fire_rate; i++)
+		no_damage_chance *= 1.0 - round_chance;
+
+	out->active = true;
+	out->mode = COHM_BOMBARD;
+	out->tile_x = tile_x;
+	out->tile_y = tile_y;
+	out->attacker_unit_id = attacker->Body.ID;
+	out->target_unit_id = target->Body.ID;
+	out->attacker_unit_type_id = attacker->Body.UnitTypeID;
+	out->target_unit_type_id = target->Body.UnitTypeID;
+	out->percent_basis_points = combat_odds_basis_points_from_chance (1.0 - no_damage_chance);
+	get_counter_effect_summary (&is->current_config, attacker, target, tile,
+	                            &out->counter_effects);
+	format_combat_odds_hud_text (
+		out->text, sizeof out->text,
+		CL_BOMBARD_DAMAGE_CHANCE, "Damage rate:",
+		out->percent_basis_points);
+	return true;
+}
+
+void
+update_combat_odds_hud_for_hover (Main_Screen_Form * main_screen_form,
+                                  int local_x,
+                                  int local_y)
+{
+	struct combat_odds_hud_state next;
+	init_empty_combat_odds_hud_state (&next);
+
+	if (! ((is->current_config.combat_win_rate_display_mode != CWRDM_OFF) &&
+	       (main_screen_form != NULL) &&
+	       (main_screen_form == p_main_screen_form) &&
+	       (*p_player_bits != 0) &&
+	       ! main_screen_form->is_now_loading_game))
+		goto done;
+
+	RECT minimap = main_screen_form->GUI.Mini_Map_Click_Rect;
+	if ((local_x >= minimap.left) && (local_x < minimap.right) &&
+	    (local_y >= minimap.top) && (local_y < minimap.bottom))
+		goto done;
+
+	Unit * attacker = main_screen_form->Current_Unit;
+	if (! (unit_has_valid_type_id (attacker) &&
+	       (attacker->Body.CivID == main_screen_form->Player_CivID)))
+		goto done;
+
+	int tile_x = -1, tile_y = -1;
+	if (Main_Screen_Form_get_tile_coords_under_mouse (
+		    main_screen_form, __, local_x, local_y, &tile_x, &tile_y))
+		goto done;
+
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		goto done;
+
+	if (is_combat_odds_hud_bombard_mode (main_screen_form->Mode_Action)) {
+		if (! build_bombard_combat_odds_hud_state (
+			    main_screen_form, attacker, tile_x, tile_y, &next))
+			init_empty_combat_odds_hud_state (&next);
+	} else {
+		if (! build_attack_combat_odds_hud_state (
+			    main_screen_form, attacker, tile_x, tile_y, &next))
+			init_empty_combat_odds_hud_state (&next);
+	}
+
+done:
+	if ((! is->current_config.persist_combat_win_rate_display) &&
+	    (is->current_config.combat_win_rate_display_mode != CWRDM_OFF) &&
+	    (! next.active) && is->combat_odds_hud.active) {
+		schedule_combat_odds_hud_hide ();
+		apply_pending_combat_odds_hud_hide (true);
+	} else
+		set_combat_odds_hud_state (&next);
+}
+
+void __fastcall
+patch_Main_Screen_Form_process_mouse_hover (Main_Screen_Form * this, int edx, int local_x, int local_y)
+{
+	Main_Screen_Form_process_mouse_hover (this, __, local_x, local_y);
+	update_combat_odds_hud_for_hover (this, local_x, local_y);
+	combat_odds_hud_request_redraw_if_layout_stale (this);
 }
 
 bool __fastcall
@@ -39962,10 +40909,17 @@ patch_Sprite_draw_minimap_frame (Sprite * this, int edx, Sprite * alpha, int par
 {
 	bool want_larger_minimap = (is->current_config.double_minimap_size == MDM_ALWAYS) ||
 		((is->current_config.double_minimap_size == MDM_HIGH_DEF) && (p_bic_data->ScreenWidth >= 1920));
+	int tr;
 	if (want_larger_minimap && (init_large_minimap_frame () == IS_OK))
-		return Sprite_draw_for_hud (&is->double_size_box_left_color_pcx, __, &is->double_size_box_left_alpha_pcx, param_2, canvas, x, y, param_6);
+		tr = Sprite_draw_for_hud (&is->double_size_box_left_color_pcx, __, &is->double_size_box_left_alpha_pcx, param_2, canvas, x, y, param_6);
 	else
-		return Sprite_draw_for_hud (this, __, alpha, param_2, canvas, x, y, param_6);
+		tr = Sprite_draw_for_hud (this, __, alpha, param_2, canvas, x, y, param_6);
+
+	// Must be drawn here, after the frame sprite, so the box lands on top of
+	// the HUD chrome. Drawing it with the map layer instead gets it painted
+	// over by the chrome.
+	draw_combat_odds_hud (p_main_screen_form, canvas);
+	return tr;
 }
 
 int __fastcall
@@ -41209,6 +42163,11 @@ patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit
 		UnitIDList_insert_before (&this->selectable_units, __, unit->Body.ID, NULL);
 		this->unit_cycle_cursor = this->selectable_units.first;
 	}
+
+	if (is->combat_odds_hud.active)
+		clear_combat_odds_hud_state ();
+
+	combat_odds_hud_request_redraw_if_layout_stale (this);
 
 	if (redraw && ! this->is_now_loading_game)
 		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
