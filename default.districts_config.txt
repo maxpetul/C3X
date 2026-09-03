@@ -295,6 +295,27 @@ gold_bonus             = 4
 shield_bonus           = -2
 happiness_bonus        = 2
 
+#District
+name                   = Municipal District
+tooltip                = Build Municipal District
+img_paths              = Municipal_AMER.pcx, Municipal_EURO.pcx, Municipal_ROMAN.pcx, Municipal_MIDEAST.pcx, Municipal_ASIAN.pcx
+render_strategy        = by-building
+btn_tile_sheet_row     = 0
+btn_tile_sheet_column  = 10
+vary_img_by_era        = 1
+vary_img_by_culture    = 1
+advance_prereqs        = Code of Laws
+dependent_improvs      = "Courthouse", "Police Station", "Hospital"
+custom_height          = 88
+defense_bonus_percent  = 0
+allow_multiple         = 1
+culture_bonus          = 1
+science_bonus          = 0
+food_bonus             = 0
+gold_bonus             = 0
+shield_bonus           = 0
+happiness_bonus        = 0
+
 [========================================================================]
 [=========================SPECIAL DISTRICTS==============================]
 [========================================================================]
