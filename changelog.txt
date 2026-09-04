@@ -1,3 +1,9 @@
+- Show odds to win combat and odds to do damage bombarding
+  - Main option combat_win_rate_display_mode can be set to off, compact, or detailed. Detailed mode includes combat counter factors.
+  - Related option persist_combat_win_rate_display controls whether the background box is hidden when empty
+- Include any resource and bonus shield in yields from tiles with improvement-type districts
+- Fix city governors unable to assign workers to improvement-type districts after construction
+
 * RELEASE 28 PREVIEW 1
 - Allow for custom combat bonuses or maluses to be applied based on unit type, combat role (attack, defense, or bombard), terrain, city/district, and experience level
   - Option enable_unit_counters gates overall feature, counter_rules lists custom rules
