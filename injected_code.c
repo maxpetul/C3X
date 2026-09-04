@@ -244,7 +244,6 @@ bool city_has_required_district (City * city, int district_id);
 bool district_is_complete (Tile * tile, int district_id);
 bool district_uses_tile_improvement_rules (int district_id);
 bool district_tile_bonus_applies_to_city (Tile * tile, int district_id, City * city);
-bool district_tile_should_be_unworkable (int district_id);
 bool city_requires_district_for_improvement (City * city, int improv_id, int * out_district_id);
 void clear_city_district_request (City * city, int district_id);
 void set_tile_unworkable_for_all_cities (Tile * tile, int tile_x, int tile_y);
@@ -594,7 +593,7 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 				struct district_instance * inst = get_district_instance (tile);
 				if ((inst != NULL) &&
 				    district_is_complete (tile, inst->district_id) &&
-				    district_tile_should_be_unworkable (inst->district_id))
+				    ! district_uses_tile_improvement_rules (inst->district_id))
 					return false;
 
 				// Check if the tile is covered by a distribution hub
@@ -7143,7 +7142,7 @@ district_is_complete(Tile * tile, int district_id)
 
 	int tile_x, tile_y;
 	if (district_instance_get_coords (inst, tile, &tile_x, &tile_y)) {
-		if (district_tile_should_be_unworkable (district_id))
+		if (! district_uses_tile_improvement_rules (district_id))
 			set_tile_unworkable_for_all_cities (tile, tile_x, tile_y);
 		int territory_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
 
@@ -13817,7 +13816,7 @@ finalize_scenario_district_entry (struct scenario_district_entry * entry,
 					if (success) {
 						if (district_id != NATURAL_WONDER_DISTRICT_ID && !tile->vtable->m18_Check_Mines (tile, __, 0))
 							tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, map_x, map_y);
-						if (district_tile_should_be_unworkable (district_id))
+						if (! district_uses_tile_improvement_rules (district_id))
 							set_tile_unworkable_for_all_cities (tile, map_x, map_y);
 					}
 				}
@@ -14818,10 +14817,48 @@ district_tile_bonus_applies_to_city (Tile * tile, int district_id, City * city)
 	return tile->Body.CityAreaID == city->Body.ID;
 }
 
-bool
-district_tile_should_be_unworkable (int district_id)
+City *
+get_city_for_district_tile_yield (Tile * tile, int district_id, int tile_x, int tile_y, City * city)
 {
-	return ! district_uses_tile_improvement_rules (district_id);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return NULL;
+	if (! district_uses_tile_improvement_rules (district_id))
+		return city;
+
+	int assigned_city_id = tile->Body.CityAreaID;
+	if (assigned_city_id >= 0) {
+		City * assigned_city = get_city_ptr (assigned_city_id);
+		if ((city != NULL) && (assigned_city != NULL) && (assigned_city->Body.ID != city->Body.ID))
+			return NULL;
+		return assigned_city;
+	}
+
+	if (city == NULL)
+		return NULL;
+
+	int ni = patch_Map_compute_ni_for_work_area (&p_bic_data->Map, __, city->Body.X, city->Body.Y, tile_x, tile_y, is->workable_tile_count);
+	if (ni <= 0)
+		return NULL;
+	if (! patch_City_controls_tile (city, __, ni, true))
+		return NULL;
+
+	return city;
+}
+
+void
+add_visible_tile_resource_yields (Tile * tile, struct district_instance * inst, int civ_id, int * food, int * shields, int * commerce)
+{
+	int resource_id = get_visible_non_subsumed_tile_resource (tile, inst, civ_id);
+	if ((resource_id < 0) || (resource_id >= p_bic_data->ResourceTypeCount))
+		return;
+
+	Resource_Type * res = &p_bic_data->ResourceTypes[resource_id];
+	if (food != NULL)
+		*food += res->Food;
+	if (shields != NULL)
+		*shields += res->Shield;
+	if (commerce != NULL)
+		*commerce += res->Commerce;
 }
 
 void
@@ -14908,12 +14945,13 @@ patch_Map_calc_food_yield_at (Map * this, int edx, int tile_x, int tile_y, int t
 		    district_is_complete (tile, inst->district_id)) {
 			if (! district_uses_tile_improvement_rules (inst->district_id))
 				return 0;
-			City * yield_city = get_city_ptr (tile->Body.CityAreaID);
-			if (! district_tile_bonus_applies_to_city (tile, inst->district_id, yield_city))
+			City * yield_city = get_city_for_district_tile_yield (tile, inst->district_id, tile_x, tile_y, city);
+			if (yield_city == NULL)
 				return 0;
 			struct district_config * cfg = &is->district_configs[inst->district_id];
 			int food_bonus = 0;
 			get_effective_district_yields (inst, cfg, &food_bonus, NULL, NULL, NULL, NULL, NULL);
+			add_visible_tile_resource_yields (tile, inst, yield_city->Body.CivID, &food_bonus, NULL, NULL);
 			if ((cfg->generated_resource_id >= 0) &&
 			    (cfg->generated_resource_flags & MF_YIELDS) &&
 			    district_generates_resource_for_civ (tile, inst, cfg, yield_city->Body.CivID)) {
@@ -14928,10 +14966,10 @@ patch_Map_calc_food_yield_at (Map * this, int edx, int tile_x, int tile_y, int t
 }
 
 int __fastcall
-patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int civ_id, City * city, int param_5, int param_6)
+patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city)
 {
 	if (! is->current_config.enable_districts)
-		return Map_calc_shield_yield_at (this, __, tile_x, tile_y, civ_id, city, param_5, param_6);
+		return Map_calc_shield_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
 
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile != NULL) && (tile != p_null_tile)) {
@@ -14940,12 +14978,15 @@ patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int
 		    district_is_complete (tile, inst->district_id)) {
 			if (! district_uses_tile_improvement_rules (inst->district_id))
 				return 0;
-			City * yield_city = get_city_ptr (tile->Body.CityAreaID);
-			if (! district_tile_bonus_applies_to_city (tile, inst->district_id, yield_city))
+			City * yield_city = get_city_for_district_tile_yield (tile, inst->district_id, tile_x, tile_y, city);
+			if (yield_city == NULL)
 				return 0;
 			struct district_config * cfg = &is->district_configs[inst->district_id];
 			int shield_bonus = 0;
 			get_effective_district_yields (inst, cfg, NULL, &shield_bonus, NULL, NULL, NULL, NULL);
+			add_visible_tile_resource_yields (tile, inst, yield_city->Body.CivID, NULL, &shield_bonus, NULL);
+			if (tile->vtable->m27_Check_Shield_Bonus (tile))
+				shield_bonus++;
 			if ((cfg->generated_resource_id >= 0) &&
 			    (cfg->generated_resource_flags & MF_YIELDS) &&
 			    district_generates_resource_for_civ (tile, inst, cfg, yield_city->Body.CivID)) {
@@ -14956,7 +14997,7 @@ patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int
 		}
 	}
 
-	return Map_calc_shield_yield_at (this, __, tile_x, tile_y, civ_id, city, param_5, param_6);
+	return Map_calc_shield_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
 }
 
 int __fastcall
@@ -14972,12 +15013,13 @@ patch_Map_calc_commerce_yield_at (Map * this, int edx, int tile_x, int tile_y, i
 		    district_is_complete (tile, inst->district_id)) {
 			if (! district_uses_tile_improvement_rules (inst->district_id))
 				return 0;
-			City * yield_city = get_city_ptr (tile->Body.CityAreaID);
-			if (! district_tile_bonus_applies_to_city (tile, inst->district_id, yield_city))
+			City * yield_city = get_city_for_district_tile_yield (tile, inst->district_id, tile_x, tile_y, city);
+			if (yield_city == NULL)
 				return 0;
 			struct district_config * cfg = &is->district_configs[inst->district_id];
 			int commerce_bonus = 0;
 			get_effective_district_yields (inst, cfg, NULL, NULL, &commerce_bonus, NULL, NULL, NULL);
+			add_visible_tile_resource_yields (tile, inst, yield_city->Body.CivID, NULL, NULL, &commerce_bonus);
 			if ((cfg->generated_resource_id >= 0) &&
 			    (cfg->generated_resource_flags & MF_YIELDS) &&
 			    district_generates_resource_for_civ (tile, inst, cfg, yield_city->Body.CivID)) {
@@ -16688,7 +16730,7 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	if (district_id >= 0)
 		remove_dependent_buildings_for_district (district_id, center_x, center_y);
 
-	if (district_tile_should_be_unworkable (actual_district_id))
+	if (! district_uses_tile_improvement_rules (actual_district_id))
 		tile->Body.CityAreaID = -1;
 	else {
 		City * assigned_city = get_city_ptr (assigned_city_id);
@@ -27511,7 +27553,7 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 					inst->state = DS_COMPLETED;
 					if (! tile->vtable->m18_Check_Mines (tile, __, 0))
 						tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
-					if (district_tile_should_be_unworkable (GREAT_WALL_DISTRICT_ID))
+					if (! district_uses_tile_improvement_rules (GREAT_WALL_DISTRICT_ID))
 						set_tile_unworkable_for_all_cities (tile, x, y);
 				}
 				continue;
@@ -27584,7 +27626,7 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 			inst->state = DS_COMPLETED;
 			if (! tile->vtable->m18_Check_Mines (tile, __, 0))
 				tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
-			if (district_tile_should_be_unworkable (GREAT_WALL_DISTRICT_ID))
+			if (! district_uses_tile_improvement_rules (GREAT_WALL_DISTRICT_ID))
 				set_tile_unworkable_for_all_cities (tile, x, y);
 	}
 
@@ -30961,7 +31003,7 @@ count_workable_tiles_for_city (City * city)
 		struct district_instance * inst = get_district_instance (tile);
 		if ((inst != NULL) &&
 		    district_is_complete (tile, inst->district_id) &&
-		    district_tile_should_be_unworkable (inst->district_id))
+		    ! district_uses_tile_improvement_rules (inst->district_id))
 			continue;
 
 		workable++;
@@ -35741,7 +35783,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 										if (info_city == NULL)
 											inst->wonder_info.city_id = -1;
 										inst->wonder_info.wonder_index = wonder_index;
-										if (district_tile_should_be_unworkable (district_id))
+										if (! district_uses_tile_improvement_rules (district_id))
 											set_tile_unworkable_for_all_cities (tile, x, y);
 									}
 								}
@@ -36974,6 +37016,11 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	// Count total yields from bonuses
 	int food_bonus = 0, shield_bonus = 0, gold_bonus = 0, science_bonus = 0, culture_bonus = 0, happiness_bonus = 0;
 	get_effective_district_yields (inst, config, &food_bonus, &shield_bonus, &gold_bonus, &science_bonus, &culture_bonus, &happiness_bonus);
+	if ((city_form->CurrentCity != NULL) && district_uses_tile_improvement_rules (district_id)) {
+		add_visible_tile_resource_yields (tile, inst, city_form->CurrentCity->Body.CivID, &food_bonus, &shield_bonus, &gold_bonus);
+		if (tile->vtable->m27_Check_Shield_Bonus (tile))
+			shield_bonus++;
+	}
 	if ((config->generated_resource_id >= 0) &&
 	    (config->generated_resource_flags & MF_YIELDS) &&
 	    (city_form->CurrentCity != NULL) &&
@@ -40361,6 +40408,8 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 			continue;
 		int food_bonus = 0;
 		get_effective_district_yields (wai.district_inst, &is->district_configs[district_id], &food_bonus, NULL, NULL, NULL, NULL, NULL);
+		if (district_uses_tile_improvement_rules (district_id))
+			add_visible_tile_resource_yields (wai.tile, wai.district_inst, city->Body.CivID, &food_bonus, NULL, NULL);
 		standard_district_food += food_bonus;
 	}
 
@@ -40520,6 +40569,9 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 		int shield_bonus = 0;
 		struct district_config * cfg = &is->district_configs[district_id];
 		get_effective_district_yields (wai.district_inst, cfg, NULL, &shield_bonus, NULL, NULL, NULL, NULL);
+		add_visible_tile_resource_yields (wai.tile, wai.district_inst, city->Body.CivID, NULL, &shield_bonus, NULL);
+		if (wai.tile->vtable->m27_Check_Shield_Bonus (wai.tile))
+			shield_bonus++;
 		if ((cfg->generated_resource_id >= 0) &&
 		    (cfg->generated_resource_flags & MF_YIELDS) &&
 		    district_generates_resource_for_civ (wai.tile, wai.district_inst, cfg, city->Body.CivID)) {
