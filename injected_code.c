@@ -1529,6 +1529,58 @@ append_unit_type_ids_by_name (struct string_slice const * name, int ** p_ids, in
 	return any_found;
 }
 
+bool
+slice_with_wildcards_matches_str (struct string_slice const * pattern, char const * str)
+{
+	int pattern_pos = 0, str_pos = 0;
+	int last_wildcard_pos = -1, wildcard_match_end = 0;
+
+	while (str[str_pos] != '\0') {
+		if ((pattern_pos < pattern->len) && (pattern->str[pattern_pos] == '*')) {
+			last_wildcard_pos = pattern_pos++;
+			wildcard_match_end = str_pos;
+		} else if ((pattern_pos < pattern->len) && (pattern->str[pattern_pos] == str[str_pos])) {
+			pattern_pos++;
+			str_pos++;
+		} else if (last_wildcard_pos >= 0) {
+			pattern_pos = last_wildcard_pos + 1;
+			str_pos = ++wildcard_match_end;
+		} else
+			return false;
+	}
+
+	while ((pattern_pos < pattern->len) && (pattern->str[pattern_pos] == '*'))
+		pattern_pos++;
+	return pattern_pos == pattern->len;
+}
+
+// Resolves a unit type tag member. An exact match takes precedence so that unit type names containing
+// asterisks remain usable. Otherwise, '*' matches any sequence of characters, including an empty one.
+bool
+append_unit_type_ids_by_tag_member (struct string_slice const * name, int ** p_ids, int * p_count, int * p_capacity)
+{
+	if (append_unit_type_ids_by_name (name, p_ids, p_count, p_capacity))
+		return true;
+
+	bool has_wildcard = false;
+	for (int n = 0; n < name->len; n++)
+		if (name->str[n] == '*') {
+			has_wildcard = true;
+			break;
+		}
+	if (! has_wildcard)
+		return false;
+
+	bool any_found = false;
+	for (int n = 0; n < p_bic_data->UnitTypeCount; n++)
+		if (slice_with_wildcards_matches_str (name, p_bic_data->UnitTypes[n].Name)) {
+			reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
+			(*p_ids)[(*p_count)++] = n;
+			any_found = true;
+		}
+	return any_found;
+}
+
 void
 append_unit_type_tag_ids (struct unit_type_tag const * tag, int ** p_ids, int * p_count, int * p_capacity)
 {
@@ -1657,7 +1709,7 @@ read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrec
 				continue;
 			}
 
-			bool start_type_found = append_unit_type_ids_by_name (&member->name, &ids, &ids_count, &ids_capacity);
+			bool start_type_found = append_unit_type_ids_by_tag_member (&member->name, &ids, &ids_count, &ids_capacity);
 			struct unit_type_tag * start_tag = NULL;
 			if (! start_type_found) {
 				if (stable_look_up_slice (&cfg->unit_type_tags, &member->name, (int *)&start_tag))

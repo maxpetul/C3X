@@ -1,4 +1,5 @@
 - Sort city lists on espionage and trade screens, option named sort_city_lists_alphabetically
+- Allow '*' (asterisks) as wildcards in unit_type_tags entries
 - Option allow_special_aqueducts_in_fresh_water_cities to stop the allows-size-level-2 flag from blocking construction of aqueduct-like buildings or wonders
 
 * RELEASE 28 PREVIEW 1
