@@ -32096,6 +32096,7 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 		(is->current_config.count_counter_rules > 0);
 	if ((! apply_counter_bombard_rules) &&
 	    (special_db_rules == 0) &&
+	    (is->current_config.can_bombard_only_sea_tiles.len == 0) &&
 	    ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) == 0) &&
 	    ((is->current_config.special_helicopter_rules & SHR_NO_DEFENSE_FROM_INSIDE) == 0))
 		return Fighter_find_defensive_bombarder (this, __, attacker, defender);
@@ -32125,6 +32126,8 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 					attacker,
 					bombard_target_tile));
 			if (can_do_defensive_bombard (candidate, candidate_type) &&
+			    ((attacker_class == UTC_Sea) ||
+			     ! itable_look_up_or (&is->current_config.can_bombard_only_sea_tiles, candidate->Body.UnitTypeID, 0)) &&
 			    (candidate_strength > highest_strength) &&
 			    (candidate != defender) &&
 			    (Unit_get_containing_army (candidate) != defender) &&
@@ -41629,6 +41632,8 @@ patch_Unit_ai_move_naval_missile_transport (Unit * this)
 	Unit_ai_move_naval_missile_transport (this);
 }
 
+int __fastcall patch_Unit_ai_eval_bombard_target (Unit * this, int edx, int tile_x, int tile_y, int param_3);
+
 void __fastcall
 patch_Unit_ai_move_air_bombard_unit (Unit * this)
 {
@@ -41656,7 +41661,7 @@ patch_Unit_ai_move_air_bombard_unit (Unit * this)
 			int x = Map_wrap_horiz (&p_bic_data->Map, __, this->Body.X + dx);
 			int y = Map_wrap_vert (&p_bic_data->Map, __, this->Body.Y + dy);
 			if (Map_in_range (&p_bic_data->Map, __, x, y)) {
-				int score = Unit_ai_eval_bombard_target (this, __, x, y, 1);
+				int score = patch_Unit_ai_eval_bombard_target (this, __, x, y, 1);
 				if (score > best_target) {
 					best_target = score;
 					target_x = x;
@@ -41917,14 +41922,19 @@ patch_Tile_m17_Check_Irrigation (Tile * this, int edx, int visible_to_civ_id)
 int __fastcall
 patch_Unit_ai_eval_bombard_target (Unit * this, int edx, int tile_x, int tile_y, int param_3)
 {
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return 0;
+
+	// AI target selection bypasses Unit_check_bombard_target. A zero score excludes the tile.
+	if (itable_look_up_or (&is->current_config.can_bombard_only_sea_tiles, this->Body.UnitTypeID, 0) &&
+	    ! tile->vtable->m35_Check_Is_Water (tile))
+		return 0;
+
 	int score = Unit_ai_eval_bombard_target (this, __, tile_x, tile_y, param_3);
 
 	if (! (is->current_config.enable_districts &&
 	       is->current_config.enable_great_wall_districts))
-		return score;
-
-	Tile * tile = tile_at (tile_x, tile_y);
-	if ((tile == NULL) || (tile == p_null_tile))
 		return score;
 
 	struct district_instance * inst = get_district_instance (tile);

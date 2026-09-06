@@ -3,6 +3,7 @@
   - Related option persist_combat_win_rate_display controls whether the background box is hidden when empty
 - Include any resource and bonus shield in yields from tiles with improvement-type districts
 - Fix city governors unable to assign workers to improvement-type districts after construction
+- Fix can_bombard_only_sea_tiles not applying to AI units or aerial defensive bombard
 
 * RELEASE 28 PREVIEW 1
 - Allow for custom combat bonuses or maluses to be applied based on unit type, combat role (attack, defense, or bombard), terrain, city/district, and experience level
