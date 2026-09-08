@@ -196,6 +196,12 @@ tile_has_resource (Tile * tile)
 	return (resource_type >= 0) && (resource_type < p_bic_data->ResourceTypeCount);
 }
 
+bool
+is_bonus_grassland (Tile * tile)
+{
+	return (tile->vtable->m50_Get_Square_BaseType (tile) == SQ_Grassland) && tile->vtable->m27_Check_Potential_Shield_Bonus (tile);
+}
+
 City *
 get_city_ptr (int id)
 {
@@ -14985,7 +14991,7 @@ patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int
 			int shield_bonus = 0;
 			get_effective_district_yields (inst, cfg, NULL, &shield_bonus, NULL, NULL, NULL, NULL);
 			add_visible_tile_resource_yields (tile, inst, yield_city->Body.CivID, NULL, &shield_bonus, NULL);
-			if (tile->vtable->m27_Check_Shield_Bonus (tile))
+			if (is_bonus_grassland (tile))
 				shield_bonus++;
 			if ((cfg->generated_resource_id >= 0) &&
 			    (cfg->generated_resource_flags & MF_YIELDS) &&
@@ -37021,7 +37027,7 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	get_effective_district_yields (inst, config, &food_bonus, &shield_bonus, &gold_bonus, &science_bonus, &culture_bonus, &happiness_bonus);
 	if ((city_form->CurrentCity != NULL) && district_uses_tile_improvement_rules (district_id)) {
 		add_visible_tile_resource_yields (tile, inst, city_form->CurrentCity->Body.CivID, &food_bonus, &shield_bonus, &gold_bonus);
-		if (tile->vtable->m27_Check_Shield_Bonus (tile))
+		if (is_bonus_grassland (tile))
 			shield_bonus++;
 	}
 	if ((config->generated_resource_id >= 0) &&
@@ -40573,7 +40579,7 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 		struct district_config * cfg = &is->district_configs[district_id];
 		get_effective_district_yields (wai.district_inst, cfg, NULL, &shield_bonus, NULL, NULL, NULL, NULL);
 		add_visible_tile_resource_yields (wai.tile, wai.district_inst, city->Body.CivID, NULL, &shield_bonus, NULL);
-		if (wai.tile->vtable->m27_Check_Shield_Bonus (wai.tile))
+		if (is_bonus_grassland (wai.tile))
 			shield_bonus++;
 		if ((cfg->generated_resource_id >= 0) &&
 		    (cfg->generated_resource_flags & MF_YIELDS) &&

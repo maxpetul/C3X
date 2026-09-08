@@ -1603,7 +1603,7 @@ struct Tile_vtable
   unsigned char (__thiscall *m24_Check_River)(Tile *);
   int (__thiscall *m25_Check_Roads)(Tile *_this,  int);
   char (__thiscall *m26_Check_Tile_Building)(Tile *);
-  int (__thiscall *m27_Check_Special_Resource)(Tile *);
+  int (__thiscall *m27_Check_Potential_Shield_Bonus)(Tile *);
   char (__thiscall *m28_Check_field_30_bit_15)(Tile *);
   int (__thiscall *m29_Check_Mountain_Snowcap)(Tile *);
   int (__thiscall *m30_Check_is_LM)(Tile *);

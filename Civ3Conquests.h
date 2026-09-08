@@ -1739,7 +1739,7 @@ struct Tile_vtable
   unsigned char (__fastcall *m24_Check_River)(Tile *);
   int (__fastcall *m25_Check_Roads)(Tile *this, __, int);
   char (__fastcall *m26_Check_Tile_Building)(Tile *);
-  bool (__fastcall *m27_Check_Shield_Bonus)(Tile *); // Whether the tile would be bonus grassland if it were grassland (it may or may not be)
+  bool (__fastcall *m27_Check_Potential_Shield_Bonus)(Tile *); // Whether the tile has the flag which would cause it to have a bonus shield if it were grassland. This flag is set on many non-grassland tiles too.
   bool (__fastcall *m28_is_revealed_by_scenario_setting)(Tile *);
   int (__fastcall *m29_Check_Mountain_Snowcap)(Tile *);
   int (__fastcall *m30_Check_is_LM)(Tile *);
