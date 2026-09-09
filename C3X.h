@@ -243,6 +243,12 @@ enum ai_auto_build_great_wall_strategy {
 	AAGWS_OTHER_CIV_BORDERED_ONLY
 };
 
+enum city_center_food_yield {
+	CCFY_STANDARD,
+	CCFY_INCLUDING_RESOURCE,
+	CCFY_UNDERLYING_TILE,
+};
+
 enum pollution_spawn_effect {
 	PSE_STANDARD = 0,
 	PSE_REDUCE_POPULATION,
@@ -374,6 +380,7 @@ struct c3x_config {
 	int ai_settler_perfume_on_founding_duration;
 	bool aggressively_penalize_bankruptcy;
 	bool no_penalty_exception_for_agri_fresh_water_city_tiles;
+	enum city_center_food_yield city_center_food_yield;
 	bool suppress_hypertext_links_exceeded_popup;
 	bool indicate_non_upgradability_in_pedia;
 	bool show_message_after_dodging_sam;

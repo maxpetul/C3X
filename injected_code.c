@@ -2433,6 +2433,17 @@ read_ai_auto_build_great_wall_strategy (struct string_slice const * s, int * out
 }
 
 bool
+read_city_center_food_yield (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "standard"          )) { *out_val = CCFY_STANDARD;           return true; }
+	else if (slice_matches_str (&trimmed, "including-resource")) { *out_val = CCFY_INCLUDING_RESOURCE; return true; }
+	else if (slice_matches_str (&trimmed, "underlying-tile"   )) { *out_val = CCFY_UNDERLYING_TILE;    return true; }
+	else
+		return false;
+}
+
+bool
 read_pollution_spawn_effect (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
@@ -3063,6 +3074,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "sea_retreat_rules")) {
 					if (! read_retreat_rules (&value, (int *)&cfg->sea_retreat_rules))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "city_center_food_yield")) {
+					if (! read_city_center_food_yield (&value, (int *)&cfg->city_center_food_yield))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "pollution_spawn_effect")) {
 					if (! read_pollution_spawn_effect (&value, (int *)&cfg->pollution_spawn_effect))
@@ -18076,6 +18090,19 @@ patch_get_pixel_to_draw_city_dot (JGL_Image * this, int edx, int x, int y)
 	return tr;
 }
 
+// Called at the city-only food overwrite, before the original Agricultural bonus and tile penalty.
+// The resource ID has already been filtered by the base game's technology/visibility check.
+int __fastcall
+calc_city_center_base_food (int normal_tile_food, int visible_resource_id)
+{
+	if (is->current_config.city_center_food_yield == CCFY_UNDERLYING_TILE)
+		return normal_tile_food;
+	int food = p_bic_data->General.FoodPerCitizen;
+	if ((is->current_config.city_center_food_yield == CCFY_INCLUDING_RESOURCE) && (visible_resource_id >= 0))
+		food += p_bic_data->ResourceTypes[visible_resource_id].Food;
+	return food;
+}
+
 enum branch_kind { BK_CALL, BK_JUMP };
 
 byte *
@@ -18175,6 +18202,32 @@ void
 apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 {
 	DWORD old_protect, unused;
+
+	// Replace only the load of FoodPerCitizen. The following original instructions store ECX as the city's food yield.
+	WITH_MEM_PROTECTION (ADDR_CITY_CENTER_FOOD_BASE_LOAD, 6, PAGE_EXECUTE_READWRITE) {
+		if (cfg->city_center_food_yield == CCFY_STANDARD)
+			restore_code_area (ADDR_CITY_CENTER_FOOD_BASE_LOAD);
+		else {
+			WITH_MEM_PROTECTION (ADDR_CITY_CENTER_FOOD_AIRLOCK, INLEAD_SIZE, PAGE_EXECUTE_READWRITE) {
+				// At the original instruction, food/resource locals are [esp+20]/[esp+10] in GOG and PCG,
+				// [esp+1c]/[esp+18] in Steam. The call and two saved registers add 12 to these offsets.
+				byte args[] = {
+					0x50, 0x52,             // push eax; push edx
+					0x8B, 0x4C, 0x24, (exe_version_index == 1) ? 0x28 : 0x2C, // mov ecx, [esp+food]
+					0x8B, 0x54, 0x24, (exe_version_index == 1) ? 0x24 : 0x1C  // mov edx, [esp+resource]
+				};
+				byte * cursor = ADDR_CITY_CENTER_FOOD_AIRLOCK;
+				memcpy (cursor, args, sizeof args);
+				cursor += sizeof args;
+				cursor = emit_branch (BK_CALL, cursor, calc_city_center_base_food);
+				*cursor++ = 0x89; *cursor++ = 0xC1; // mov ecx, eax
+				*cursor++ = 0x5A; *cursor++ = 0x58; // pop edx; pop eax
+				*cursor++ = 0xC3; // ret
+			}
+			save_code_area (ADDR_CITY_CENTER_FOOD_BASE_LOAD, 6, true);
+			emit_branch (BK_CALL, ADDR_CITY_CENTER_FOOD_BASE_LOAD, ADDR_CITY_CENTER_FOOD_AIRLOCK);
+		}
+	}
 
 	// Allow stealth attack against single unit
 	WITH_MEM_PROTECTION (ADDR_STEALTH_ATTACK_TARGET_COUNT_CHECK, 1, PAGE_EXECUTE_READWRITE)
@@ -20188,6 +20241,7 @@ patch_init_floating_point ()
 	base_config.ai_distribution_hub_build_strategy = ADHBS_BY_CITY_COUNT;
 	base_config.ai_auto_build_great_wall_strategy = AAGWS_ALL_BORDERS;
 	base_config.pollution_spawn_effect = PSE_STANDARD;
+	base_config.city_center_food_yield = CCFY_STANDARD;
 	base_config.great_wall_auto_build_wonder_improv_id = -1;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;

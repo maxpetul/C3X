@@ -1013,6 +1013,11 @@ ENTRY_POINT ()
 	tcc__define_symbol (tcc, "ADDR_RESOURCE_GEN_TILE_COUNT_DIV_REPL", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead]));
 	i_next_free_inlead++;
 
+	// Adapter for the city-center food calculation's stack locals and ECX result.
+	ASSERT (i_next_free_inlead < inleads_capacity);
+	tcc__define_symbol (tcc, "ADDR_CITY_CENTER_FOOD_AIRLOCK", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead]));
+	i_next_free_inlead++;
+
 	tcc__define_symbol (tcc, "INLEAD_SIZE", temp_format ("%u", sizeof (struct inlead)));
 
 	// Compile C code to inject
