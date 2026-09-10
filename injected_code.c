@@ -1551,7 +1551,7 @@ append_unit_type_ids_by_name_or_pedia_key (struct string_slice const * name, int
 	return any_found;
 }
 
-// Config strategy names are deliberately independent of the translated interface labels.
+// Config attribute names are deliberately independent of the translated interface labels.
 // Returns whether the attribute was recognized, even if no unit types have it.
 bool
 append_unit_type_ids_by_attribute (struct string_slice const * name, int ** p_ids, int * p_count, int * p_capacity)
@@ -1576,12 +1576,54 @@ append_unit_type_ids_by_attribute (struct string_slice const * name, int ** p_id
 		{"ICBM", UTAI_ICBM},
 		{"Naval Missile Transport", UTAI_Naval_Missile_Transport},
 		{"Flag Unit", UTAI_Flag_Unit},
-		{"King", UTAI_King},
+		{"King-strategy", UTAI_King},
 	};
 	for (int n = 0; n < (sizeof strategies / sizeof strategies[0]); n++)
 		if (slice_matches_str (name, strategies[n].name)) {
 			for (int id = 0; id < p_bic_data->UnitTypeCount; id++)
 				if (p_bic_data->UnitTypes[id].AI_Strategy & strategies[n].flag) {
+					reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
+					(*p_ids)[(*p_count)++] = id;
+				}
+			return true;
+		}
+	struct { char const * name; enum UnitTypeAbilities ability; } const abilities[] = {
+		{"Wheeled", UTA_Wheeled},
+		{"Foot Unit", UTA_Foot_Unit},
+		{"Blitz", UTA_Blitz},
+		{"Cruise Missile-ability", UTA_Cruise_Missile},
+		{"All Terrain As Roads", UTA_All_Terrain_As_Roads},
+		{"Radar", UTA_Radar},
+		{"Amphibious", UTA_Amphibious},
+		{"Invisible", UTA_Invisible},
+		{"Transports Only Aircraft", UTA_Transports_Only_Aircraft},
+		{"Draft", UTA_Draft},
+		{"Immobile", UTA_Immobile},
+		{"Sinks In Sea", UTA_Sinks_In_Sea},
+		{"Sinks In Ocean", UTA_Sinks_In_Ocean},
+		{"Flag Unit-ability", UTA_Flag_Unit},
+		{"Transports Only Foot Units", UTA_Transports_Only_Foot_Units},
+		{"Starts Golden Age", UTA_Starts_Golden_Age},
+		{"Nuclear Weapon", UTA_Nuclear_Weapon},
+		{"Hidden Nationality", UTA_Hidden_Nationality},
+		{"Army-ability", UTA_Army},
+		{"Leader-ability", UTA_Leader},
+		{"Infinite Bombard Range", UTA_Infinite_Bombard_Range},
+		{"Stealth", UTA_Stealth},
+		{"Detect Invisible", UTA_Detect_Invisible},
+		{"Tacticle Missile", UTA_Tacticle_Missile},
+		{"Transports Only Tacticle Missiles", UTA_Transports_Only_Tacticle_Missiles},
+		{"Ranged Attack Animation", UTA_Ranged_Attack_Animation},
+		{"Rotate Before Attack", UTA_Rotate_Before_Attack},
+		{"Lethal Land Bombardment", UTA_Lethal_Land_Bombardment},
+		{"Lethal Sea Bombardment", UTA_Lethal_Sea_Bombardment},
+		{"King-ability", UTA_King},
+		{"Requires Escort", UTA_Requires_Escort},
+	};
+	for (int n = 0; n < (sizeof abilities / sizeof abilities[0]); n++)
+		if (slice_matches_str (name, abilities[n].name)) {
+			for (int id = 0; id < p_bic_data->UnitTypeCount; id++)
+				if (UnitType_has_ability (&p_bic_data->UnitTypes[id], __, abilities[n].ability)) {
 					reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
 					(*p_ids)[(*p_count)++] = id;
 				}
