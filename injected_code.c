@@ -1521,11 +1521,28 @@ struct unit_type_tag_member {
 };
 
 bool
-append_unit_type_ids_by_name (struct string_slice const * name, int ** p_ids, int * p_count, int * p_capacity)
+unit_type_matches_name_or_pedia_key (UnitType const * type, struct string_slice const * name)
+{
+	return slice_matches_str (name, type->Name) || slice_matches_str (name, type->Civilipedia_Entry);
+}
+
+bool
+find_unit_type_id_by_name_or_pedia_key (struct string_slice const * name, int start_id, int * out)
+{
+	for (int n = start_id; n < p_bic_data->UnitTypeCount; n++)
+		if (unit_type_matches_name_or_pedia_key (&p_bic_data->UnitTypes[n], name)) {
+			*out = n;
+			return true;
+		}
+	return false;
+}
+
+bool
+append_unit_type_ids_by_name_or_pedia_key (struct string_slice const * name, int ** p_ids, int * p_count, int * p_capacity)
 {
 	int search_start = 0, found_id;
 	bool any_found = false;
-	while (find_unit_type_id_by_name (name, search_start, &found_id)) {
+	while (find_unit_type_id_by_name_or_pedia_key (name, search_start, &found_id)) {
 		reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
 		(*p_ids)[(*p_count)++] = found_id;
 		search_start = found_id + 1;
@@ -1550,16 +1567,16 @@ append_unit_type_upgrade_range (struct string_slice const * start_name, struct s
                                 int ** p_ids, int * p_count, int * p_capacity)
 {
 	int start_id;
-	if (! find_unit_type_id_by_name (start_name, 0, &start_id))
+	if (! find_unit_type_id_by_name_or_pedia_key (start_name, 0, &start_id))
 		return false;
 
 	int end_id = start_id;
-	bool reached_end = slice_matches_str (end_name, p_bic_data->UnitTypes[end_id].Name);
+	bool reached_end = unit_type_matches_name_or_pedia_key (&p_bic_data->UnitTypes[end_id], end_name);
 	for (int step = 0; ! reached_end && (step < p_bic_data->UnitTypeCount); step++) {
 		end_id = p_bic_data->UnitTypes[end_id].UpgradeToID;
 		if ((end_id < 0) || (end_id >= p_bic_data->UnitTypeCount))
 			break;
-		reached_end = slice_matches_str (end_name, p_bic_data->UnitTypes[end_id].Name);
+		reached_end = unit_type_matches_name_or_pedia_key (&p_bic_data->UnitTypes[end_id], end_name);
 	}
 	if (! reached_end)
 		return false;
@@ -1571,7 +1588,7 @@ append_unit_type_upgrade_range (struct string_slice const * start_name, struct s
 			(*p_ids)[(*p_count)++] = current_id;
 		}
 	}
-	append_unit_type_ids_by_name (end_name, p_ids, p_count, p_capacity);
+	append_unit_type_ids_by_name_or_pedia_key (end_name, p_ids, p_count, p_capacity);
 	return true;
 }
 
@@ -1662,7 +1679,7 @@ read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrec
 				continue;
 			}
 
-			bool start_type_found = append_unit_type_ids_by_name (&member->name, &ids, &ids_count, &ids_capacity);
+			bool start_type_found = append_unit_type_ids_by_name_or_pedia_key (&member->name, &ids, &ids_count, &ids_capacity);
 			struct unit_type_tag * start_tag = NULL;
 			if (! start_type_found) {
 				if (stable_look_up_slice (&cfg->unit_type_tags, &member->name, (int *)&start_tag))
@@ -1680,7 +1697,7 @@ read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrec
 
 				struct unit_type_tag_member * end = &members[n + 2];
 				int unused;
-				bool end_type_found = find_unit_type_id_by_name (&end->name, 0, &unused);
+				bool end_type_found = find_unit_type_id_by_name_or_pedia_key (&end->name, 0, &unused);
 				struct unit_type_tag * end_tag = NULL;
 				if (! end_type_found && ! stable_look_up_slice (&cfg->unit_type_tags, &end->name, (int *)&end_tag))
 					add_unrecognized_line (p_unrecognized_lines, &end->name);
@@ -1697,7 +1714,7 @@ read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrec
 				start_type_found = end_type_found;
 				start_tag = end_tag;
 				if (start_type_found && (n + 1 < member_count) && members[n + 1].is_range_operator)
-					append_unit_type_ids_by_name (&member->name, &ids, &ids_count, &ids_capacity);
+					append_unit_type_ids_by_name_or_pedia_key (&member->name, &ids, &ids_count, &ids_capacity);
 			}
 		}
 		free (members);
