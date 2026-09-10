@@ -1551,6 +1551,45 @@ append_unit_type_ids_by_name_or_pedia_key (struct string_slice const * name, int
 	return any_found;
 }
 
+// Config strategy names are deliberately independent of the translated interface labels.
+// Returns whether the attribute was recognized, even if no unit types have it.
+bool
+append_unit_type_ids_by_attribute (struct string_slice const * name, int ** p_ids, int * p_count, int * p_capacity)
+{
+	struct { char const * name; int flag; } const strategies[] = {
+		{"Offense", UTAI_Offence},
+		{"Defense", UTAI_Defence},
+		{"Artillery", UTAI_Artillery},
+		{"Explore", UTAI_Explore},
+		{"Army", UTAI_Army},
+		{"Cruise Missile", UTAI_Cruise_Missile},
+		{"Air Bombard", UTAI_Air_Bombard},
+		{"Air Defense", UTAI_Air_Defence},
+		{"Naval Power", UTAI_Naval_Power},
+		{"Air Transport", UTAI_Air_Transport},
+		{"Naval Transport", UTAI_Naval_Transport},
+		{"Naval Carrier", UTAI_Naval_Carrier},
+		{"Terraform", UTAI_Terraform},
+		{"Settle", UTAI_Settle},
+		{"Leader", UTAI_Leader},
+		{"Tactical Nuke", UTAI_Tactical_Nuke},
+		{"ICBM", UTAI_ICBM},
+		{"Naval Missile Transport", UTAI_Naval_Missile_Transport},
+		{"Flag Unit", UTAI_Flag_Unit},
+		{"King", UTAI_King},
+	};
+	for (int n = 0; n < (sizeof strategies / sizeof strategies[0]); n++)
+		if (slice_matches_str (name, strategies[n].name)) {
+			for (int id = 0; id < p_bic_data->UnitTypeCount; id++)
+				if (p_bic_data->UnitTypes[id].AI_Strategy & strategies[n].flag) {
+					reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
+					(*p_ids)[(*p_count)++] = id;
+				}
+			return true;
+		}
+	return false;
+}
+
 void
 append_unit_type_tag_ids (struct unit_type_tag const * tag, int ** p_ids, int * p_count, int * p_capacity)
 {
@@ -1684,7 +1723,9 @@ read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrec
 			if (! start_type_found) {
 				if (stable_look_up_slice (&cfg->unit_type_tags, &member->name, (int *)&start_tag))
 					append_unit_type_tag_ids (start_tag, &ids, &ids_count, &ids_capacity);
-				else
+				else if (((n + 1 < member_count) && members[n + 1].is_range_operator) ||
+				         ((n > 0) && members[n - 1].is_range_operator) ||
+				         ! append_unit_type_ids_by_attribute (&member->name, &ids, &ids_count, &ids_capacity))
 					add_unrecognized_line (p_unrecognized_lines, &member->name);
 			}
 

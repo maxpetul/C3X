@@ -4,7 +4,7 @@
 - Include any resource and bonus shield in yields from tiles with improvement-type districts
 - Option city_center_food_yield to control how much food city center tiles produce
   - Can be set to one citizen's worth of food (standard rules), to include food from tile resources, or to match the yield from the underlying tile
-- Accept Civilopedia keys when specifying unit types for tags
+- Allow unit type tags to be set by Civilopedia key or on all units with a given AI strategy
 - Fix city governors unable to assign workers to improvement-type districts after construction
 - Fix can_bombard_only_sea_tiles not applying to AI units or aerial defensive bombard
 
