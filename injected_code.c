@@ -1518,6 +1518,7 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 struct unit_type_tag_member {
 	struct string_slice name;
 	bool is_range_operator;
+	bool is_attribute_keyword;
 };
 
 bool
@@ -1552,7 +1553,7 @@ append_unit_type_ids_by_name_or_pedia_key (struct string_slice const * name, int
 }
 
 // Config attribute names are deliberately independent of the translated interface labels.
-// Returns whether the attribute was recognized, even if no unit types have it.
+// Returns whether the attribute was recognized, even if no unit types have it. Pass NULL for p_ids to only recognize the keyword.
 bool
 append_unit_type_ids_by_attribute (struct string_slice const * name, int ** p_ids, int * p_count, int * p_capacity)
 {
@@ -1580,6 +1581,7 @@ append_unit_type_ids_by_attribute (struct string_slice const * name, int ** p_id
 	};
 	for (int n = 0; n < (sizeof strategies / sizeof strategies[0]); n++)
 		if (slice_matches_str (name, strategies[n].name)) {
+			if (p_ids == NULL) return true;
 			for (int id = 0; id < p_bic_data->UnitTypeCount; id++)
 				if (p_bic_data->UnitTypes[id].AI_Strategy & strategies[n].flag) {
 					reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
@@ -1622,6 +1624,7 @@ append_unit_type_ids_by_attribute (struct string_slice const * name, int ** p_id
 	};
 	for (int n = 0; n < (sizeof abilities / sizeof abilities[0]); n++)
 		if (slice_matches_str (name, abilities[n].name)) {
+			if (p_ids == NULL) return true;
 			for (int id = 0; id < p_bic_data->UnitTypeCount; id++)
 				if (UnitType_has_ability (&p_bic_data->UnitTypes[id], __, abilities[n].ability)) {
 					reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
@@ -1707,6 +1710,14 @@ add_unit_type_tag_name_conflict_warning (struct error_line ** p_lines, struct st
 	line->text[(sizeof line->text) - 1] = '\0';
 }
 
+void
+add_attribute_as_unit_type_range_endpoint (struct error_line ** p_lines, struct string_slice const * name)
+{
+	struct error_line * line = add_error_line (p_lines);
+	snprintf (line->text, sizeof line->text, "^  Attribute keyword \"%.*s\" cannot be used as an endpoint of an upgrade range.", name->len, name->str);
+	line->text[(sizeof line->text) - 1] = '\0';
+}
+
 // Parses unit_type_tags. Format:
 // ["Tag Name": "UnitTypeA" "UnitTypeB" ..., "Tag2": "UnitTypeC" ...]
 // Tag names map to tag objects with integer IDs. A reverse table maps every unit type ID to
@@ -1748,6 +1759,7 @@ read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrec
 			reserve (sizeof members[0], (void **)&members, &member_capacity, member_count);
 			members[member_count].name = member_name;
 			members[member_count].is_range_operator = ! quoted && slice_matches_str (&member_name, "to");
+			members[member_count].is_attribute_keyword = ! quoted && append_unit_type_ids_by_attribute (&member_name, NULL, NULL, NULL);
 			member_count++;
 		}
 
@@ -1760,14 +1772,17 @@ read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrec
 				continue;
 			}
 
-			bool start_type_found = append_unit_type_ids_by_name_or_pedia_key (&member->name, &ids, &ids_count, &ids_capacity);
+			if (member->is_attribute_keyword && ! ((n + 1 < member_count) && members[n + 1].is_range_operator)) {
+				append_unit_type_ids_by_attribute (&member->name, &ids, &ids_count, &ids_capacity);
+				continue;
+			}
+
+			bool start_type_found = ! member->is_attribute_keyword && append_unit_type_ids_by_name_or_pedia_key (&member->name, &ids, &ids_count, &ids_capacity);
 			struct unit_type_tag * start_tag = NULL;
-			if (! start_type_found) {
+			if (! start_type_found && ! member->is_attribute_keyword) {
 				if (stable_look_up_slice (&cfg->unit_type_tags, &member->name, (int *)&start_tag))
 					append_unit_type_tag_ids (start_tag, &ids, &ids_count, &ids_capacity);
-				else if (((n + 1 < member_count) && members[n + 1].is_range_operator) ||
-				         ((n > 0) && members[n - 1].is_range_operator) ||
-				         ! append_unit_type_ids_by_attribute (&member->name, &ids, &ids_count, &ids_capacity))
+				else
 					add_unrecognized_line (p_unrecognized_lines, &member->name);
 			}
 
@@ -1780,10 +1795,14 @@ read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrec
 
 				struct unit_type_tag_member * end = &members[n + 2];
 				int unused;
-				bool end_type_found = find_unit_type_id_by_name_or_pedia_key (&end->name, 0, &unused);
+				bool end_type_found = ! end->is_attribute_keyword && find_unit_type_id_by_name_or_pedia_key (&end->name, 0, &unused);
 				struct unit_type_tag * end_tag = NULL;
-				if (! end_type_found && ! stable_look_up_slice (&cfg->unit_type_tags, &end->name, (int *)&end_tag))
+				if (! end_type_found && ! end->is_attribute_keyword && ! stable_look_up_slice (&cfg->unit_type_tags, &end->name, (int *)&end_tag))
 					add_unrecognized_line (p_unrecognized_lines, &end->name);
+				if (member->is_attribute_keyword)
+					add_attribute_as_unit_type_range_endpoint (p_range_errors, &member->name);
+				if (end->is_attribute_keyword)
+					add_attribute_as_unit_type_range_endpoint (p_range_errors, &end->name);
 				if (start_tag != NULL)
 					add_tag_as_unit_type_range_endpoint (p_range_errors, &member->name);
 				if (end_tag != NULL)
