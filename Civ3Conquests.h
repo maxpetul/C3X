@@ -5016,7 +5016,8 @@ struct Unit_Body
   byte field_4D;
   byte field_4E;
   byte field_4F;
-  int field_50[2];
+  int recon_target_x;
+  int recon_target_y;
   String56 Custom_Name;
   int field_98;
   int path_dest_x;

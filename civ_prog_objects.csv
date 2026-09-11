@@ -295,6 +295,7 @@ repl call, 0x4D5525,	0x4DDCF6,	0x4D55E5,	"TextBuffer_check_pedia_upgrades_to_ptr
 repl call, 0x4D5676,	0x4DDE50,	0x4D5736,	"TextBuffer_check_pedia_upgrades_to_ptr_2",	""
 define,	   0x5C68A0,	0x5D5700,	0x5C65B0,	"Unit_try_flying_over_tile",			"bool (__fastcall *) (Unit * this, int edx, int x, int y)"
 inlead,	   0x5C74A0,	0x5D6330,	0x5C71B0,	"Unit_perform_air_recon",			"void (__fastcall *) (Unit * this, int edx, int x, int y)"
+define,	   0x5C7570,	0x5D6400,	0x5C7280,	"Unit_clear_air_recon_visibility",		"void (__fastcall *) (Unit * this)"
 repl call, 0x5C6E34,	0x5D5CBB,	0x5C6B44,	"Unit_get_interceptor_max_moves",		""
 repl call, 0x5C7108,	0x5D5FAA,	0x5C6E18,	"Unit_get_moves_after_interception",		""
 repl call, 0x5C7114,	0x5D5FB6,	0x5C6E24,	"Unit_set_state_after_interception",		""

@@ -533,6 +533,7 @@ struct c3x_config {
 	bool patch_crash_in_leader_unit_ai;
 	bool patch_failure_to_find_new_city_build;
 	bool patch_passengers_out_of_order_on_menu;
+	bool patch_reconed_area_persisting_for_destroyed_units;
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;

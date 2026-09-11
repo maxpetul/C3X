@@ -20119,6 +20119,7 @@ patch_init_floating_point ()
 		{"patch_crash_in_leader_unit_ai"                         , true , offsetof (struct c3x_config, patch_crash_in_leader_unit_ai)},
 		{"patch_failure_to_find_new_city_build"                  , true , offsetof (struct c3x_config, patch_failure_to_find_new_city_build)},
 		{"patch_passengers_out_of_order_on_menu"                 , true , offsetof (struct c3x_config, patch_passengers_out_of_order_on_menu)},
+		{"patch_reconed_area_persisting_for_destroyed_units"     , true , offsetof (struct c3x_config, patch_reconed_area_persisting_for_destroyed_units)},
 		{"delete_off_map_ai_units"                               , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
 		{"fix_overlapping_specialist_yield_icons"                , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
 		{"prevent_autorazing"                                    , false, offsetof (struct c3x_config, prevent_autorazing)},
@@ -28361,6 +28362,10 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	int type_id = this->Body.UnitTypeID;
 	UnitType * type = &p_bic_data->UnitTypes[type_id];
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
+
+	// Recon visibility normally expires at the start of the unit's next turn, which despawned units never reach.
+	if (is->current_config.patch_reconed_area_persisting_for_destroyed_units && (this->Body.Status & USF_PERFORMED_AIR_RECON))
+		Unit_clear_air_recon_visibility (this);
 
 	// Clear extra DBs, airdrops, wait records, and transport ties used by this unit
 	itable_remove (&is->extra_defensive_bombards, this->Body.ID);
