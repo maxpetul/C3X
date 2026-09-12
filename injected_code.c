@@ -813,6 +813,8 @@ reset_to_base_config ()
 		cc->count_counter_rules = 0;
 	}
 
+	table_deinit (&cc->recon_radius);
+
 	// Free unit limits table
 	FOR_TABLE_ENTRIES (tei, &cc->unit_limits)
 		free ((void *)tei.value);
@@ -1513,6 +1515,31 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 
 	} else
 		return RPR_PARSE_ERROR;
+}
+
+struct parsed_recon_radius {
+	int unit_type_id;
+	struct unit_type_tag * tag;
+	int radius;
+};
+
+enum recognizable_parse_result
+parse_recon_radius (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_radius)
+{
+	char * cur = *p_cursor;
+	struct parsed_recon_radius * out = out_radius;
+	struct string_slice name;
+	if (! (parse_string (&cur, &name) && skip_punctuation (&cur, ':') &&
+	       parse_int (&cur, &out->radius)) || (out->radius < 0))
+		return RPR_PARSE_ERROR;
+	*p_cursor = cur;
+	out->unit_type_id = -1;
+	out->tag = NULL;
+	if (find_unit_type_id_by_name (&name, 0, &out->unit_type_id) ||
+	    stable_look_up_slice (&is->current_config.unit_type_tags, &name, (int *)&out->tag))
+		return RPR_OK;
+	add_unrecognized_line (p_unrecognized_lines, &name);
+	return RPR_UNRECOGNIZED;
 }
 
 struct unit_type_tag_member {
@@ -3322,6 +3349,24 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 (void **)&cfg->leader_era_alias_lists,
 											 &cfg->count_leader_era_alias_lists)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "recon_radius")) {
+					struct parsed_recon_radius * entries = NULL;
+					int count = 0;
+					if (0 <= (recog_err_offset = read_recognizables (&value, &unrecognized_lines,
+							sizeof *entries, parse_recon_radius, (void **)&entries, &count)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+					for (int n = 0; n < count; n++) {
+						struct parsed_recon_radius * entry = &entries[n];
+						if (entry->unit_type_id >= 0) {
+							char * name = p_bic_data->UnitTypes[entry->unit_type_id].Name;
+							for (int id = entry->unit_type_id; id < p_bic_data->UnitTypeCount; id++)
+								if (strcmp (name, p_bic_data->UnitTypes[id].Name) == 0)
+									itable_insert (&cfg->recon_radius, id, entry->radius);
+						} else
+							for (int i = 0; i < entry->tag->count_unit_type_ids; i++)
+								itable_insert (&cfg->recon_radius, entry->tag->unit_type_ids[i], entry->radius);
+					}
+					free (entries);
 				} else if (slice_matches_str (&p.key, "unit_limits")) {
 					struct parsed_unit_type_limit * parsed_unit_type_limits = NULL;
 					int parsed_unit_type_limit_count = 0;
@@ -28347,6 +28392,50 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 	}
 }
 
+// Enumerate a square in tile axes, which are diagonal in Civ's doubled-X map coordinates.
+void
+update_recon_area (Unit * unit, int center_x, int center_y, int radius, bool reveal)
+{
+	Map * map = &p_bic_data->Map;
+	if ((center_x < 0) || (center_y < 0) || (center_x >= map->Width) || (center_y >= map->Height))
+		return;
+	// Larger radii cannot add tiles beyond the whole map. Bound the loop even for very large config values.
+	radius = clamp (0, not_below (map->Width, map->Height), radius);
+	for (int a = -radius; a <= radius; a++)
+		for (int b = -radius; b <= radius; b++) {
+			int x = center_x + a + b, y = center_y + b - a;
+			wrap_tile_coords (map, &x, &y);
+			if ((x < 0) || (y < 0) || (x >= map->Width) || (y >= map->Height))
+				continue;
+			if (reveal)
+				Leader_reveal_tile_by_air_recon (&leaders[unit->Body.CivID], __, x, y);
+			else {
+				// Preserve the base game's exception for friendly recon units physically occupying a tile.
+				bool keep_visible = false;
+				FOR_UNITS_ON (uti, tile_at (x, y))
+					if ((uti.unit->Body.CivID == unit->Body.CivID) &&
+					    (uti.unit->Body.Status & USF_PERFORMED_AIR_RECON)) {
+						keep_visible = true;
+						break;
+					}
+				if (! keep_visible)
+					Leader_clear_tile_air_recon (&leaders[unit->Body.CivID], __, x, y);
+			}
+		}
+}
+
+void
+clear_current_recon_target (Unit * unit)
+{
+	int radius;
+	if (itable_look_up (&is->current_config.recon_radius, unit->Body.UnitTypeID, &radius)) {
+		unit->Body.Status &= ~USF_PERFORMED_AIR_RECON;
+		update_recon_area (unit, unit->Body.recon_target_x, unit->Body.recon_target_y, radius, false);
+		unit->Body.recon_target_x = unit->Body.recon_target_y = -1;
+	} else
+		Unit_clear_air_recon_visibility (unit);
+}
+
 // Entries are contiguous from mission index zero. Always discard them on despawn, even when visibility cleanup is disabled.
 void
 remove_extra_recon_targets (Unit * unit, bool clear_visibility)
@@ -28360,7 +28449,7 @@ remove_extra_recon_targets (Unit * unit, bool clear_visibility)
 		itable_remove (&is->extra_recon_targets, key);
 		if (clear_visibility) {
 			tile_index_to_coords (&p_bic_data->Map, tile_index, &unit->Body.recon_target_x, &unit->Body.recon_target_y);
-			Unit_clear_air_recon_visibility (unit);
+			clear_current_recon_target (unit);
 		}
 	}
 }
@@ -28369,7 +28458,7 @@ void __fastcall
 patch_Unit_clear_air_recon_visibility (Unit * this)
 {
 	// Clear the native target first, including targets loaded from saves without the extra table.
-	Unit_clear_air_recon_visibility (this);
+	clear_current_recon_target (this);
 	remove_extra_recon_targets (this, true);
 }
 
@@ -30178,7 +30267,15 @@ patch_Unit_perform_air_recon (Unit * this, int edx, int x, int y)
 	if (! was_intercepted) {
 		if (mission_index < 256)
 			itable_insert (&is->extra_recon_targets, (int)(((unsigned)this->Body.ID << 8) | mission_index), previous_target);
-		Unit_perform_air_recon (this, __, x, y);
+		int radius;
+		if (itable_look_up (&is->current_config.recon_radius, this->Body.UnitTypeID, &radius)) {
+			this->Body.Status |= USF_PERFORMED_AIR_RECON;
+			this->Body.recon_target_x = x;
+			this->Body.recon_target_y = y;
+			update_recon_area (this, x, y, radius, true);
+			this->Body.Moves = patch_Unit_get_max_move_points (this);
+		} else
+			Unit_perform_air_recon (this, __, x, y);
 		if (is->current_config.charge_one_move_for_recon_and_interception)
 			this->Body.Moves = moves_plus_one;
 	}

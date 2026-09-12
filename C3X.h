@@ -387,6 +387,7 @@ struct c3x_config {
 	bool include_stealth_attack_cancel_option;
 	bool intercept_recon_missions;
 	bool charge_one_move_for_recon_and_interception;
+	struct table recon_radius; // Unit type ID -> square recon radius; absent entries use the stock area.
 	int steal_plans_duration;
 	bool polish_precision_striking;
 	bool enable_stealth_attack_via_bombardment;
