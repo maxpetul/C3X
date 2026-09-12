@@ -1930,6 +1930,9 @@ struct injected_state {
 	// unlimited number of times.
 	struct table airdrops_this_turn;
 
+	// Earlier recon targets, keyed by (24-bit unit ID << 8) | 8-bit mission index. The latest target stays in Unit_Body.
+	struct table extra_recon_targets;
+
 	// Stores city improvement bits for improvs beyond the first 256
 	struct table extra_city_improvs;
 

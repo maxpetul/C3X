@@ -20563,6 +20563,7 @@ patch_init_floating_point ()
 	is->steal_plans_success_roll = 0;
 	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
 	memset (&is->airdrops_this_turn      , 0, sizeof is->airdrops_this_turn);
+	memset (&is->extra_recon_targets     , 0, sizeof is->extra_recon_targets);
 	memset (&is->unit_transport_ties     , 0, sizeof is->unit_transport_ties);
 	memset (&is->extra_city_improvs      , 0, sizeof is->extra_city_improvs);
 
@@ -24211,6 +24212,7 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 	is->replay_for_players = 0;
 	table_deinit (&is->extra_defensive_bombards);
 	table_deinit (&is->airdrops_this_turn);
+	table_deinit (&is->extra_recon_targets);
 	table_deinit (&is->unit_transport_ties);
 	table_deinit (&is->steal_plans_expiration_turns);
 	is->last_selected_unit.initial_x = is->last_selected_unit.initial_y = -1;
@@ -28345,6 +28347,32 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 	}
 }
 
+// Entries are contiguous from mission index zero. Always discard them on despawn, even when visibility cleanup is disabled.
+void
+remove_extra_recon_targets (Unit * unit, bool clear_visibility)
+{
+	if ((unsigned)unit->Body.ID > 0xFFFFFF)
+		return;
+	for (unsigned n = 0; n < 256; n++) {
+		int key = (int)(((unsigned)unit->Body.ID << 8) | n), tile_index;
+		if (! itable_look_up (&is->extra_recon_targets, key, &tile_index))
+			break;
+		itable_remove (&is->extra_recon_targets, key);
+		if (clear_visibility) {
+			tile_index_to_coords (&p_bic_data->Map, tile_index, &unit->Body.recon_target_x, &unit->Body.recon_target_y);
+			Unit_clear_air_recon_visibility (unit);
+		}
+	}
+}
+
+void __fastcall
+patch_Unit_clear_air_recon_visibility (Unit * this)
+{
+	// Clear the native target first, including targets loaded from saves without the extra table.
+	Unit_clear_air_recon_visibility (this);
+	remove_extra_recon_targets (this, true);
+}
+
 void __fastcall
 patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
 {
@@ -28365,7 +28393,9 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 
 	// Recon visibility normally expires at the start of the unit's next turn, which despawned units never reach.
 	if (is->current_config.patch_reconed_area_persisting_for_destroyed_units && (this->Body.Status & USF_PERFORMED_AIR_RECON))
-		Unit_clear_air_recon_visibility (this);
+		patch_Unit_clear_air_recon_visibility (this);
+	else
+		remove_extra_recon_targets (this, false);
 
 	// Clear extra DBs, airdrops, wait records, and transport ties used by this unit
 	itable_remove (&is->extra_defensive_bombards, this->Body.ID);
@@ -30121,6 +30151,18 @@ patch_PopupSelection_add_stealth_attack_target (PopupSelection * this, int edx, 
 void __fastcall
 patch_Unit_perform_air_recon (Unit * this, int edx, int x, int y)
 {
+	// Preserve the previous target only after a successful mission. Interception may despawn this unit.
+	bool had_recon = (this->Body.Status & USF_PERFORMED_AIR_RECON) != 0;
+	int previous_target = tile_coords_to_index (&p_bic_data->Map, this->Body.recon_target_x, this->Body.recon_target_y);
+	unsigned mission_index = 256;
+	if (had_recon && ((unsigned)this->Body.ID <= 0xFFFFFF)) {
+		// If the packed key cannot represent another target, skip recording it but still perform the mission.
+		mission_index = 0;
+		int ignored;
+		while ((mission_index < 256) &&
+		       itable_look_up (&is->extra_recon_targets, (int)(((unsigned)this->Body.ID << 8) | mission_index), &ignored))
+			mission_index++;
+	}
 	int moves_plus_one = this->Body.Moves + p_bic_data->General.RoadsMovementRate;
 
 	bool was_intercepted = false;
@@ -30134,6 +30176,8 @@ patch_Unit_perform_air_recon (Unit * this, int edx, int x, int y)
 	}
 
 	if (! was_intercepted) {
+		if (mission_index < 256)
+			itable_insert (&is->extra_recon_targets, (int)(((unsigned)this->Body.ID << 8) | mission_index), previous_target);
 		Unit_perform_air_recon (this, __, x, y);
 		if (is->current_config.charge_one_move_for_recon_and_interception)
 			this->Body.Moves = moves_plus_one;
@@ -35218,6 +35262,10 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			serialize_aligned_text ("airdrops_this_turn", &mod_data);
 			itable_serialize (&is->airdrops_this_turn, &mod_data);
 		}
+		if (is->extra_recon_targets.len > 0) {
+			serialize_aligned_text ("extra_recon_targets", &mod_data);
+			itable_serialize (&is->extra_recon_targets, &mod_data);
+		}
 		if (is->unit_transport_ties.len > 0) {
 			serialize_aligned_text ("unit_transport_ties", &mod_data);
 			itable_serialize (&is->unit_transport_ties, &mod_data);
@@ -35686,6 +35734,15 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					cursor += bytes_read;
 				else {
 					error_chunk_name = "airdrops_this_turn";
+					break;
+				}
+
+			} else if (match_save_chunk_name (&cursor, "extra_recon_targets")) {
+				int bytes_read = itable_deserialize (cursor, seg + seg_size, &is->extra_recon_targets);
+				if (bytes_read > 0)
+					cursor += bytes_read;
+				else {
+					error_chunk_name = "extra_recon_targets";
 					break;
 				}
 
