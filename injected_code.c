@@ -16288,6 +16288,9 @@ show_map_specific_text (int tile_x, int tile_y, char const * text, bool pause)
 bool __fastcall
 patch_City_has_improvement (City * this, int edx, int improv_id, bool include_auto_improvements)
 {
+	if (this == NULL)
+		return false;
+
 	bool tr = City_has_improvement (this, __, improv_id, include_auto_improvements);
 
 	// Check if the improvement is provided for free by another human player's wonder if we're in a hotseat game and the config option is on
