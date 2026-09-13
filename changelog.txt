@@ -11,6 +11,7 @@
 - Fix some ways areas revealed by recon can stay permanently revealed
   - Can happen when the unit that performed recon was destroyed before the start of its next turn (this is a base game bug)
   - Can happen when a unit has performed multiple recon missions in one turn (possible if charge_one_move_for_recon_and_interception option is active)
+- Fix crash (0xC0000005) when a NULL city pointer is passed to City_has_improvement
 
 * RELEASE 28 PREVIEW 1
 - Allow for custom combat bonuses or maluses to be applied based on unit type, combat role (attack, defense, or bombard), terrain, city/district, and experience level
