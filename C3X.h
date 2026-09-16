@@ -430,6 +430,8 @@ struct c3x_config {
 	int citizen_defensive_bonus_by_era[4];
 	bool use_building_defensive_bonus_by_era;
 	int building_defensive_bonus_by_era[4];
+	bool use_tile_defensive_bonus_by_era;
+	int tile_defensive_bonus_by_era[4];
 	bool show_total_city_count;
 	enum combat_win_rate_display_mode combat_win_rate_display_mode;
 	bool persist_combat_win_rate_display;

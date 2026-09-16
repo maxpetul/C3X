@@ -3367,6 +3367,10 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					if ((value.str <= p.text) || (value.str[-1] != '[') ||
 					    ! read_defensive_bonus_by_era (&value, &cfg->use_building_defensive_bonus_by_era, cfg->building_defensive_bonus_by_era))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "tile_defensive_bonus_by_era")) {
+					if ((value.str <= p.text) || (value.str[-1] != '[') ||
+					    ! read_defensive_bonus_by_era (&value, &cfg->use_tile_defensive_bonus_by_era, cfg->tile_defensive_bonus_by_era))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->ptw_arty_types))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -31097,6 +31101,71 @@ patch_deinitialize_map_music ()
 {
 	if (! is->showing_hotseat_replay)
 		deinitialize_map_music ();
+}
+
+int
+get_tile_defensive_bonus_by_era (int x, int y)
+{
+	if (! is->current_config.use_tile_defensive_bonus_by_era)
+		return 16;
+	Tile * tile = tile_at (x, y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return 16;
+	int owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	if ((owner <= 0) || (owner >= 32))
+		owner = tile->vtable->m70_Get_Tile_Building_OwnerID (tile);
+	if ((owner > 0) && (owner < 32)) {
+		int era = leaders[owner].Era;
+		if ((era >= 0) && (era < ARRAY_LEN (is->current_config.tile_defensive_bonus_by_era)))
+			return is->current_config.tile_defensive_bonus_by_era[era];
+	}
+	return 16;
+}
+
+int
+get_tile_bombard_defense_threshold (Unit * unit, int x, int y, int base_defense)
+{
+	int terrain_bonus = get_defense_bonus_between_tiles (-1, -1, x, y);
+	int building_bonus = patch_get_building_defense_bonus_at (x, y, -1);
+	long long defense = (long long)base_defense * (100LL + terrain_bonus + building_bonus) / 100;
+	// Keep the game's integer rounding and 1..1023 threshold, using wider intermediates for configured strengths.
+	if (defense <= 0)
+		return 1;
+	long long total = defense + p_bic_data->UnitTypes[unit->Body.UnitTypeID].Bombard_Strength;
+	return (total > 0) ? clamp (1, 1023, (int)(1024 * defense / total)) : 1023;
+}
+
+bool __fastcall
+patch_Fighter_roll_for_bombard (Fighter * this, int edx, Unit * unit, int x, int y)
+{
+	int base_defense = get_tile_defensive_bonus_by_era (x, y);
+	if (base_defense == 16)
+		return Fighter_roll_for_bombard (this, __, unit, x, y);
+	if ((unit == NULL) || (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Bombard_Strength == 0))
+		return false;
+	int threshold = get_tile_bombard_defense_threshold (unit, x, y, base_defense);
+	for (int n = 0; n < p_bic_data->UnitTypes[unit->Body.UnitTypeID].FireRate; n++)
+		if ((rand_int (p_rand_object, __, 1024) & 0xffff) >= threshold)
+			return true;
+	return false;
+}
+
+bool __fastcall
+patch_Fighter_cause_collateral_damage (Fighter * this, int edx, Unit * attacker, Unit * defender)
+{
+	int x = defender->Body.X, y = defender->Body.Y;
+	int base_defense = get_tile_defensive_bonus_by_era (x, y);
+	// City collateral damage still goes through the existing building-defense hook.
+	if ((base_defense == 16) || (city_at (x, y) != NULL))
+		return Fighter_cause_collateral_damage (this, __, attacker, defender);
+	if (! patch_Unit_can_pillage (attacker, __, x, y))
+		return false;
+	int threshold = get_tile_bombard_defense_threshold (attacker, x, y, base_defense);
+	// Collateral damage gets one roll, irrespective of rate of fire. The destruction routine must not roll again.
+	if ((rand_int (p_rand_object, __, 1024) & 0xffff) < threshold)
+		return false;
+	Unit_destroy_tile_improvements (attacker, __, false, x, y, attacker->Body.CivID);
+	return true;
 }
 
 bool __fastcall
