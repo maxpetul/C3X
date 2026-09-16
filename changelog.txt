@@ -2,6 +2,8 @@
   - Main option combat_win_rate_display_mode can be set to off, compact, or detailed. Detailed mode includes combat counter factors.
   - Related option persist_combat_win_rate_display controls whether the background box is hidden when empty
 - Include any resource and bonus shield in yields from tiles with improvement-type districts
+- Set of options to vary, by era, the defensive strengths of population, city improvements, and tile improvements against bombardment
+  - Named citizen_bombard_defense_by_era, building_bombard_defense_by_era, and tile_bombard_defense_by_era
 - Option city_center_food_yield to control how much food city center tiles produce
   - Can be set to one citizen's worth of food (standard rules), to include food from tile resources, or to match the yield from the underlying tile
 - Make the size of the area revealed by recon missions adjustable per unit type, option named recon_radius

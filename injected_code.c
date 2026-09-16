@@ -2970,7 +2970,7 @@ read_units_per_tile_limit (struct string_slice const * s, int * out_limits)
 }
 
 bool
-read_defensive_bonus_by_era (struct string_slice const * s, bool * out_enabled, int * out_values)
+read_bombard_defense_by_era (struct string_slice const * s, bool * out_enabled, int * out_values)
 {
 	char * text = extract_slice (s);
 	char * cursor = text;
@@ -3359,17 +3359,17 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				} else if (slice_matches_str (&p.key, "limit_defensive_retreat_on_water_to_types")) {
 					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->limit_defensive_retreat_on_water_to_types))
 						handle_config_error (&p, CPE_BAD_VALUE);
-				} else if (slice_matches_str (&p.key, "citizen_defensive_bonus_by_era")) {
+				} else if (slice_matches_str (&p.key, "citizen_bombard_defense_by_era")) {
 					if ((value.str <= p.text) || (value.str[-1] != '[') ||
-					    ! read_defensive_bonus_by_era (&value, &cfg->use_citizen_defensive_bonus_by_era, cfg->citizen_defensive_bonus_by_era))
+					    ! read_bombard_defense_by_era (&value, &cfg->use_citizen_bombard_defense_by_era, cfg->citizen_bombard_defense_by_era))
 						handle_config_error (&p, CPE_BAD_VALUE);
-				} else if (slice_matches_str (&p.key, "building_defensive_bonus_by_era")) {
+				} else if (slice_matches_str (&p.key, "building_bombard_defense_by_era")) {
 					if ((value.str <= p.text) || (value.str[-1] != '[') ||
-					    ! read_defensive_bonus_by_era (&value, &cfg->use_building_defensive_bonus_by_era, cfg->building_defensive_bonus_by_era))
+					    ! read_bombard_defense_by_era (&value, &cfg->use_building_bombard_defense_by_era, cfg->building_bombard_defense_by_era))
 						handle_config_error (&p, CPE_BAD_VALUE);
-				} else if (slice_matches_str (&p.key, "tile_defensive_bonus_by_era")) {
+				} else if (slice_matches_str (&p.key, "tile_bombard_defense_by_era")) {
 					if ((value.str <= p.text) || (value.str[-1] != '[') ||
-					    ! read_defensive_bonus_by_era (&value, &cfg->use_tile_defensive_bonus_by_era, cfg->tile_defensive_bonus_by_era))
+					    ! read_bombard_defense_by_era (&value, &cfg->use_tile_bombard_defense_by_era, cfg->tile_bombard_defense_by_era))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->ptw_arty_types))
@@ -31104,9 +31104,9 @@ patch_deinitialize_map_music ()
 }
 
 int
-get_tile_defensive_bonus_by_era (int x, int y)
+get_tile_bombard_defense_by_era (int x, int y)
 {
-	if (! is->current_config.use_tile_defensive_bonus_by_era)
+	if (! is->current_config.use_tile_bombard_defense_by_era)
 		return 16;
 	Tile * tile = tile_at (x, y);
 	if ((tile == NULL) || (tile == p_null_tile))
@@ -31116,8 +31116,8 @@ get_tile_defensive_bonus_by_era (int x, int y)
 		owner = tile->vtable->m70_Get_Tile_Building_OwnerID (tile);
 	if ((owner > 0) && (owner < 32)) {
 		int era = leaders[owner].Era;
-		if ((era >= 0) && (era < ARRAY_LEN (is->current_config.tile_defensive_bonus_by_era)))
-			return is->current_config.tile_defensive_bonus_by_era[era];
+		if ((era >= 0) && (era < ARRAY_LEN (is->current_config.tile_bombard_defense_by_era)))
+			return is->current_config.tile_bombard_defense_by_era[era];
 	}
 	return 16;
 }
@@ -31138,7 +31138,7 @@ get_tile_bombard_defense_threshold (Unit * unit, int x, int y, int base_defense)
 bool __fastcall
 patch_Fighter_roll_for_bombard (Fighter * this, int edx, Unit * unit, int x, int y)
 {
-	int base_defense = get_tile_defensive_bonus_by_era (x, y);
+	int base_defense = get_tile_bombard_defense_by_era (x, y);
 	if (base_defense == 16)
 		return Fighter_roll_for_bombard (this, __, unit, x, y);
 	if ((unit == NULL) || (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Bombard_Strength == 0))
@@ -31154,7 +31154,7 @@ bool __fastcall
 patch_Fighter_cause_collateral_damage (Fighter * this, int edx, Unit * attacker, Unit * defender)
 {
 	int x = defender->Body.X, y = defender->Body.Y;
-	int base_defense = get_tile_defensive_bonus_by_era (x, y);
+	int base_defense = get_tile_bombard_defense_by_era (x, y);
 	// City collateral damage still goes through the existing building-defense hook.
 	if ((base_defense == 16) || (city_at (x, y) != NULL))
 		return Fighter_cause_collateral_damage (this, __, attacker, defender);
@@ -31173,15 +31173,15 @@ patch_Fighter_damage_city_by_bombardment (Fighter * this, int edx, Unit * unit, 
 {
 	int saved_citizen_bonus = p_bic_data->General.DefenceBonus_Citizen;
 	int saved_building_bonus = p_bic_data->General.DefenceBonus_Building;
-	if ((damage_kind == 0) && is->current_config.use_citizen_defensive_bonus_by_era) {
+	if ((damage_kind == 0) && is->current_config.use_citizen_bombard_defense_by_era) {
 		int era = leaders[city->Body.CivID].Era;
-		if ((era >= 0) && (era < ARRAY_LEN (is->current_config.citizen_defensive_bonus_by_era)))
-			p_bic_data->General.DefenceBonus_Citizen = is->current_config.citizen_defensive_bonus_by_era[era];
+		if ((era >= 0) && (era < ARRAY_LEN (is->current_config.citizen_bombard_defense_by_era)))
+			p_bic_data->General.DefenceBonus_Citizen = is->current_config.citizen_bombard_defense_by_era[era];
 	}
-	if ((damage_kind == 1) && is->current_config.use_building_defensive_bonus_by_era) {
+	if ((damage_kind == 1) && is->current_config.use_building_bombard_defense_by_era) {
 		int era = leaders[city->Body.CivID].Era;
-		if ((era >= 0) && (era < ARRAY_LEN (is->current_config.building_defensive_bonus_by_era)))
-			p_bic_data->General.DefenceBonus_Building = is->current_config.building_defensive_bonus_by_era[era];
+		if ((era >= 0) && (era < ARRAY_LEN (is->current_config.building_bombard_defense_by_era)))
+			p_bic_data->General.DefenceBonus_Building = is->current_config.building_bombard_defense_by_era[era];
 	}
 	// Preserve the game's terrain bonuses, rate of fire, population floor, and damage handling.
 	bool result = Fighter_damage_city_by_bombardment (this, __, unit, city, damage_kind, min_fire_rate);
