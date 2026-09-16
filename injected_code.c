@@ -2969,6 +2969,38 @@ read_units_per_tile_limit (struct string_slice const * s, int * out_limits)
 	}
 }
 
+bool
+read_citizen_defensive_bonus_by_era (struct string_slice const * s, struct c3x_config * cfg)
+{
+	char * text = extract_slice (s);
+	char * cursor = text;
+	int values[4];
+	bool valid = true;
+	skip_white_space (&cursor);
+	bool enabled = *cursor != '\0';
+	if (enabled) {
+		for (int n = 0; n < ARRAY_LEN (values); n++) {
+			skip_white_space (&cursor);
+			if (! ((*cursor == '-') || ((*cursor >= '0') && (*cursor <= '9'))) ||
+			    ! parse_int (&cursor, &values[n])) {
+				valid = false;
+				break;
+			}
+			skip_white_space (&cursor);
+			if ((n < ARRAY_LEN (values) - 1) && (*cursor == ','))
+				cursor++;
+		}
+		valid = valid && (*cursor == '\0');
+	}
+	if (valid) {
+		cfg->use_citizen_defensive_bonus_by_era = enabled;
+		if (enabled)
+			memcpy (cfg->citizen_defensive_bonus_by_era, values, sizeof values);
+	}
+	free (text);
+	return valid;
+}
+
 struct config_parsing {
 	char * file_path;
 	char * text;
@@ -3326,6 +3358,10 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "limit_defensive_retreat_on_water_to_types")) {
 					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->limit_defensive_retreat_on_water_to_types))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "citizen_defensive_bonus_by_era")) {
+					if ((value.str <= p.text) || (value.str[-1] != '[') ||
+					    ! read_citizen_defensive_bonus_by_era (&value, cfg))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->ptw_arty_types))
@@ -31059,6 +31095,21 @@ patch_deinitialize_map_music ()
 		deinitialize_map_music ();
 }
 
+bool __fastcall
+patch_Fighter_damage_city_by_bombardment (Fighter * this, int edx, Unit * unit, City * city, int damage_kind, int min_fire_rate)
+{
+	int saved_bonus = p_bic_data->General.DefenceBonus_Citizen;
+	if ((damage_kind == 0) && is->current_config.use_citizen_defensive_bonus_by_era) {
+		int era = leaders[city->Body.CivID].Era;
+		if ((era >= 0) && (era < ARRAY_LEN (is->current_config.citizen_defensive_bonus_by_era)))
+			p_bic_data->General.DefenceBonus_Citizen = is->current_config.citizen_defensive_bonus_by_era[era];
+	}
+	// Preserve the game's terrain bonuses, rate of fire, population floor, and damage handling.
+	bool result = Fighter_damage_city_by_bombardment (this, __, unit, city, damage_kind, min_fire_rate);
+	p_bic_data->General.DefenceBonus_Citizen = saved_bonus;
+	return result;
+}
+
 void __fastcall
 patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbor_index, int mp_tile_x, int mp_tile_y)
 {
@@ -31083,7 +31134,7 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 
 		int rv;
 		if ((city != NULL) && ((rv = rand_int (p_rand_object, __, 3)) < 2))
-			Fighter_damage_city_by_bombardment (this, __, unit, city, rv, 0);
+			patch_Fighter_damage_city_by_bombardment (this, __, unit, city, rv, 0);
 		else
 			Fighter_do_bombard_tile (this, __, unit, neighbor_index, mp_tile_x, mp_tile_y);
 
