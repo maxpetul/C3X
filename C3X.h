@@ -428,6 +428,8 @@ struct c3x_config {
 	bool allow_bombard_of_other_improvs_on_occupied_airfield;
 	bool use_citizen_defensive_bonus_by_era;
 	int citizen_defensive_bonus_by_era[4];
+	bool use_building_defensive_bonus_by_era;
+	int building_defensive_bonus_by_era[4];
 	bool show_total_city_count;
 	enum combat_win_rate_display_mode combat_win_rate_display_mode;
 	bool persist_combat_win_rate_display;
