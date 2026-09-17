@@ -18477,6 +18477,10 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 			int_to_bytes (ADDR_TRADABLE_UNITS_SIZE_TO_CLEAR, tradable_units_size);
 	}
 
+	// Disable the freshwater bypass in City_requires_improvement_to_grow. Keeping the rest of the original check preserves
+	// active aqueducts, modded population limits, and the hospital requirement for all growth and join-city callers.
+	set_nopification (cfg->remove_fresh_water_growth_bonus, ADDR_FRESH_WATER_GROWTH_BYPASS, 2);
+
 	// Remove the standard rule that blocks battle-created units while the player already has one
 	set_nopification (cfg->allow_multiple_battle_created_units_per_player, ADDR_EXISTING_BATTLE_CREATED_UNIT_CHECK, 6);
 
@@ -20266,6 +20270,7 @@ patch_init_floating_point ()
 		{"exclude_passengers_from_stealth_attack"                , false, offsetof (struct c3x_config, exclude_passengers_from_stealth_attack)},
 		{"convert_to_landmark_after_planting_forest"             , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
 		{"allow_sale_of_aqueducts_and_hospitals"                 , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
+		{"remove_fresh_water_growth_bonus"                       , false, offsetof (struct c3x_config, remove_fresh_water_growth_bonus)},
 		{"no_cross_shore_detection"                              , false, offsetof (struct c3x_config, no_cross_shore_detection)},
 		{"limit_unit_loading_to_one_transport_per_turn"          , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block"   , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
@@ -25616,11 +25621,15 @@ patch_Map_impl_is_near_lake_within_work_area (Map * this, int edx, int x, int y,
 bool __fastcall
 patch_Map_impl_has_fresh_water_within_work_area (Map * this, int edx, int tile_x, int tile_y)
 {
+	// This call in City_can_build_improvement only checks whether freshwater makes a size-level-2 building redundant.
+	if (is->current_config.remove_fresh_water_growth_bonus)
+		return false;
+
 	if (is->current_config.enable_districts && is->current_config.expand_water_tile_checks_to_city_work_area) {
 		int improv_id = is->current_evaluating_improve_id;
 		if ((improv_id >= 0) && (improv_id < p_bic_data->ImprovementsCount)) {
 
-			// If an Aqueduct, default to original logic (city must be next to coast)
+			// If an Aqueduct, check freshwater adjacent to the city itself
 			if ((p_bic_data->Improvements[improv_id].ImprovementFlags & ITF_Allows_City_Level_2) != 0)
 				return this->vtable->has_fresh_water (this, __, tile_x, tile_y);
 		}

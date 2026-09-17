@@ -162,6 +162,7 @@ inlead,	   0x61A110,	0x63B420,	0x61A040,	"Context_Menu_add_item_and_set_color",	
 define,	   0x61A160,	0x63B480,	0x61A090,	"Context_Menu_add_separator",			"int (__fastcall *) (Context_Menu * this, int edx, int item_id)"
 inlead,	   0x45C750,	0x45EA70,	0x45C7D0,	"Unit_ai_move_terraformer",			"void (__fastcall *) (Unit * this)"
 inlead,	   0x4B1DC0,	0x4B8D50,	0x4B1E50,	"City_requires_improvement_to_grow",		"int (__fastcall *) (City * this)"
+define,    0x4B1E86,	0x4B8E0C,	0x4B1F16,	"ADDR_FRESH_WATER_GROWTH_BYPASS",		"byte *"
 inlead,	   0x4DD530,	0x4E5F00,	0x4DD5F0,	"maybe_show_improvement_needed_for_growth_dialog",   "void (__fastcall *) (void * this, int edx, City * city, int * param_2)"
 repl call, 0x5213E3,	0x52B3F3,	0x521483,	"City_requires_improvement_to_grow_besides_neighborhood",  ""
 inlead,	   0x5C1AD0,	0x5D0670,	0x5C17E0,	"Unit_can_perform_command",			"bool (__fastcall *) (Unit * this, int edx, int unit_command_value)"
