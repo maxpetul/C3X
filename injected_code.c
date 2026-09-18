@@ -18998,7 +18998,8 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		*ADDR_UNIT_TO_UNIT_VISIBILITY_RADIUS = (byte)(max_tile_iter);
 	}
 	WITH_MEM_PROTECTION (ADDR_CIV_UNIT_VISIBILITY_RADIUS, 1, PAGE_EXECUTE_READWRITE) {
-		*ADDR_CIV_UNIT_VISIBILITY_RADIUS = (byte)(max_tile_iter_2);
+		// This is the detector scan in Unit::is_visible_to_civ. The adjacency limit takes precedence over expanded visibility.
+		*ADDR_CIV_UNIT_VISIBILITY_RADIUS = cfg->limit_detection_by_units_to_adjacent_tiles ? 9 : (byte)(max_tile_iter_2);
 	}
 
 	WITH_MEM_PROTECTION (ADDR_UTC_SEA_CMP_1, 8, PAGE_EXECUTE_READWRITE) {
@@ -20272,6 +20273,7 @@ patch_init_floating_point ()
 		{"allow_sale_of_aqueducts_and_hospitals"                 , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
 		{"remove_fresh_water_growth_bonus"                       , false, offsetof (struct c3x_config, remove_fresh_water_growth_bonus)},
 		{"no_cross_shore_detection"                              , false, offsetof (struct c3x_config, no_cross_shore_detection)},
+		{"limit_detection_by_units_to_adjacent_tiles"            , false, offsetof (struct c3x_config, limit_detection_by_units_to_adjacent_tiles)},
 		{"limit_unit_loading_to_one_transport_per_turn"          , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block"   , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
 		{"allow_extraterritorial_colonies"                       , false, offsetof (struct c3x_config, allow_extraterritorial_colonies)},

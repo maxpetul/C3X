@@ -462,6 +462,7 @@ struct c3x_config {
 	bool allow_sale_of_aqueducts_and_hospitals;
 	bool remove_fresh_water_growth_bonus;
 	bool no_cross_shore_detection;
+	bool limit_detection_by_units_to_adjacent_tiles;
 	int radar_tower_detection_distance;
 	int outpost_detection_distance;
 	int city_work_radius;
