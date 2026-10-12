@@ -1662,6 +1662,58 @@ append_unit_type_ids_by_attribute (struct string_slice const * name, int ** p_id
 	return false;
 }
 
+bool
+slice_with_wildcards_matches_str (struct string_slice const * pattern, char const * str)
+{
+	int pattern_pos = 0, str_pos = 0;
+	int last_wildcard_pos = -1, wildcard_match_end = 0;
+
+	while (str[str_pos] != '\0') {
+		if ((pattern_pos < pattern->len) && (pattern->str[pattern_pos] == '*')) {
+			last_wildcard_pos = pattern_pos++;
+			wildcard_match_end = str_pos;
+		} else if ((pattern_pos < pattern->len) && (pattern->str[pattern_pos] == str[str_pos])) {
+			pattern_pos++;
+			str_pos++;
+		} else if (last_wildcard_pos >= 0) {
+			pattern_pos = last_wildcard_pos + 1;
+			str_pos = ++wildcard_match_end;
+		} else
+			return false;
+	}
+
+	while ((pattern_pos < pattern->len) && (pattern->str[pattern_pos] == '*'))
+		pattern_pos++;
+	return pattern_pos == pattern->len;
+}
+
+// Resolves a unit type tag member. An exact match takes precedence so that unit type names containing
+// asterisks remain usable. Otherwise, '*' matches any sequence of characters, including an empty one.
+bool
+append_unit_type_ids_by_tag_member (struct string_slice const * name, int ** p_ids, int * p_count, int * p_capacity)
+{
+	if (append_unit_type_ids_by_name_or_pedia_key (name, p_ids, p_count, p_capacity))
+		return true;
+
+	bool has_wildcard = false;
+	for (int n = 0; n < name->len; n++)
+		if (name->str[n] == '*') {
+			has_wildcard = true;
+			break;
+		}
+	if (! has_wildcard)
+		return false;
+
+	bool any_found = false;
+	for (int n = 0; n < p_bic_data->UnitTypeCount; n++)
+		if (slice_with_wildcards_matches_str (name, p_bic_data->UnitTypes[n].Name)) {
+			reserve (sizeof (*p_ids)[0], (void **)p_ids, p_capacity, *p_count);
+			(*p_ids)[(*p_count)++] = n;
+			any_found = true;
+		}
+	return any_found;
+}
+
 void
 append_unit_type_tag_ids (struct unit_type_tag const * tag, int ** p_ids, int * p_count, int * p_capacity)
 {
@@ -1804,7 +1856,7 @@ read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrec
 				continue;
 			}
 
-			bool start_type_found = ! member->is_attribute_keyword && append_unit_type_ids_by_name_or_pedia_key (&member->name, &ids, &ids_count, &ids_capacity);
+			bool start_type_found = ! member->is_attribute_keyword && append_unit_type_ids_by_tag_member (&member->name, &ids, &ids_count, &ids_capacity);
 			struct unit_type_tag * start_tag = NULL;
 			if (! start_type_found && ! member->is_attribute_keyword) {
 				if (stable_look_up_slice (&cfg->unit_type_tags, &member->name, (int *)&start_tag))
@@ -20146,6 +20198,7 @@ patch_init_floating_point ()
 		{"autofill_best_gold_amount_when_trading"                , true , offsetof (struct c3x_config, autofill_best_gold_amount_when_trading)},
 		{"disallow_founding_next_to_foreign_city"                , true , offsetof (struct c3x_config, disallow_founding_next_to_foreign_city)},
 		{"enable_trade_screen_scroll"                            , true , offsetof (struct c3x_config, enable_trade_screen_scroll)},
+		{"sort_city_lists_alphabetically"                        , true , offsetof (struct c3x_config, sort_city_lists_alphabetically)},
 		{"group_units_on_right_click_menu"                       , true , offsetof (struct c3x_config, group_units_on_right_click_menu)},
 		{"gray_out_units_on_menu_with_no_remaining_moves"        , true , offsetof (struct c3x_config, gray_out_units_on_menu_with_no_remaining_moves)},
 		{"put_movement_icons_on_units_on_menu"                   , true , offsetof (struct c3x_config, put_movement_icons_on_units_on_menu)},
@@ -20270,6 +20323,7 @@ patch_init_floating_point ()
 		{"exclude_invisible_units_from_stealth_attack"           , false, offsetof (struct c3x_config, exclude_invisible_units_from_stealth_attack)},
 		{"exclude_passengers_from_stealth_attack"                , false, offsetof (struct c3x_config, exclude_passengers_from_stealth_attack)},
 		{"convert_to_landmark_after_planting_forest"             , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
+		{"allow_special_aqueducts_in_fresh_water_cities"         , false, offsetof (struct c3x_config, allow_special_aqueducts_in_fresh_water_cities)},
 		{"allow_sale_of_aqueducts_and_hospitals"                 , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
 		{"remove_fresh_water_growth_bonus"                       , false, offsetof (struct c3x_config, remove_fresh_water_growth_bonus)},
 		{"no_cross_shore_detection"                              , false, offsetof (struct c3x_config, no_cross_shore_detection)},
@@ -20533,6 +20587,13 @@ patch_init_floating_point ()
 	is->trade_scroll_button_images = NULL;
 	is->trade_scroll_button_state = IS_UNINITED;
 	is->eligible_for_trade_scroll = 0;
+	is->city_sort_storage = NULL;
+	is->city_sort_capacity = 0;
+	is->active_trade_city_name_map = NULL;
+	is->trade_city_sort_maps_locked = false;
+	is->drawing_espionage_city_list = false;
+	is->espionage_city_row = -1;
+	is->espionage_sorted_city_count = 0;
 
 	memset (&is->saved_code_areas, 0, sizeof is->saved_code_areas);
 
@@ -20589,6 +20650,7 @@ patch_init_floating_point ()
 	is->mill_input_resource_bits = NULL;
 
 	is->drawing_icons_for_improv_id = -1;
+	is->checking_can_build_for_improv_id = -1;
 
 	is->resources_sheet = NULL;
 
@@ -22400,6 +22462,151 @@ patch_DiploForm_m22_Draw (DiploForm * this)
 	}
 
 	DiploForm_m22_Draw (this);
+}
+
+bool
+trade_city_is_available (DiploForm * diplo, int city_id, bool for_sale)
+{
+	TradableItem * item = &diplo->tradable_cities[city_id];
+	return (for_sale ? item->listed_for_sale : item->listed_for_purchase) &&
+	       ((item->field_8 & (for_sale ? 2 : 1)) == 0) &&
+	       (get_city_ptr (city_id) != NULL);
+}
+
+int
+compare_city_names (void const * a, void const * b)
+{
+	int city_id_a = *(int const *)a, city_id_b = *(int const *)b;
+	int comparison = _stricmp (get_city_ptr (city_id_a)->Body.CityName, get_city_ptr (city_id_b)->Body.CityName);
+	return comparison != 0 ? comparison : city_id_a - city_id_b;
+}
+
+void
+build_trade_city_name_map (DiploForm * diplo, bool for_sale, int * map, int * sorted_ids)
+{
+	int count = 0;
+	for (int city_id = 0; city_id < is->city_limit; city_id++) {
+		map[city_id] = city_id;
+		if (trade_city_is_available (diplo, city_id, for_sale))
+			sorted_ids[count++] = city_id;
+	}
+
+	qsort (sorted_ids, count, sizeof sorted_ids[0], compare_city_names);
+
+	int sorted_index = 0;
+	for (int city_id = 0; city_id < is->city_limit; city_id++)
+		if (trade_city_is_available (diplo, city_id, for_sale))
+			map[city_id] = sorted_ids[sorted_index++];
+}
+
+bool
+ensure_city_sort_capacity ()
+{
+	if (is->city_sort_capacity < is->city_limit) {
+		int * larger = realloc (is->city_sort_storage, 3 * is->city_limit * sizeof is->city_sort_storage[0]);
+		if (larger == NULL)
+			return false;
+		is->city_sort_storage = larger;
+		is->city_sort_capacity = is->city_limit;
+	}
+	return true;
+}
+
+bool
+prepare_trade_city_name_maps (DiploForm * diplo)
+{
+	if ((! is->current_config.sort_city_lists_alphabetically) || is_online_game () || (! ensure_city_sort_capacity ()))
+		return false;
+
+	if (! is->trade_city_sort_maps_locked) {
+		int * sale_map = is->city_sort_storage,
+		    * purchase_map = sale_map + is->city_sort_capacity,
+		    * sorted_ids = purchase_map + is->city_sort_capacity;
+		build_trade_city_name_map (diplo, true , sale_map    , sorted_ids);
+		build_trade_city_name_map (diplo, false, purchase_map, sorted_ids);
+	}
+	return true;
+}
+
+void __fastcall
+patch_DiploForm_draw_tradeable_items (DiploForm * this, int edx, int whose)
+{
+	int * previous_map = is->active_trade_city_name_map;
+	if (prepare_trade_city_name_maps (this))
+		is->active_trade_city_name_map = is->city_sort_storage + ((whose == 2) ? 0 : is->city_sort_capacity);
+
+	DiploForm_draw_tradeable_items (this, __, whose);
+	is->active_trade_city_name_map = previous_map;
+}
+
+void __fastcall
+patch_DiploForm_print_tradable_item_name (DiploForm * this, int edx, char * out,
+	TradableItemKind kind, int item_object_id, char * label, int param_5, int param_6)
+{
+	if ((kind == TIK_CITY) &&
+	    (is->active_trade_city_name_map != NULL) &&
+	    (item_object_id >= 0) && (item_object_id < is->city_limit))
+		item_object_id = is->active_trade_city_name_map[item_object_id];
+	DiploForm_print_tradable_item_name (this, __, out, kind, item_object_id, label, param_5, param_6);
+}
+
+bool
+translate_new_trade_city_offer (DiploForm * diplo, TradeOfferList * list,
+	int old_length, TradeOffer * old_first, TradeOffer * old_last, int * city_map, int offered_bit)
+{
+	if (list->length != old_length + 1)
+		return false;
+
+	TradeOffer * offer = list->last != old_last ? list->last :
+	                     list->first != old_first ? list->first : NULL;
+	if ((offer == NULL) || (offer->kind != TIK_CITY) ||
+	    (offer->param_1 < 0) || (offer->param_1 >= is->city_limit))
+		return false;
+
+	int displayed_city_id = offer->param_1,
+	    actual_city_id = city_map[displayed_city_id];
+	if (actual_city_id != displayed_city_id) {
+		offer->param_1 = actual_city_id;
+		diplo->tradable_cities[displayed_city_id].field_8 &= ~offered_bit;
+		diplo->tradable_cities[actual_city_id].field_8 |= offered_bit;
+		return true;
+	}
+	return false;
+}
+
+void __fastcall
+patch_DiploForm_handle_left_click (DiploForm * this, int edx, int mouse_x, int mouse_y)
+{
+	// The available-item columns occupy the far left and right sides of the trade screen. Limiting
+	// the bookkeeping to those columns avoids touching the form after a click that may close it.
+	bool in_available_item_column =
+		((mouse_x < 0x130) || (mouse_x > 0x2D8)) && (mouse_y >= 0xE4) && (mouse_y < 0x266);
+	if ((! in_available_item_column) || ((this->mode != 2) && (this->mode != 3)) ||
+	    (! prepare_trade_city_name_maps (this))) {
+		DiploForm_handle_left_click (this, __, mouse_x, mouse_y);
+		return;
+	}
+
+	int other_id = this->other_party_civ_id;
+	TradeOfferList * our_list = &this->our_offer_lists[other_id],
+	               * their_list = &this->their_offer_lists[other_id];
+	int old_our_length = our_list->length, old_their_length = their_list->length;
+	TradeOffer * old_our_first = our_list->first, * old_our_last = our_list->last,
+	           * old_their_first = their_list->first, * old_their_last = their_list->last;
+
+	// A click ends by redrawing the form. Lock the pre-click maps until we have translated any new
+	// city offer; otherwise that redraw would rebuild them after the base code marks the placeholder ID.
+	is->trade_city_sort_maps_locked = true;
+	DiploForm_handle_left_click (this, __, mouse_x, mouse_y);
+	is->trade_city_sort_maps_locked = false;
+
+	int * sale_map = is->city_sort_storage,
+	    * purchase_map = sale_map + is->city_sort_capacity;
+	bool translated =
+		translate_new_trade_city_offer (this, our_list, old_our_length, old_our_first, old_our_last, sale_map, 2) |
+		translate_new_trade_city_offer (this, their_list, old_their_length, old_their_first, old_their_last, purchase_map, 1);
+	if (translated)
+		patch_DiploForm_m22_Draw (this);
 }
 
 void
@@ -25555,7 +25762,7 @@ int __fastcall
 patch_City_get_largest_adjacent_sea_within_work_area (City * this)
 {
 	if (is->current_config.enable_districts && is->current_config.expand_water_tile_checks_to_city_work_area) {
-		int improv_id = is->current_evaluating_improve_id;
+		int improv_id = is->checking_can_build_for_improv_id;
 		if ((improv_id >= 0) && (improv_id < p_bic_data->ImprovementsCount)) {
 
 			// If Coastal Fortress, default to original logic (city must be next to coast)
@@ -25621,14 +25828,44 @@ patch_Map_impl_is_near_lake_within_work_area (Map * this, int edx, int x, int y,
 }
 
 bool __fastcall
-patch_Map_impl_has_fresh_water_within_work_area (Map * this, int edx, int tile_x, int tile_y)
+patch_Map_impl_has_fresh_water_to_build_improv (Map * this, int edx, int tile_x, int tile_y)
 {
 	// This call in City_can_build_improvement only checks whether freshwater makes a size-level-2 building redundant.
 	if (is->current_config.remove_fresh_water_growth_bonus)
 		return false;
 
+	int improv_id = is->checking_can_build_for_improv_id;
+	if (is->current_config.allow_special_aqueducts_in_fresh_water_cities &&
+	    (improv_id >= 0) && (improv_id < p_bic_data->ImprovementsCount)) {
+		Improvement * improv = &p_bic_data->Improvements[improv_id];
+		enum ImprovementTypeFlags non_benefit_flags =
+			ITF_Allows_City_Level_2 |
+			ITF_Replaces_Other_Buildings |
+			ITF_Must_Be_Near_Water |
+			ITF_Must_Be_Near_River |
+			ITF_Vulnerable_To_Charm_Bombard |
+			ITF_Required_Goods_Must_Be_In_City_Radius;
+		bool has_other_benefit =
+			(improv->ImprovementFlags & ~non_benefit_flags) ||
+			(improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) ||
+			improv->SmallWonderFlags || improv->WonderFlags ||
+			(improv->Double_Happiness_Building >= 0) ||
+			(improv->Gain_Building_Global >= 0) ||
+			(improv->Gain_Building_Continent >= 0) ||
+			(improv->Culture > 0) || (improv->Combat_Bombard > 0) ||
+			(improv->Naval_Bombard_Defence > 0) || (improv->Combat_Defence > 0) ||
+			(improv->NavalDefenceBonus > 0) || (improv->Happy_Faces_All > 0) ||
+			(improv->Happy_Faces > 0) || (improv->Pollution < 0) ||
+			(improv->Production > 0) ||
+			((improv->Unit_Produced >= 0) && (improv->Unit_Frequency > 0));
+
+		// The base game rejects level-2 growth improvements when this query returns true.
+		// Hide the city's fresh water only for variants that still provide another benefit.
+		if ((improv->ImprovementFlags & ITF_Allows_City_Level_2) && has_other_benefit)
+			return false;
+	}
+
 	if (is->current_config.enable_districts && is->current_config.expand_water_tile_checks_to_city_work_area) {
-		int improv_id = is->current_evaluating_improve_id;
 		if ((improv_id >= 0) && (improv_id < p_bic_data->ImprovementsCount)) {
 
 			// If an Aqueduct, check freshwater adjacent to the city itself
@@ -25750,16 +25987,14 @@ city_meets_district_prereqs_to_build_improvement (City * city, int i_improv, boo
 bool __fastcall
 patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply_strict_rules)
 {	
-	is->current_evaluating_improve_id = i_improv;
+	is->checking_can_build_for_improv_id = i_improv;
 
 	// First defer to the base game's logic
-	bool base = City_can_build_improvement (this, __, i_improv, apply_strict_rules);
-	if (! base) return false;
-	if (! is->current_config.enable_districts) return base;
+	bool can_build = City_can_build_improvement (this, __, i_improv, apply_strict_rules);
+	if (can_build && is->current_config.enable_districts)
+		can_build = city_meets_district_prereqs_to_build_improvement (this, i_improv, apply_strict_rules);
 
-	bool can_build = city_meets_district_prereqs_to_build_improvement (this, i_improv, apply_strict_rules);
-	is->current_evaluating_improve_id = -1;
-
+	is->checking_can_build_for_improv_id = -1;
 	return can_build;
 }
 
@@ -42582,6 +42817,78 @@ patch_Sprite_draw_espionage_screen_target_civ_bkg (Sprite * this, int edx, PCX_I
 	is->espionage_form_drawing_target_index = (pixel_y - top - 0x5C) / 0x3a + p_espionage_form->field_1584;
 
 	return Sprite_draw (this, __, canvas, pixel_x, pixel_y, color_table);
+}
+
+bool
+prepare_sorted_espionage_city_ids (Espionage_Form * form)
+{
+	if ((! is->current_config.sort_city_lists_alphabetically) || is_online_game () || (! ensure_city_sort_capacity ()) ||
+	    (form->selected_civ_list_index < 0) || (form->selected_civ_list_index >= form->target_civ_id_count))
+		return false;
+
+	int target_civ_id = form->target_civ_ids[form->selected_civ_list_index],
+	    count = 0;
+	for (int city_id = 0; city_id < is->city_limit && city_id <= p_cities->LastIndex; city_id++) {
+		City * city = get_city_ptr (city_id);
+		if ((city != NULL) && ((byte)city->Body.CivID == target_civ_id)) {
+			Tile * tile = tile_at (city->Body.X, city->Body.Y);
+			if ((tile != NULL) && (tile != p_null_tile) && ((tile->Body.Fog_Of_War & (1u << leaders[p_main_screen_form->Player_CivID].ID)) != 0))
+				is->city_sort_storage[count++] = city_id;
+		}
+	}
+
+	qsort (is->city_sort_storage, count, sizeof is->city_sort_storage[0], compare_city_names);
+	is->espionage_sorted_city_count = count;
+	return true;
+}
+
+void __fastcall
+patch_Espionage_Form_m22_Draw (Espionage_Form * this)
+{
+	int previous_row = is->espionage_city_row, previous_count = is->espionage_sorted_city_count;
+	bool previous_drawing = is->drawing_espionage_city_list, sorting = prepare_sorted_espionage_city_ids (this);
+	is->drawing_espionage_city_list = sorting;
+	is->espionage_city_row = -1;
+
+	Espionage_Form_m22_Draw (this);
+
+	if (sorting)
+		for (int row = 0; row < 13; row++) {
+			int sorted_index = this->city_list_scroll_offset + row;
+			this->visible_city_ids[row] = sorted_index < is->espionage_sorted_city_count ? is->city_sort_storage[sorted_index] : -1;
+		}
+
+	is->drawing_espionage_city_list = previous_drawing;
+	is->espionage_city_row = previous_row;
+	is->espionage_sorted_city_count = previous_count;
+}
+
+int __fastcall
+patch_Espionage_Form_get_city_button_state (Espionage_Form * this, int edx, City * city, int row)
+{
+	if (is->drawing_espionage_city_list) {
+		int sorted_index = this->city_list_scroll_offset + row;
+		is->espionage_city_row = row;
+		if (sorted_index < is->espionage_sorted_city_count)
+			city = get_city_ptr (is->city_sort_storage[sorted_index]);
+	}
+	return Espionage_Form_get_city_button_state (this, __, city, row);
+}
+
+int __fastcall
+patch_PCX_Image_draw_espionage_city_name (PCX_Image * this, int edx, int font, char * str, int x, int y, int str_len)
+{
+	if (is->drawing_espionage_city_list && (is->espionage_city_row >= 0)) {
+		int sorted_index = p_espionage_form->city_list_scroll_offset + is->espionage_city_row;
+		if (sorted_index < is->espionage_sorted_city_count) {
+			City * city = get_city_ptr (is->city_sort_storage[sorted_index]);
+			if (city != NULL) {
+				str = city->Body.CityName;
+				str_len = strlen (str);
+			}
+		}
+	}
+	return PCX_Image_draw_text_with_font (this, __, font, str, x, y, str_len);
 }
 
 char * __fastcall

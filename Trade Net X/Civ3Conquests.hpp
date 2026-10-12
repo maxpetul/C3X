@@ -5409,7 +5409,7 @@ struct Espionage_Form
   Tile_Image_Info field_147C[4];
   Tile_Image_Info field_152C[2];
   int field_1584;
-  int field_1588;
+  int city_list_scroll_offset;
   Scroll_Bar Scroll_Bar;
   int field_294C[1311];
   int field_3DC8[174];
