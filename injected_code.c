@@ -1546,6 +1546,7 @@ struct unit_type_tag_member {
 	struct string_slice name;
 	bool is_range_operator;
 	bool is_attribute_keyword;
+	bool is_wildcard_range_endpoint;
 };
 
 bool
@@ -1687,6 +1688,16 @@ slice_with_wildcards_matches_str (struct string_slice const * pattern, char cons
 	return pattern_pos == pattern->len;
 }
 
+// Slices need not be null-terminated. Avoid CRT calls that are not wired into the injected state.
+bool
+unit_type_tag_member_has_wildcard (struct string_slice const * name)
+{
+	for (int n = 0; n < name->len; n++)
+		if (name->str[n] == '*')
+			return true;
+	return false;
+}
+
 // Resolves a unit type tag member. An exact match takes precedence so that unit type names containing
 // asterisks remain usable. Otherwise, '*' matches any sequence of characters, including an empty one.
 bool
@@ -1695,13 +1706,7 @@ append_unit_type_ids_by_tag_member (struct string_slice const * name, int ** p_i
 	if (append_unit_type_ids_by_name_or_pedia_key (name, p_ids, p_count, p_capacity))
 		return true;
 
-	bool has_wildcard = false;
-	for (int n = 0; n < name->len; n++)
-		if (name->str[n] == '*') {
-			has_wildcard = true;
-			break;
-		}
-	if (! has_wildcard)
+	if (! unit_type_tag_member_has_wildcard (name))
 		return false;
 
 	bool any_found = false;
@@ -1797,6 +1802,14 @@ add_attribute_as_unit_type_range_endpoint (struct error_line ** p_lines, struct 
 	line->text[(sizeof line->text) - 1] = '\0';
 }
 
+void
+add_wildcard_as_unit_type_range_endpoint (struct error_line ** p_lines, struct string_slice const * name)
+{
+	struct error_line * line = add_error_line (p_lines);
+	snprintf (line->text, sizeof line->text, "^  Wildcard pattern \"%.*s\" cannot be used as an endpoint of an upgrade range.", name->len, name->str);
+	line->text[(sizeof line->text) - 1] = '\0';
+}
+
 // Parses unit_type_tags. Format:
 // ["Tag Name": "UnitTypeA" "UnitTypeB" ..., "Tag2": "UnitTypeC" ...]
 // Tag names map to tag objects with integer IDs. A reverse table maps every unit type ID to
@@ -1842,6 +1855,20 @@ read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrec
 			member_count++;
 		}
 
+		// Reject wildcard endpoints before expanding members, including unmatched patterns and chained ranges.
+		for (int n = 0; n < member_count; n++) {
+			struct unit_type_tag_member * member = &members[n];
+			int unused;
+			member->is_wildcard_range_endpoint =
+				! member->is_range_operator &&
+				(((n > 0) && members[n - 1].is_range_operator) ||
+				 ((n + 1 < member_count) && members[n + 1].is_range_operator)) &&
+				unit_type_tag_member_has_wildcard (&member->name) &&
+				! find_unit_type_id_by_name_or_pedia_key (&member->name, 0, &unused);
+			if (member->is_wildcard_range_endpoint)
+				add_wildcard_as_unit_type_range_endpoint (p_range_errors, &member->name);
+		}
+
 		int * ids = NULL;
 		int ids_count = 0, ids_capacity = 0;
 		for (int n = 0; n < member_count; n++) {
@@ -1856,9 +1883,9 @@ read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrec
 				continue;
 			}
 
-			bool start_type_found = ! member->is_attribute_keyword && append_unit_type_ids_by_tag_member (&member->name, &ids, &ids_count, &ids_capacity);
+			bool start_type_found = ! member->is_attribute_keyword && ! member->is_wildcard_range_endpoint && append_unit_type_ids_by_tag_member (&member->name, &ids, &ids_count, &ids_capacity);
 			struct unit_type_tag * start_tag = NULL;
-			if (! start_type_found && ! member->is_attribute_keyword) {
+			if (! start_type_found && ! member->is_attribute_keyword && ! member->is_wildcard_range_endpoint) {
 				if (stable_look_up_slice (&cfg->unit_type_tags, &member->name, (int *)&start_tag))
 					append_unit_type_tag_ids (start_tag, &ids, &ids_count, &ids_capacity);
 				else
@@ -1874,9 +1901,9 @@ read_unit_type_tags (struct string_slice const * s, struct error_line ** p_unrec
 
 				struct unit_type_tag_member * end = &members[n + 2];
 				int unused;
-				bool end_type_found = ! end->is_attribute_keyword && find_unit_type_id_by_name_or_pedia_key (&end->name, 0, &unused);
+				bool end_type_found = ! end->is_attribute_keyword && ! end->is_wildcard_range_endpoint && find_unit_type_id_by_name_or_pedia_key (&end->name, 0, &unused);
 				struct unit_type_tag * end_tag = NULL;
-				if (! end_type_found && ! end->is_attribute_keyword && ! stable_look_up_slice (&cfg->unit_type_tags, &end->name, (int *)&end_tag))
+				if (! end_type_found && ! end->is_attribute_keyword && ! end->is_wildcard_range_endpoint && ! stable_look_up_slice (&cfg->unit_type_tags, &end->name, (int *)&end_tag))
 					add_unrecognized_line (p_unrecognized_lines, &end->name);
 				if (member->is_attribute_keyword)
 					add_attribute_as_unit_type_range_endpoint (p_range_errors, &member->name);
