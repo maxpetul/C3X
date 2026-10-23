@@ -7,6 +7,7 @@
 - Option city_center_food_yield to control how much food city center tiles produce
   - Can be set to one citizen's worth of food (standard rules), to include food from tile resources, or to match the yield from the underlying tile
 - Make the size of the area revealed by recon missions adjustable per unit type, option named recon_radius
+- Add municipal districts where courthouses, police stations, and hospitals are located
 - Add convenient ways to specify unit type tags
   - Can be set by Civilopedia key
   - Can be set on all units with a given AI strategy or unit ability
@@ -16,11 +17,11 @@
 - Option limit_detection_by_units_to_adjacent_tiles to restrict units' detect invisible ability to adjacent tiles
 - Option remove_fresh_water_growth_bonus that makes all cities require aqueducts to grow to size level two, including those founded next to a river or lake
 - Fix city governors unable to assign workers to improvement-type districts after construction
+- Fix crash related to checking for an improvement in a non-existent city
 - Fix can_bombard_only_sea_tiles not applying to AI units or aerial defensive bombard
 - Fix some ways areas revealed by recon can stay permanently revealed
   - Can happen when the unit that performed recon was destroyed before the start of its next turn (this is a base game bug)
   - Can happen when a unit has performed multiple recon missions in one turn (possible if charge_one_move_for_recon_and_interception option is active)
-- Fix crash (0xC0000005) when a NULL city pointer is passed to City_has_improvement
 
 * RELEASE 28 PREVIEW 1
 - Allow for custom combat bonuses or maluses to be applied based on unit type, combat role (attack, defense, or bombard), terrain, city/district, and experience level
