@@ -1,3 +1,4 @@
+* RELEASE 28
 - Show odds to win combat and odds to do damage bombarding
   - Main option combat_win_rate_display_mode can be set to off, compact, or detailed. Detailed mode includes combat counter factors.
   - Related option persist_combat_win_rate_display controls whether the background box is hidden when empty
