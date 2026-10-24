@@ -20314,6 +20314,7 @@ patch_init_floating_point ()
 		{"restore_unit_directions_on_game_load"                  , true , offsetof (struct c3x_config, restore_unit_directions_on_game_load)},
 		{"apply_grid_ini_setting_on_game_load"                   , true , offsetof (struct c3x_config, apply_grid_ini_setting_on_game_load)},
 		{"charm_flag_triggers_ptw_like_targeting"                , false, offsetof (struct c3x_config, charm_flag_triggers_ptw_like_targeting)},
+		{"charm_barrier_blocks_charm_bombard"                    , false, offsetof (struct c3x_config, charm_barrier_blocks_charm_bombard)},
 		{"city_icons_show_unit_effects_not_trade"                , true , offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
 		{"ignore_king_ability_for_defense_priority"              , false, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
 		{"prefer_less_expensive_defenders"                        , false, offsetof (struct c3x_config, prefer_less_expensive_defenders)},
@@ -33024,6 +33025,95 @@ unit_has_valid_type_id (Unit * unit)
 	return (unit != NULL) &&
 	       (unit->Body.UnitTypeID >= 0) &&
 	       (unit->Body.UnitTypeID < p_bic_data->UnitTypeCount);
+}
+
+bool
+city_has_active_charm_barrier (City * city)
+{
+	if (city == NULL)
+		return false;
+
+	int owner_id = (unsigned char)city->Body.CivID;
+	if ((owner_id < 0) || (owner_id >= 32))
+		return false;
+
+	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+		Improvement * improv = &p_bic_data->Improvements[n];
+		if (((improv->ImprovementFlags & ITF_Vulnerable_To_Charm_Bombard) != 0) &&
+		    patch_City_has_improvement (city, __, n, true) &&
+		    ((improv->ObsoleteID < 0) || ! Leader_has_tech (&leaders[owner_id], __, improv->ObsoleteID)))
+			return true;
+	}
+
+	return false;
+}
+
+bool
+is_eligible_charm_bombard_target (Unit * unit, int bombarder_civ_id)
+{
+	return unit_has_valid_type_id (unit) &&
+	       (Unit_get_containing_army (unit) == NULL) &&
+	       (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Land) &&
+	       patch_Unit_is_visible_to_civ (unit, __, bombarder_civ_id, 1);
+}
+
+void
+charm_bombard_units_on_tile (Fighter * fighter, Unit * bombarder, Tile * target_tile)
+{
+	if ((fighter == NULL) || ! unit_has_valid_type_id (bombarder) ||
+	    (target_tile == NULL) || (target_tile == p_null_tile))
+		return;
+
+	Unit * first_target = NULL;
+	FOR_UNITS_ON (uti, target_tile) {
+		if (is_eligible_charm_bombard_target (uti.unit, bombarder->Body.CivID)) {
+			first_target = uti.unit;
+			break;
+		}
+	}
+
+	if (first_target == NULL)
+		return;
+
+	Fighter_check_combat_anim_visibility (fighter, __, bombarder, first_target, false);
+
+	UnitType * bombarder_type = &p_bic_data->UnitTypes[bombarder->Body.UnitTypeID];
+	FOR_UNITS_ON (uti, target_tile) {
+		Unit * target = uti.unit;
+		if (! is_eligible_charm_bombard_target (target, bombarder->Body.CivID))
+			continue;
+
+		int odds = patch_Fighter_get_odds_for_bombardment (fighter, __, bombarder, target, true, false);
+		for (int n = 0; n < bombarder_type->FireRate; n++)
+			if (odds <= (rand_int (p_rand_object, __, 0x400) & 0xFFFF))
+				target->Body.charmed = true;
+	}
+}
+
+void __fastcall
+patch_Fighter_do_charm_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbor_index)
+{
+	if (! is->current_config.charm_barrier_blocks_charm_bombard) {
+		Fighter_do_charm_bombard_tile (this, __, unit, neighbor_index);
+		return;
+	}
+
+	if (! unit_has_valid_type_id (unit))
+		return;
+
+	int tile_x = unit->Body.X, tile_y = unit->Body.Y;
+	get_neighbor_coords (&p_bic_data->Map, tile_x, tile_y, neighbor_index, &tile_x, &tile_y);
+
+	if (! Map_in_range (&p_bic_data->Map, __, tile_x, tile_y))
+		return;
+
+	City * city = city_at (tile_x, tile_y);
+	if ((city != NULL) && city_has_active_charm_barrier (city)) {
+		Unit_play_bombard_damage_animation (unit, __, tile_x, tile_y, false);
+		return;
+	}
+
+	charm_bombard_units_on_tile (this, unit, tile_at (tile_x, tile_y));
 }
 
 long long

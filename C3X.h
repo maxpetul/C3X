@@ -399,6 +399,7 @@ struct c3x_config {
 	bool restore_unit_directions_on_game_load;
 	bool apply_grid_ini_setting_on_game_load;
 	bool charm_flag_triggers_ptw_like_targeting;
+	bool charm_barrier_blocks_charm_bombard;
 	bool city_icons_show_unit_effects_not_trade;
 	bool ignore_king_ability_for_defense_priority;
 	bool prefer_less_expensive_defenders;
