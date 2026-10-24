@@ -1,3 +1,4 @@
+* RELEASE 28
 - Show odds to win combat and odds to do damage bombarding
   - Main option combat_win_rate_display_mode can be set to off, compact, or detailed. Detailed mode includes combat counter factors.
   - Related option persist_combat_win_rate_display controls whether the background box is hidden when empty
@@ -7,14 +8,22 @@
 - Option city_center_food_yield to control how much food city center tiles produce
   - Can be set to one citizen's worth of food (standard rules), to include food from tile resources, or to match the yield from the underlying tile
 - Make the size of the area revealed by recon missions adjustable per unit type, option named recon_radius
-- Allow unit type tags to be set by Civilopedia key or on all units with a given AI strategy or unit ability
-- Option remove_fresh_water_growth_bonus that makes all cities require aqueducts to grow to size level two, including those founded next to a river or lake
+- Add municipal districts where courthouses, police stations, and hospitals are located
+- Add convenient ways to specify unit type tags
+  - Can be set by Civilopedia key
+  - Can be set on all units with a given AI strategy or unit ability
+  - Allow '*' (asterisks) as wildcards in unit type names
+- Sort city lists on espionage and trade screens, option named sort_city_lists_alphabetically
+- Option allow_special_aqueducts_in_fresh_water_cities to stop the allows-size-level-2 flag from blocking construction of aqueduct-like buildings or wonders
 - Option limit_detection_by_units_to_adjacent_tiles to restrict units' detect invisible ability to adjacent tiles
+- Option remove_fresh_water_growth_bonus that makes all cities require aqueducts to grow to size level two, including those founded next to a river or lake
 - Fix city governors unable to assign workers to improvement-type districts after construction
+- Fix crash related to checking for an improvement in a non-existent city
 - Fix can_bombard_only_sea_tiles not applying to AI units or aerial defensive bombard
 - Fix some ways areas revealed by recon can stay permanently revealed
   - Can happen when the unit that performed recon was destroyed before the start of its next turn (this is a base game bug)
   - Can happen when a unit has performed multiple recon missions in one turn (possible if charge_one_move_for_recon_and_interception option is active)
+- Shrink tile highlights, erasing 2 px around tile borders so the highlights don't obscure rivers
 
 * RELEASE 28 PREVIEW 1
 - Allow for custom combat bonuses or maluses to be applied based on unit type, combat role (attack, defense, or bombard), terrain, city/district, and experience level

@@ -77,7 +77,7 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Stack unit commands
       - Stack bombard
       - Worker buttons (irrigate, road, etc.) become stack buttons by holding CTRL
-      - Stack fortify, upgrade, and disband also with CTRL
+      - Stack fortify, upgrade, disband, and skip turn also with CTRL
    - Disorder warning
    - Detailed city production info
    - Buttons on trade screen to quickly switch between civs
@@ -116,6 +116,13 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Option to show some popup messages as online-multiplayer-style notifications
    - Option to switch debug mode on or off for games in progress
    - Option to tint coast and sea tiles on minimap based on cultural borders
+   - Option to select the next unit by searching for similar units near where the last selected unit started or ended up
+   - Show defensive bombard animations for units in armies
+   - Improve readability of turns remaining on city builds on the domestic advisor screen
+   - Show additional unit stats in the Civilopedia, including HP bonus, worker strength, air unit movement, and tactical nuke bombard range
+   - Show additional unit stats on the right-click menu and in the unit status box, including rate of fire, range, anti-air strength, transport load and capacity, worker strength, and immobile unit moves
+   - Show odds to win combat and to do damage with bombardment
+   - Sort city lists alphabetically on espionage and trade screens
   #### Optimization
    - Optimize computation of trade networks
       - For details, see the info text file in the Trade Net X folder
@@ -124,6 +131,7 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
   #### AI Enhancements
    - Allow AI to use artillery in the field
    - Force AI to build more artillery and bombers
+   - Option to remove bias against human players when the AI chooses war targets
    - Replace leader unit AI to fix bugs and improve behavior
    - Fix bug preventing AI from filling its armies
    - Improve AI army composition to discourage mixing types & exclude HN units
@@ -153,6 +161,7 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - AI players may sacrifice units without the "sacrifice" special ability
    - AI players may build armies with leader units that don't have the "build army" special ability
    - Possible crash in base game leader unit AI
+   - Recon missions leave tiles permanently revealed if the recon unit is destroyed before its next turn
   #### AMB Editor
    - A program for inspecting and modifying the special .amb sound files used by Civ 3.
    - For more info, see README.txt in the AMB Editor folder
@@ -171,8 +180,8 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Trespassing prevention
    - Land/sea intersections
    - Adjustable anarchy length
-   - Unit limits (stops players from producing units of a given type once they reach a maximum quantity)
-   - "Perfume" city production options, technologies, and governments to control how likely the AI is to choose them
+   - Unit limits (stops players from producing units of a given type or group of types once they reach a maximum quantity)
+   - "Perfume" city production options, technologies, governments, and resources to influence AI preferences
    - Reveal AI logic
       - Press P in city screen to see AI point value for each available build
       - Press L on map to see how desirable the AI finds each tile as a city location
@@ -199,6 +208,7 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
       - Allow players to opt out of stealth attacks
       - Option to show unit hitpoints on the stealth attack target selection popup
       - Option to prevent stealth attacks from targeting units that are invisible and unrevealed
+      - Option to prevent stealth attacks from targeting units contained in other units
    - Polish precision striking by land or sea units
       - Use regular bombard animation instead of flying animation
       - Use bombard range instead of operational range
@@ -241,7 +251,7 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Option to block the galley chaining exploit by preventing units from loading into two different transports on the same turn
    - Adjustable rebase range as multiple of operational range
    - Option to share wonders among human players in hotseat mode
-   - Enable tile graphics to cycle over day and night, see "Day/Night Cycle" section of default config for details
+   - Enable tile graphics to cycle over day and night or seasons, see "Day/Night Cycle" and "Seasonal Cycle" sections of default config for details
    - Can adjust time to double building culture
    - Option to prevent units from upgrading past an intermediate type that does not have the upgrade ability
    - Can adjust times to generate tourism gold
@@ -261,6 +271,34 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Option to allow units to be unloaded from armies
    - Option to prevent land anti-air units from intercepting overflying aircraft while they're loaded in a naval transport
    - Option to prevent units from being enslaved after being destroyed by lethal bombard named prevent_enslaving_by_bombardment
+   - Helicopter changes (also apply to other air units with transport capacity)
+      - May be rebased or loaded onto carriers
+      - Paratroopers inside a helicopter on a carrier may perform airdrops
+      - Units inside a helicopter may be prevented from defending their tile, performing defensive bombard, or intercepting air units
+      - Units inside a helicopter can be destroyed when the helicopter itself is destroyed or captured
+   - Can specify a victory animation for air units
+   - Can restrict specific unit types to bombarding only sea tiles
+   - Option to override the barbarian activity level for scenarios with custom maps
+   - Option to override the NoAIPatrol setting from conquests.ini
+   - Options to allow corruption in capital cities and adjust their special corruption reducing effect
+   - Option to make preplaced scenario leaders behave like normal military great leaders
+   - Option to allow multiple battle-created units (typically military great leaders) per player
+   - Option to prevent barbarian huts and camps from appearing on impassable tiles
+   - Custom combat bonuses or penalties based on unit type, combat role, terrain, city or district, and experience level
+   - Enable terrain and resource animations
+   - Configurable unit view distance and terrain visibility rules
+   - Option to enable AI players to demand tribute from each other and adjust how often they do so
+   - Can allow radar towers and outposts to detect invisible units within adjustable distances
+   - Option to prefer less expensive defenders when strength and king flags are equal
+   - Adjustable duration of the "Steal Plans" espionage mission
+   - Option to make improvements granted for free by wonders contribute pollution
+   - Option for pollution strikes to reduce city population instead of, or in addition to, polluting a tile
+   - Can vary the bombard defense strengths of population, buildings, and tile improvements by era
+   - Adjustable city center food yield, including options to count resource food or use the underlying tile yield
+   - Adjustable recon mission radius per unit type
+   - Option to allow aqueduct-like buildings and wonders in cities with fresh water
+   - Option to restrict units' detection of invisible units to adjacent tiles
+   - Option to require aqueducts for city growth past size level one even with fresh water
 </details>
 
 ## How It Works
