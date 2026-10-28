@@ -1,5 +1,5 @@
 
-# Reads in Civ3Conquests.h from the parent directory, converts it for C++, and writes it back out (into this directory) as Civ3Conquests.hpp
+# Reads in Civ3Conquests.h from the parent directory's source folder, converts it for C++, and writes it back out (into this directory) as Civ3Conquests.hpp
 
 from pathlib import Path
 import csv
@@ -20,7 +20,7 @@ def process_line(L):
 def make_addr_table_lines():
     tr = []
 
-    with open(Path.cwd().parent.joinpath("civ_prog_objects.csv"), mode="r") as cpo_file:
+    with open(Path.cwd().parent.joinpath("source", "civ_prog_objects.csv"), mode="r") as cpo_file:
         reader = csv.reader(cpo_file)
         objects = [x for x in list(reader) if len(x) > 0 and (x[0].strip() == "define" or x[0].strip() == "inlead")]
 
@@ -54,7 +54,7 @@ def make_addr_table_lines():
 
 with open("Civ3Conquests.hpp", mode="w") as hpp: # Output file
     # Copy over contents of header file, processing each line
-    with open(Path.cwd().parent.joinpath("Civ3Conquests.h"), mode="r") as h:
+    with open(Path.cwd().parent.joinpath("source", "Civ3Conquests.h"), mode="r") as h:
         hpp.writelines([process_line(L) for L in h.readlines()])
 
     hpp.write("\n\n\n\n\n")

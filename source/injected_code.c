@@ -18304,7 +18304,7 @@ load_trade_net_addrs ()
 	}
 
 	char file_path[MAX_PATH] = {0};
-	snprintf (file_path, (sizeof file_path) - 1, "%s\\trade_net_addresses.txt", is->mod_rel_dir);
+	snprintf (file_path, (sizeof file_path) - 1, "%s\\source\\trade_net_addresses.txt", is->mod_rel_dir);
 	char * refs_file = file_to_string (file_path);
 	if (! refs_file) {
 		snprintf (err_msg, (sizeof err_msg) - 1, "Couldn't load %s", file_path);

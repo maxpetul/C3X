@@ -2,8 +2,8 @@
 #include "stdlib.h"
 #include "stdio.h"
 
-#include "tcc/libtcc/libtcc.h"
-#include "lend/ld32.c"
+#include "../tcc/libtcc/libtcc.h"
+#include "../lend/ld32.c"
 
 #include "C3X.h"
 #include "common.c"
@@ -792,7 +792,7 @@ ENTRY_POINT ()
 	TCCState * tcc = tcc__new ();
 	REQUIRE (tcc != NULL, "Failed to initialize TCC");
 	tcc__set_options (tcc, "-m32");
-	tcc__add_include_path (tcc, mod_full_dir);
+	tcc__add_include_path (tcc, combine_strs (mod_full_dir, "\\source"));
 	tcc__add_include_path (tcc, combine_strs (mod_full_dir, "\\tcc\\include"));
 	tcc__add_include_path (tcc, combine_strs (mod_full_dir, "\\tcc\\include\\winapi"));
 	tcc__add_library_path (tcc, combine_strs (mod_full_dir, "\\tcc\\lib"));
@@ -830,7 +830,7 @@ ENTRY_POINT ()
 	// Load civ_prog_objects.csv
 	struct civ_prog_object * civ_prog_objects;
 	int count_civ_prog_objects; {
-		char * const prog_objs_text = ep_file_to_string (mod_full_dir, "civ_prog_objects.csv");
+		char * const prog_objs_text = ep_file_to_string (mod_full_dir, "source\\civ_prog_objects.csv");
 		int count_lines = 0;
 		for (char * c = prog_objs_text; *c != '\0'; c++)
 			count_lines += (*c == '\n');
@@ -1022,7 +1022,7 @@ ENTRY_POINT ()
 
 	// Compile C code to inject
 	{
-		char * source = ep_file_to_string (mod_full_dir, "injected_code.c");
+		char * source = ep_file_to_string (mod_full_dir, "source\\injected_code.c");
 		success = tcc__compile_string (tcc, source);
 		ASSERT (success != -1);
 		free (source);

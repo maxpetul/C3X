@@ -5,8 +5,8 @@ REM necessary in case the batch file is run as administrator with UAC enabled b/
 REM Windows will start the script with the current directory set to C:\system32 or something like that.
 PUSHD "%~dp0"
 
-REM Unfortunately we can't use tcc -run here. See comment above low_addr_buf in ep.c for why.
-tcc\tcc.exe -m32 -Wl,-nostdlib -g -lmsvcrt -luser32 -lkernel32 -DC3X_INSTALL ep.c -o temp.exe && temp.exe
+REM Unfortunately we can't use tcc -run here. See comment above low_addr_buf in source\ep.c for why.
+tcc\tcc.exe -m32 -Wl,-nostdlib -g -lmsvcrt -luser32 -lkernel32 -DC3X_INSTALL source\ep.c -o temp.exe && temp.exe
 
 IF EXIST "temp.exe" (DEL temp.exe)
 

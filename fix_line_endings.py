@@ -21,12 +21,12 @@ LF = "lf"
 
 
 # Keep paths relative to this script's directory and use "/" separators.
-# Scope: files in the C3X root plus the Text and Trade Net X subfolders.
+# Scope: files in the C3X root plus the source, Text and Trade Net X subfolders.
 LINE_ENDING_POLICY = {
     ".gitignore": CRLF,
     "AGENTS.md": CRLF,
-    "C3X.h": CRLF,
-    "Civ3Conquests.h": CRLF,
+    "source/C3X.h": CRLF,
+    "source/Civ3Conquests.h": CRLF,
     "INSTALL.bat": CRLF,
     "README.md": LF,
     "README.txt": CRLF,
@@ -35,19 +35,19 @@ LINE_ENDING_POLICY = {
     "assemble_release.bat": CRLF,
     "c3cre.py": CRLF,
     "changelog.txt": CRLF,
-    "civ_prog_objects.csv": CRLF,
-    "common.c": CRLF,
+    "source/civ_prog_objects.csv": CRLF,
+    "source/common.c": CRLF,
     "commonre.py": CRLF,
     "default.c3x_config.ini": CRLF,
     "default.districts_config.txt": LF,
     "default.districts_natural_wonders_config.txt": LF,
     "default.districts_wonders_config.txt": LF,
     "default.tile_animations.txt": LF,
-    "ep.c": CRLF,
+    "source/ep.c": CRLF,
     "fix_line_endings.py": CRLF,
     "forgdb.py": CRLF,
-    "injected_code.c": CRLF,
-    "trade_net_addresses.txt": CRLF,
+    "source/injected_code.c": CRLF,
+    "source/trade_net_addresses.txt": CRLF,
     "Text/c3x-labels.txt": CRLF,
     "Text/c3x-script.txt": CRLF,
     "Trade Net X/BUILD.bat": CRLF,
