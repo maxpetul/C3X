@@ -9,6 +9,9 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
+// To be used as placeholder second argument so that we can imitate thiscall convention with fastcall
+#define __ 0
+
 #define MOD_VERSION 2800
 #define MOD_PREVIEW_VERSION 0
 

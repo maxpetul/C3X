@@ -11,9 +11,6 @@ int (WINAPI ** p_MessageBoxA) (HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT 
 
 struct injected_state * is = ADDR_INJECTED_STATE;
 
-// To be used as placeholder second argument so that we can imitate thiscall convention with fastcall
-#define __ 0
-
 // Many Windows and C standard library functions have to be loaded dynamically with GetProcAddress and the addresses are stored in the injected
 // state. This is covered up with macros, which is not something I would normally do, but in this case it's very useful because it means the code in
 // common.c can be shared by the patcher and the injected code.
