@@ -936,8 +936,14 @@ ENTRY_POINT ()
 	struct inlead * inleads = alloc_prog_memory (".c3xinl", NULL, inleads_size, MAA_READ_WRITE_EXECUTE);
 	int i_next_free_inlead = 0;
 
-	// Create injected state
-	struct injected_state * injected_state = alloc_prog_memory (".c3xdat", NULL, sizeof (struct injected_state), MAA_READ_WRITE);
+	// Allocate space for the injected state and the civ process's copy of the prog objects list
+	int prog_objects_size = count_civ_prog_objects * sizeof (struct civ_prog_object);
+	for (int n = 0; n < count_civ_prog_objects; n++) {
+		prog_objects_size += strlen (civ_prog_objects[n].name) + 1;
+		prog_objects_size += strlen (civ_prog_objects[n].type) + 1;
+	}
+	struct injected_state * injected_state = alloc_prog_memory (".c3xdat", NULL, sizeof (struct injected_state) + prog_objects_size, MAA_READ_WRITE);
+
 	write_prog_int (&injected_state->mod_version, MOD_VERSION);
 	write_prog_memory (&injected_state->mod_rel_dir, mod_rel_dir, strlen (mod_rel_dir) + 1);
 	write_prog_int (&injected_state->sc_img_state, IS_UNINITED);
@@ -950,6 +956,27 @@ ENTRY_POINT ()
 	write_prog_int (&injected_state->day_night_cycle_img_state, IS_UNINITED);
 	write_prog_int (&injected_state->large_minimap_frame_img_state, IS_UNINITED);
 	tcc_define_pointer (tcc, "ADDR_INJECTED_STATE", injected_state);
+
+	// Fill in the prog objects list in the civ process
+	struct civ_prog_object * base_prog_objects = (void *)(injected_state + 1);
+	char * string_cursor = (void *)(base_prog_objects + count_civ_prog_objects);
+	for (int n = 0; n < count_civ_prog_objects; n++) {
+		struct civ_prog_object obj = civ_prog_objects[n];
+
+		int name_size = strlen (obj.name) + 1;
+		write_prog_memory (string_cursor, (byte const *)obj.name, name_size);
+		obj.name = string_cursor;
+		string_cursor += name_size;
+
+		int type_size = strlen (obj.type) + 1;
+		write_prog_memory (string_cursor, (byte const *)obj.type, type_size);
+		obj.type = string_cursor;
+		string_cursor += type_size;
+
+		write_prog_memory (&base_prog_objects[n], (byte const *)&obj, sizeof obj);
+	}
+	write_prog_int (&injected_state->base_prog_objects, (int)base_prog_objects);
+	write_prog_int (&injected_state->count_base_prog_objects, count_civ_prog_objects);
 
 	// Pass through prog objects before compiling to set things up for compilation
 	for (int n = 0; n < count_civ_prog_objects; n++) {

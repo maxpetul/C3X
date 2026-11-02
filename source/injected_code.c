@@ -18420,6 +18420,8 @@ check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect
 	     (iter_count == 0) && check_virtual_protect (addr, size, flags, &old_protect); \
 	     VirtualProtect (addr, size, old_protect, &unused), iter_count++)
 
+#include "script_loader.c"
+
 void __fastcall adjust_sliders_preproduction (Leader * this);
 
 struct saved_code_area {
@@ -20202,6 +20204,7 @@ void
 patch_init_floating_point ()
 {
 	init_floating_point ();
+	is->scripts_load_attempted = false;
 
 	// NOTE: At this point the program is done with the CRT initialization stuff and will start calling constructors for global
 	// objects as soon as this function returns. This is a good place to inject code that will run at program start.
@@ -24455,6 +24458,12 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 		return tr;
 
 	reset_to_base_config ();
+	// Keep the same hooks when loading another scenario in this process.
+	if (! is->scripts_load_attempted) {
+		is->scripts_load_attempted = true;
+		load_scripts (is->base_prog_objects, is->count_base_prog_objects);
+	}
+
 	load_config ("default.c3x_config.ini", 1);
 	char * scenario_config_file_name = "scenario.c3x_config.ini";
 	char * scenario_config_path = BIC_get_asset_path (p_bic_data, __, scenario_config_file_name, false);

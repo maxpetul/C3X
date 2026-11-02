@@ -2,6 +2,8 @@
 // Originally created by Antal1987, modified for use by TCC in C code injection system for C3X
 // See: https://github.com/Antal1987/C3CPatchFramework/blob/master/Info/Civ3Conquests.h
 
+#include <stdio.h>
+
 // Used to simulated thiscall convention with fastcall by inserting a dummy unused second parameter to occupy edx.
 typedef int __;
 

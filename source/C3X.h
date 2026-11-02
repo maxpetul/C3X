@@ -1724,6 +1724,9 @@ struct injected_state {
 	// It must be non-empty and must not have an ending backslash.
 	char mod_rel_dir[MAX_PATH];
 
+	struct civ_prog_object * base_prog_objects;
+	int count_base_prog_objects;
+
 	enum init_state sc_img_state;
 	enum init_state tile_highlight_state;
 	enum init_state mod_info_button_images_state;
@@ -1738,6 +1741,8 @@ struct injected_state {
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
 	// ==========
+
+	bool scripts_load_attempted;
 
 	struct c3x_config base_config;
 
