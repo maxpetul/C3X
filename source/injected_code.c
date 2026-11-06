@@ -15,6 +15,9 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 // state. This is covered up with macros, which is not something I would normally do, but in this case it's very useful because it means the code in
 // common.c can be shared by the patcher and the injected code.
 #define VirtualProtect is->VirtualProtect
+#define VirtualAlloc is->VirtualAlloc
+#define VirtualFree is->VirtualFree
+#define FlushInstructionCache is->FlushInstructionCache
 #define CloseHandle is->CloseHandle
 #define CreateFileA is->CreateFileA
 #define GetFileSize is->GetFileSize
@@ -20476,6 +20479,9 @@ patch_init_floating_point ()
 
 	// Remember the function names here are macros that expand to is->...
 	VirtualProtect            = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualProtect");
+	VirtualAlloc              = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualAlloc");
+	VirtualFree               = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualFree");
+	FlushInstructionCache     = (void *)(*p_GetProcAddress) (is->kernel32, "FlushInstructionCache");
 	CloseHandle               = (void *)(*p_GetProcAddress) (is->kernel32, "CloseHandle");
 	CreateFileA               = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
 	GetFileSize               = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
