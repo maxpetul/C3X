@@ -336,12 +336,30 @@ patch_show_popup (void * this, int edx, int param_1, int param_2)
 }
 
 void
-pop_up_in_game_error (char const * msg)
+pop_up_in_game_message (char const * script_path, char const * key, char const * msg)
 {
 	PopupForm * popup = get_popup_form ();
-	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
+	popup->vtable->set_text_key_and_flags (popup, __, (char *)script_path, (char *)key, -1, 0, 0, 0);
 	PopupForm_add_text (popup, __, (char *)msg, false);
 	patch_show_popup (popup, __, 0, 0);
+}
+
+void
+pop_up_in_game_error (char const * msg)
+{
+	pop_up_in_game_message (is->mod_script_path, "C3X_ERROR", msg);
+}
+
+void
+pop_up_in_game_warning (char const * msg)
+{
+	pop_up_in_game_message (is->mod_script_path, "C3X_WARNING", msg);
+}
+
+void
+pop_up_in_game_info (char const * msg)
+{
+	pop_up_in_game_message (is->mod_script_path, "C3X_INFO", msg);
 }
 
 void
@@ -18490,6 +18508,43 @@ set_nopification (int yes_or_no, byte * addr, int size)
 	}
 }
 
+bool
+capture_script_baseline (void)
+{
+	struct memory_snapshot * text = &is->text_snapshot;
+	struct memory_snapshot * rdata = &is->rdata_snapshot;
+	byte * text_data = malloc (text->size);
+	byte * rdata_data = malloc (rdata->size);
+	if (! text_data || ! rdata_data) {
+		free (text_data);
+		free (rdata_data);
+		MessageBoxA (NULL, "Could not allocate script snapshots.", "C3X", MB_OK | MB_ICONERROR);
+		return false;
+	}
+
+	memcpy (text_data, text->address, text->size);
+	memcpy (rdata_data, rdata->address, rdata->size);
+	text->data = text_data;
+	rdata->data = rdata_data;
+	return true;
+}
+
+bool
+restore_memory_snapshot (struct memory_snapshot const * snapshot, DWORD writable_protection)
+{
+	DWORD old_protection, unused;
+	if (! check_virtual_protect (snapshot->address, snapshot->size, writable_protection, &old_protection))
+		return false;
+
+	memcpy (snapshot->address, snapshot->data, snapshot->size);
+	bool restored = check_virtual_protect (snapshot->address, snapshot->size, old_protection, &unused);
+	if ((writable_protection == PAGE_EXECUTE_READWRITE) &&
+	    ! FlushInstructionCache ((HANDLE)-1, snapshot->address, snapshot->size))
+		pop_up_in_game_warning ("Could not flush the instruction cache after restoring the script snapshot. Continuing to load the scenario although scripts may not work properly.");
+
+	return restored;
+}
+
 void
 apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 {
@@ -20207,7 +20262,6 @@ void
 patch_init_floating_point ()
 {
 	init_floating_point ();
-	is->scripts_load_attempted = false;
 
 	// NOTE: At this point the program is done with the CRT initialization stuff and will start calling constructors for global
 	// objects as soon as this function returns. This is a good place to inject code that will run at program start.
@@ -20829,7 +20883,12 @@ patch_init_floating_point ()
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
-	apply_machine_code_edits (&is->current_config, true);
+	is->text_snapshot = (struct memory_snapshot) {is->binary.addr_text, NULL, is->binary.size_text};
+	is->rdata_snapshot = (struct memory_snapshot) {is->binary.addr_rdata, NULL, is->binary.size_rdata};
+
+	// Preserve the unedited baseline before applying the startup configuration.
+	if (capture_script_baseline ())
+		apply_machine_code_edits (&is->current_config, true);
 }
 
 void
@@ -24463,12 +24522,24 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 	if ((ret_addr == ADDR_LOAD_SCENARIO_PREVIEW_RETURN) || (ret_addr == ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN))
 		return tr;
 
+	if (is->text_snapshot.data) {
+		if (! restore_memory_snapshot (&is->text_snapshot, PAGE_EXECUTE_READWRITE) ||
+		    ! restore_memory_snapshot (&is->rdata_snapshot, PAGE_READWRITE))
+			return tr;
+
+		// The saved bytes inside these regions have already been restored by the snapshots.
+		FOR_TABLE_ENTRIES (tei, &is->saved_code_areas) {
+			unsigned text_offset = (unsigned)tei.key - (unsigned)is->text_snapshot.address;
+			unsigned rdata_offset = (unsigned)tei.key - (unsigned)is->rdata_snapshot.address;
+			if ((text_offset < (unsigned)is->text_snapshot.size) ||
+			    (rdata_offset < (unsigned)is->rdata_snapshot.size))
+				((struct saved_code_area *)tei.value)->size = 0;
+		}
+	} else if (! capture_script_baseline ())
+		return tr;
+
 	reset_to_base_config ();
-	// Keep the same hooks when loading another scenario in this process.
-	if (! is->scripts_load_attempted) {
-		is->scripts_load_attempted = true;
-		load_scripts (is->base_prog_objects, is->count_base_prog_objects);
-	}
+	load_scripts (is->base_prog_objects, is->count_base_prog_objects);
 
 	load_config ("default.c3x_config.ini", 1);
 	char * scenario_config_file_name = "scenario.c3x_config.ini";

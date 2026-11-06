@@ -222,6 +222,12 @@ load_one_script (struct script_compiler * compiler, char const * directory, stru
 				goto done;
 			}
 
+			unsigned offset = (unsigned)obj->addr - (unsigned)is->binary.addr_rdata;
+			if (offset > (unsigned)(is->binary.size_rdata - sizeof (void *))) {
+				error = "Script vtable replacement is outside .rdata.";
+				goto done;
+			}
+
 			void ** slot = (void **)obj->addr;
 			DWORD old_protect, unused;
 			if (! VirtualProtect (slot, sizeof *slot, PAGE_READWRITE, &old_protect)) {

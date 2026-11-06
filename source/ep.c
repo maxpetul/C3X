@@ -39,18 +39,12 @@ int        (LIBTCCAPI * tcc__add_include_path) (TCCState *, char const *);
 void       (LIBTCCAPI * tcc__define_symbol)    (TCCState *, char const *, char const *);
 void       (LIBTCCAPI * tcc__list_symbols)     (TCCState *, void *, void (*) (void *, char const *, void const *));
 
-struct c3c_binary {
-	char const * title;
-	int file_size;
-	void * addr_rdata;
-	int    size_rdata;
-	int addr_column; // The index of the column in civ_prog_objects.csv that contains the addresses for this binary
-} * bin;
+struct c3c_binary * bin;
 
-//                                TITLE         FILE_SIZE   ADDR_RDATA          SIZE_RDATA   ADDR_COLUMN
-struct c3c_binary gog_binary   = {"GOG",        3417464,    (void *)0x665000,   0x1B000,     1};
-struct c3c_binary steam_binary = {"Steam",      3518464,    (void *)0x682000,   0x1B000,     2};
-struct c3c_binary pcg_binary   = {"PCGames.de", 3395072,    (void *)0x665000,   0x1A400,     3};
+//                                TITLE         FILE_SIZE   ADDR_RDATA          SIZE_RDATA   ADDR_TEXT         SIZE_TEXT   ADDR_COLUMN
+struct c3c_binary gog_binary   = {"GOG",        3417464,    (void *)0x665000,   0x1B000,     (void *)0x401000,  0x264000,   1};
+struct c3c_binary steam_binary = {"Steam",      3518464,    (void *)0x682000,   0x1B000,     (void *)0x401000,  0x281000,   2};
+struct c3c_binary pcg_binary   = {"PCGames.de", 3395072,    (void *)0x665000,   0x1B000,     (void *)0x401000,  0x264000,   3};
 
 char const * standard_exe_filename = "Civ3Conquests.exe";
 char const * backup_exe_filename = "Civ3Conquests-Unmodded.exe";
@@ -944,6 +938,7 @@ ENTRY_POINT ()
 	}
 	struct injected_state * injected_state = alloc_prog_memory (".c3xdat", NULL, sizeof (struct injected_state) + prog_objects_size, MAA_READ_WRITE);
 
+	write_prog_memory (&injected_state->binary, (byte const *)bin, sizeof *bin);
 	write_prog_int (&injected_state->mod_version, MOD_VERSION);
 	write_prog_memory (&injected_state->mod_rel_dir, mod_rel_dir, strlen (mod_rel_dir) + 1);
 	write_prog_int (&injected_state->sc_img_state, IS_UNINITED);

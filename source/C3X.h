@@ -1714,6 +1714,22 @@ struct highlighted_city_radius_tile_info {
 	int highlight_level;
 };
 
+struct c3c_binary {
+	char title[16];
+	int file_size;
+	void * addr_rdata;
+	int    size_rdata;
+	void * addr_text;
+	int size_text;
+	int addr_column; // The index of the column in civ_prog_objects.csv that contains the addresses for this binary
+};
+
+struct memory_snapshot {
+	byte * address;
+	byte * data;
+	int size;
+};
+
 struct injected_state {
 	// ==========
 	// These fields are valid at any time in the injected code because they're set by the patcher {
@@ -1726,6 +1742,7 @@ struct injected_state {
 
 	struct civ_prog_object * base_prog_objects;
 	int count_base_prog_objects;
+	struct c3c_binary binary;
 
 	enum init_state sc_img_state;
 	enum init_state tile_highlight_state;
@@ -1742,7 +1759,8 @@ struct injected_state {
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
 	// ==========
 
-	bool scripts_load_attempted;
+	struct memory_snapshot text_snapshot;
+	struct memory_snapshot rdata_snapshot;
 
 	struct c3x_config base_config;
 
