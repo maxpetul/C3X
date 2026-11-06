@@ -3669,13 +3669,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 	// If seasonal cycle mode is on "day_night_hour" but day/night cycle mode is off, disable seasonal cycle mode and show a warning
 	if (cfg->seasonal_cycle_mode == SCM_ON_DAY_NIGHT_HOUR && cfg->day_night_cycle_mode == DNCM_OFF) {
 		cfg->seasonal_cycle_mode = SCM_OFF;
-		PopupForm * popup = get_popup_form ();
-		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
-		char s[200];
-		snprintf (s, sizeof s, "\"seasonal_cycle_mode\" set to \"on_day_night_hour\", but \"day_night_cycle_mode\" is off. Disabling seasonal cycle mode.");
-		s[(sizeof s) - 1] = '\0';
-		PopupForm_add_text (popup, __, s, false);
-		patch_show_popup (popup, __, 0, 0);
+		pop_up_in_game_warning ("\"seasonal_cycle_mode\" set to \"on_day_night_hour\", but \"day_night_cycle_mode\" is off. Disabling seasonal cycle mode.");
 	}
 
 	if (cfg->warn_about_unrecognized_names && (unrecognized_lines != NULL)) {
@@ -27572,13 +27566,11 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 	} else if (is->current_config.enable_debug_mode_switch &&
 		   (in_game && ! is_down) &&
 		   (last_events[4] == VK_D) && (last_events[3] == VK_E) && (last_events[2] == VK_B) && (last_events[1] == VK_U) && (last_events[0] == VK_G)) {
-		PopupForm * popup = get_popup_form ();
 		if ((*p_debug_mode_bits & 0xC) != 0) { // Consider debug mode on if either bit is set
 			*p_debug_mode_bits &= ~0xC;
-			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
-			PopupForm_add_text (popup, __, "Debug mode deactivated.", 0);
-			patch_show_popup (popup, __, 0, 0);
+			pop_up_in_game_info ("Debug mode deactivated.");
 		} else {
+			PopupForm * popup = get_popup_form ();
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_DEBUG_ACTIVATION", -1, 0, 0, 0);
 			int sel = patch_show_popup (popup, __, 0, 0);
 			if (sel == 0) {
