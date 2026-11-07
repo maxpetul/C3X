@@ -18505,21 +18505,21 @@ set_nopification (int yes_or_no, byte * addr, int size)
 bool
 capture_script_baseline (void)
 {
-	struct memory_snapshot * text = &is->text_snapshot;
-	struct memory_snapshot * rdata = &is->rdata_snapshot;
-	byte * text_data = malloc (text->size);
-	byte * rdata_data = malloc (rdata->size);
-	if (! text_data || ! rdata_data) {
-		free (text_data);
-		free (rdata_data);
-		MessageBoxA (NULL, "Could not allocate script snapshots.", "C3X", MB_OK | MB_ICONERROR);
-		return false;
-	}
+	struct memory_snapshot * snapshots[] = {&is->text_snapshot, &is->rdata_snapshot, &is->core_code_snapshot};
+	for (int n = 0; n < ARRAY_LEN (snapshots); n++) {
+		struct memory_snapshot * snapshot = snapshots[n];
+		snapshot->data = malloc (snapshot->size);
+		if (! snapshot->data) {
+			for (int i = 0; i < n; i++) {
+				free (snapshots[i]->data);
+				snapshots[i]->data = NULL;
+			}
+			MessageBoxA (NULL, "Could not allocate script snapshots.", "C3X", MB_OK | MB_ICONERROR);
+			return false;
+		}
 
-	memcpy (text_data, text->address, text->size);
-	memcpy (rdata_data, rdata->address, rdata->size);
-	text->data = text_data;
-	rdata->data = rdata_data;
+		memcpy (snapshot->data, snapshot->address, snapshot->size);
+	}
 	return true;
 }
 
@@ -20880,6 +20880,8 @@ patch_init_floating_point ()
 	reset_to_base_config ();
 	is->text_snapshot = (struct memory_snapshot) {is->binary.addr_text, NULL, is->binary.size_text};
 	is->rdata_snapshot = (struct memory_snapshot) {is->binary.addr_rdata, NULL, is->binary.size_rdata};
+
+	is->core_code_snapshot = (struct memory_snapshot) {is->core_code, NULL, is->size_core_code};
 
 	// Preserve the unedited baseline before applying the startup configuration.
 	if (capture_script_baseline ())
@@ -24519,7 +24521,8 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 
 	if (is->text_snapshot.data) {
 		if (! restore_memory_snapshot (&is->text_snapshot, PAGE_EXECUTE_READWRITE) ||
-		    ! restore_memory_snapshot (&is->rdata_snapshot, PAGE_READWRITE))
+		    ! restore_memory_snapshot (&is->rdata_snapshot, PAGE_READWRITE) ||
+		    ! restore_memory_snapshot (&is->core_code_snapshot, PAGE_EXECUTE_READWRITE))
 			return tr;
 
 		free_script_memory ();
@@ -24528,8 +24531,10 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 		FOR_TABLE_ENTRIES (tei, &is->saved_code_areas) {
 			unsigned text_offset = (unsigned)tei.key - (unsigned)is->text_snapshot.address;
 			unsigned rdata_offset = (unsigned)tei.key - (unsigned)is->rdata_snapshot.address;
+			unsigned core_offset = (unsigned)tei.key - (unsigned)is->core_code_snapshot.address;
 			if ((text_offset < (unsigned)is->text_snapshot.size) ||
-			    (rdata_offset < (unsigned)is->rdata_snapshot.size))
+			    (rdata_offset < (unsigned)is->rdata_snapshot.size) ||
+			    (core_offset < (unsigned)is->core_code_snapshot.size))
 				((struct saved_code_area *)tei.value)->size = 0;
 		}
 	} else if (! capture_script_baseline ())

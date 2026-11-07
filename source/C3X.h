@@ -1726,6 +1726,7 @@ struct c3c_binary {
 
 struct script_allocation {
 	void * address;
+	int code_size; // Zero for allocations other than compiled script code.
 	struct script_allocation * next;
 };
 
@@ -1748,6 +1749,8 @@ struct injected_state {
 	struct civ_prog_object * base_prog_objects;
 	int count_base_prog_objects;
 	struct c3c_binary binary;
+	byte * core_code;
+	int size_core_code;
 
 	enum init_state sc_img_state;
 	enum init_state tile_highlight_state;
@@ -1767,6 +1770,7 @@ struct injected_state {
 	struct script_allocation * script_allocations;
 	struct memory_snapshot text_snapshot;
 	struct memory_snapshot rdata_snapshot;
+	struct memory_snapshot core_code_snapshot;
 
 	struct c3x_config base_config;
 

@@ -1075,6 +1075,8 @@ ENTRY_POINT ()
 	success = tcc__relocate (tcc, our_inject_mem);
 	ASSERT (success != -1);
 	write_prog_memory (civ_inject_mem, our_inject_mem, inject_size);
+	write_prog_int (&injected_state->core_code, (int)civ_inject_mem);
+	write_prog_int (&injected_state->size_core_code, inject_size);
 
 	// List symbol locations for debugging
 #if 0
