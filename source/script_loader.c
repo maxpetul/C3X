@@ -2,6 +2,37 @@
 // Included by injected_code.c after the parsing helpers.
 #include "../tcc/libtcc/libtcc.h"
 
+// Script code and inleads use VirtualAlloc; only the list nodes use malloc.
+void *
+alloc_script_memory (int size)
+{
+	struct script_allocation * allocation = malloc (sizeof *allocation);
+	if (! allocation)
+		return NULL;
+
+	allocation->address = VirtualAlloc (NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+	if (! allocation->address) {
+		free (allocation);
+		return NULL;
+	}
+
+	allocation->next = is->script_allocations;
+	is->script_allocations = allocation;
+	return allocation->address;
+}
+
+// Call only after restoring the code and pointers that can refer to these allocations.
+void
+free_script_memory (void)
+{
+	while (is->script_allocations) {
+		struct script_allocation * allocation = is->script_allocations;
+		is->script_allocations = allocation->next;
+		VirtualFree (allocation->address, 0, MEM_RELEASE);
+		free (allocation);
+	}
+}
+
 struct script_compiler {
 	TCCState * (*create) (void);
 	void (*destroy) (TCCState *);
@@ -123,7 +154,6 @@ load_one_script (struct script_compiler * compiler, char const * directory, stru
 	TCCState * tcc = NULL;
 	void * code = NULL;
 	struct script_symbols symbols = {0};
-	bool installed_patch = false;
 
 	if (error)
 		goto done;
@@ -179,7 +209,7 @@ load_one_script (struct script_compiler * compiler, char const * directory, stru
 		goto done;
 	}
 
-	code = VirtualAlloc (NULL, size, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+	code = alloc_script_memory (size);
 	if (! code) {
 		error = "Could not allocate script memory.";
 		goto done;
@@ -236,7 +266,6 @@ load_one_script (struct script_compiler * compiler, char const * directory, stru
 			}
 
 			*slot = (void *)symbols.items[n].address;
-			installed_patch = true;
 			if (! VirtualProtect (slot, sizeof *slot, old_protect, &unused)) {
 				error = "Could not restore script vtable slot protection.";
 				goto done;
@@ -257,15 +286,11 @@ done:
 	free (symbols.items);
 
 	if (error) {
-		// Already installed hooks must remain callable even if a later slot failed.
-		if (code && ! installed_patch)
-			VirtualFree (code, 0, MEM_RELEASE);
-
 		snprintf (value, sizeof value, "%s:\n%s", directory, error);
 		pop_up_in_game_error (value);
 	}
 
-	// Successfully relocated code and globals remain resident until process exit.
+	// Keep allocations until snapshot restoration, including any partially installed script.
 }
 
 void

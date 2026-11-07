@@ -20256,6 +20256,7 @@ void
 patch_init_floating_point ()
 {
 	init_floating_point ();
+	is->script_allocations = NULL;
 
 	// NOTE: At this point the program is done with the CRT initialization stuff and will start calling constructors for global
 	// objects as soon as this function returns. This is a good place to inject code that will run at program start.
@@ -24520,6 +24521,8 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 		if (! restore_memory_snapshot (&is->text_snapshot, PAGE_EXECUTE_READWRITE) ||
 		    ! restore_memory_snapshot (&is->rdata_snapshot, PAGE_READWRITE))
 			return tr;
+
+		free_script_memory ();
 
 		// The saved bytes inside these regions have already been restored by the snapshots.
 		FOR_TABLE_ENTRIES (tei, &is->saved_code_areas) {

@@ -1724,6 +1724,11 @@ struct c3c_binary {
 	int addr_column; // The index of the column in civ_prog_objects.csv that contains the addresses for this binary
 };
 
+struct script_allocation {
+	void * address;
+	struct script_allocation * next;
+};
+
 struct memory_snapshot {
 	byte * address;
 	byte * data;
@@ -1759,6 +1764,7 @@ struct injected_state {
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
 	// ==========
 
+	struct script_allocation * script_allocations;
 	struct memory_snapshot text_snapshot;
 	struct memory_snapshot rdata_snapshot;
 
