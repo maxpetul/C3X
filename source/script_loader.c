@@ -40,7 +40,10 @@ script_can_detour (struct civ_prog_object const * obj)
 {
 	unsigned offset = (unsigned)obj->addr - (unsigned)is->binary.addr_text;
 	return (offset < (unsigned)is->binary.size_text) &&
-	       ((obj->job == OJ_INLEAD) || ((obj->job == OJ_DEFINE) && strstr (obj->type, "*)")));
+	       ((obj->job == OJ_INLEAD) ||
+	        ((obj->job == OJ_DEFINE) && (strstr (obj->type, "(__fastcall *)") ||
+	                                    strstr (obj->type, "(__cdecl *)") ||
+	                                    strstr (obj->type, "(__stdcall *)"))));
 }
 
 void *
