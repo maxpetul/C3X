@@ -1,0 +1,2 @@
+JOB,	   GOG ADDR,	STEAM ADDR,	PCG ADDR,	NAME,						TYPE
+repl vptr, 0x66B520,	0x688620,	0x66B520,	"Main_Screen_Form_m82_handle_key_event",	"void (__fastcall *) (Main_Screen_Form * this, int edx, int virtual_key_code, int is_down)"

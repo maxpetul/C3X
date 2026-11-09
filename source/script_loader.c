@@ -1,4 +1,4 @@
-// First implementation: process-lifetime scripts with optional vtable replacements.
+// Scenario scripts with declared program objects and patches.
 // Included by injected_code.c after the parsing helpers.
 #include "../tcc/libtcc/libtcc.h"
 #include "../lend/ld32.c"
@@ -23,6 +23,13 @@ alloc_script_memory (int size, bool compiled_code)
 	return allocation->address;
 }
 
+void
+free_script_prog_object (struct civ_prog_object * object)
+{
+	free ((void *)object->name);
+	free ((void *)object->type);
+}
+
 // Call only after restoring the code and pointers that can refer to these allocations.
 void
 free_script_memory (void)
@@ -33,6 +40,20 @@ free_script_memory (void)
 		VirtualFree (allocation->address, 0, MEM_RELEASE);
 		free (allocation);
 	}
+
+	for (int n = 0; n < is->count_script_prog_objects; n++)
+		free_script_prog_object (&is->script_prog_objects[n]);
+	free (is->script_prog_objects);
+	is->script_prog_objects = NULL;
+	is->count_script_prog_objects = 0;
+}
+
+bool
+script_is_function_type (char const * type)
+{
+	return strstr (type, "(__fastcall *)") ||
+	       strstr (type, "(__cdecl *)") ||
+	       strstr (type, "(__stdcall *)");
 }
 
 bool
@@ -40,10 +61,7 @@ script_can_detour (struct civ_prog_object const * obj)
 {
 	unsigned offset = (unsigned)obj->addr - (unsigned)is->binary.addr_text;
 	return (offset < (unsigned)is->binary.size_text) &&
-	       ((obj->job == OJ_INLEAD) ||
-	        ((obj->job == OJ_DEFINE) && (strstr (obj->type, "(__fastcall *)") ||
-	                                    strstr (obj->type, "(__cdecl *)") ||
-	                                    strstr (obj->type, "(__stdcall *)"))));
+	       ((obj->job == OJ_INLEAD) || ((obj->job == OJ_DEFINE) && script_is_function_type (obj->type)));
 }
 
 void *
@@ -110,7 +128,7 @@ script_inlead_prefix_size (byte * entry)
 }
 
 char const *
-install_script_detour (struct civ_prog_object const * obj, void const * replacement, void ** below)
+prepare_script_inlead (struct civ_prog_object const * obj, byte ** entry_out, int * binding)
 {
 	// Reload frees script code from inside this hook, so it must not have a script caller.
 	if (0 == strcmp (obj->name, "load_scenario"))
@@ -138,11 +156,18 @@ install_script_detour (struct civ_prog_object const * obj, void const * replacem
 	}
 	emit_branch (BK_JUMP, inlead + size, entry + size);
 
+	*entry_out = entry;
+	*binding = (int)inlead;
+	return NULL;
+}
+
+char const *
+install_script_detour (byte * entry, void const * replacement)
+{
 	DWORD old_protection, unused;
 	if (! VirtualProtect (entry, 5, PAGE_EXECUTE_READWRITE, &old_protection))
 		return "Could not make script detour writable.";
 
-	*below = inlead;
 	emit_branch (BK_JUMP, entry, replacement);
 	if (! VirtualProtect (entry, 5, old_protection, &unused))
 		return "Could not restore script detour protection.";
@@ -248,6 +273,149 @@ script_is_enabled (char * metadata, char const ** error)
 	return enabled;
 }
 
+struct script_object {
+	struct civ_prog_object object;
+	bool added;
+	byte * entry;
+	void const * replacement;
+};
+
+bool
+script_object_has_binding (struct civ_prog_object const * obj)
+{
+	return (obj->job == OJ_DEFINE) || (obj->job == OJ_INLEAD) || (obj->job == OJ_REPL_VPTR);
+}
+
+struct script_object_match {
+	bool exact;
+	bool address_conflict;
+	bool name_conflict;
+};
+
+void
+match_script_object (struct script_object_match * match, struct civ_prog_object const * obj, struct civ_prog_object const * existing)
+{
+	if (! script_object_has_binding (existing))
+		return;
+
+	bool same_name = 0 == strcmp (obj->name, existing->name);
+	if (obj->addr == existing->addr) {
+		if (same_name && (0 == strcmp (obj->type, existing->type)))
+			match->exact = true;
+		// Values below the game's code range are constants or offsets, not addresses.
+		else if ((unsigned)obj->addr >= (unsigned)is->binary.addr_text)
+			match->address_conflict = true;
+		else if (same_name)
+			match->name_conflict = true;
+	} else if (same_name)
+		match->name_conflict = true;
+}
+
+char const *
+read_script_objects (char * csv, struct civ_prog_object * base, int count_base, struct script_object ** out, int * count_out)
+{
+	int capacity = 1;
+	for (char * c = csv; *c; c++)
+		capacity += *c == '\n';
+	struct script_object * rows = calloc (capacity, sizeof *rows);
+	if (! rows)
+		return "Could not allocate script program objects.";
+	*out = rows;
+
+	char * cursor = csv;
+	skip_line (&cursor); // Skip the same column header used by the core CSV.
+	while (*cursor) {
+		skip_horiz_space (&cursor);
+		if (*cursor == '\n') {
+			cursor++;
+			continue;
+		}
+		if (! *cursor)
+			break;
+
+		struct civ_prog_object obj;
+		if (! parse_civ_prog_object (&cursor, is->binary.addr_column, &obj))
+			return "Invalid row in script civ_prog_objects.csv.";
+
+		// Include the row in cleanup even if validation below fails.
+		struct script_object * row = &rows[(*count_out)++];
+		row->object = obj;
+
+		if (obj.job == OJ_IGNORE) {
+			free_script_prog_object (&obj);
+			(*count_out)--;
+			continue;
+		}
+		if (! script_object_has_binding (&obj))
+			return "Unsupported job in script civ_prog_objects.csv.";
+
+		struct script_object_match local = {0};
+		for (int n = 0; n < *count_out - 1; n++)
+			match_script_object (&local, &obj, &rows[n].object);
+		if (local.exact)
+			return "Duplicate declaration in script civ_prog_objects.csv.";
+
+		struct script_object_match match = {0};
+		for (int n = 0; n < count_base; n++)
+			match_script_object (&match, &obj, &base[n]);
+		for (int n = 0; n < is->count_script_prog_objects; n++)
+			match_script_object (&match, &obj, &is->script_prog_objects[n]);
+
+		if (local.name_conflict || match.name_conflict)
+			return "Script program object name conflicts with an existing definition.";
+		if (local.address_conflict || (! match.exact && match.address_conflict)) {
+			char warning[300];
+			snprintf (warning, sizeof warning, "Script object %s at 0x%x does not match the existing name and type. Keeping the existing definition.",
+			          obj.name, obj.addr);
+			pop_up_in_game_warning (warning);
+			free_script_prog_object (&obj);
+			(*count_out)--;
+			continue;
+		}
+
+		// An exact define redeclaration adds nothing. Keep the existing object's
+		// binding rules (in particular, a vtable slot binds to its current target).
+		if (match.exact && (obj.job == OJ_DEFINE)) {
+			free_script_prog_object (&obj);
+			(*count_out)--;
+			continue;
+		}
+
+		if ((obj.job != OJ_DEFINE) && ! script_is_function_type (obj.type))
+			return "Script patch declarations must have a function pointer type.";
+
+		row->added = ! match.exact;
+	}
+	return NULL;
+}
+
+char const *
+bind_script_object (struct script_compiler * compiler, TCCState * tcc, struct civ_prog_object const * obj, struct script_object * row)
+{
+	int address = obj->addr;
+	if (row && (obj->job == OJ_INLEAD)) {
+		if (! script_can_detour (obj))
+			return "Script inlead target is outside .text.";
+		char const * error = prepare_script_inlead (obj, &row->entry, &address);
+		if (error)
+			return error;
+	} else if (obj->job == OJ_REPL_VPTR) {
+		unsigned offset = (unsigned)obj->addr - (unsigned)is->binary.addr_rdata;
+		if (row && (offset > (unsigned)(is->binary.size_rdata - sizeof (void *))))
+			return "Script vtable replacement is outside .rdata.";
+		address = *(int *)obj->addr;
+	} else if (script_can_detour (obj)) {
+		address = (int)script_current_entry (obj);
+		if (! address)
+			return "Invalid script jump chain.";
+	}
+
+	char value[2000];
+	snprintf (value, sizeof value, "((%s)0x%x)", obj->type, address);
+	compiler->define_symbol (tcc, obj->name, value);
+	return NULL;
+}
+
 void
 load_one_script (struct script_compiler * compiler, char const * directory, struct civ_prog_object * objects, int count)
 {
@@ -271,9 +439,20 @@ load_one_script (struct script_compiler * compiler, char const * directory, stru
 	void * code = NULL;
 	bool relocated = false;
 	struct script_symbols symbols = {0};
+	struct script_object * rows = NULL;
+	int count_rows = 0;
 
 	if (error)
 		goto done;
+
+	snprintf (path, sizeof path, "%s\\civ_prog_objects.csv", directory);
+	char * csv = file_to_string (path);
+	if (csv) {
+		error = read_script_objects (csv, objects, count, &rows, &count_rows);
+		free (csv);
+		if (error)
+			goto done;
+	}
 
 	tcc = compiler->create ();
 	if (! tcc) {
@@ -302,32 +481,26 @@ load_one_script (struct script_compiler * compiler, char const * directory, stru
 	snprintf (value, sizeof value, "((char *)0x%x)", (int)is->mod_script_path);
 	compiler->define_symbol (tcc, "MOD_SCRIPT_PATH", value);
 
-	// An inlead's call-through address is only known after finding the script's
-	// patch symbol. Keep the binding in a slot that can be set after relocation.
-	void ** below = alloc_script_memory (count * sizeof *below, false);
-	if (! below) {
-		error = "Could not allocate script function bindings.";
-		goto done;
-	}
-
-	for (int n = 0; n < count; n++) {
-		struct civ_prog_object * obj = &objects[n];
-		if ((obj->job != OJ_DEFINE) && (obj->job != OJ_INLEAD) && (obj->job != OJ_REPL_VPTR))
+	// Bind inherited objects first, except where this script declares its own binding.
+	for (int n = 0; n < count + is->count_script_prog_objects; n++) {
+		struct civ_prog_object const * obj = (n < count) ? &objects[n] : &is->script_prog_objects[n - count];
+		if (! script_object_has_binding (obj))
 			continue;
 
-		// Bind the plain name before installing this script's replacements, so calls chain through earlier patches.
-		if (script_can_detour (obj)) {
-			below[n] = script_current_entry (obj);
-			if (! below[n]) {
-				error = "Invalid script jump chain.";
+		int i = 0;
+		while ((i < count_rows) && strcmp (obj->name, rows[i].object.name))
+			i++;
+		if (i == count_rows) {
+			error = bind_script_object (compiler, tcc, obj, NULL);
+			if (error)
 				goto done;
-			}
-			snprintf (value, sizeof value, "((%s)*(void **)0x%x)", obj->type, (int)&below[n]);
-		} else {
-			int address = (obj->job == OJ_REPL_VPTR) ? *(int *)obj->addr : obj->addr;
-			snprintf (value, sizeof value, "((%s)0x%x)", obj->type, address);
 		}
-		compiler->define_symbol (tcc, obj->name, value);
+	}
+
+	for (int n = 0; n < count_rows; n++) {
+		error = bind_script_object (compiler, tcc, &rows[n].object, &rows[n]);
+		if (error)
+			goto done;
 	}
 
 	// Compile and relocate before installing any replacements.
@@ -370,49 +543,75 @@ load_one_script (struct script_compiler * compiler, char const * directory, stru
 			continue;
 
 		name += 6;
-		bool found = false;
-		for (int i = 0; i < count; i++) {
-			struct civ_prog_object const * obj = &objects[i];
-			int len = strlen (obj->name);
-			if (strncmp (name, obj->name, len) || ((name[len] != '\0') && (name[len] != '@')))
-				continue;
-
-			found = true;
-			if (script_can_detour (obj)) {
-				error = install_script_detour (obj, symbols.items[n].address, &below[i]);
-				if (error)
+		int i = 0;
+		for (; i < count_rows; i++) {
+			struct script_object * row = &rows[i];
+			int len = strlen (row->object.name);
+			if ((row->object.job != OJ_DEFINE) &&
+			    ! strncmp (name, row->object.name, len) && ((name[len] == '\0') || (name[len] == '@'))) {
+				if (row->replacement) {
+					error = "Ambiguous script replacement symbol.";
 					goto done;
-				continue;
+				}
+				row->replacement = symbols.items[n].address;
+				break;
 			}
+		}
+		if (i == count_rows) {
+			snprintf (diagnostic, sizeof diagnostic, "Undeclared script patch: %s", symbols.items[n].name);
+			error = diagnostic;
+			goto done;
+		}
+	}
 
-			if (obj->job != OJ_REPL_VPTR) {
-				error = "Script patch target is not a function or vtable slot.";
+	int count_added = 0;
+	for (int n = 0; n < count_rows; n++) {
+		struct script_object * row = &rows[n];
+		if ((row->object.job != OJ_DEFINE) && ! row->replacement) {
+			snprintf (diagnostic, sizeof diagnostic, "Missing script patch: patch_%s", row->object.name);
+			error = diagnostic;
+			goto done;
+		}
+		count_added += row->added;
+	}
+
+	if (count_added) {
+		struct civ_prog_object * active = realloc (is->script_prog_objects,
+		                                          (is->count_script_prog_objects + count_added) * sizeof *active);
+		if (! active) {
+			error = "Could not expand the active script program objects.";
+			goto done;
+		}
+		is->script_prog_objects = active;
+	}
+
+	for (int n = 0; n < count_rows; n++) {
+		struct script_object * row = &rows[n];
+		if (row->object.job == OJ_INLEAD) {
+			error = install_script_detour (row->entry, row->replacement);
+			if (error)
 				goto done;
-			}
-
-			unsigned offset = (unsigned)obj->addr - (unsigned)is->binary.addr_rdata;
-			if (offset > (unsigned)(is->binary.size_rdata - sizeof (void *))) {
-				error = "Script vtable replacement is outside .rdata.";
-				goto done;
-			}
-
-			void ** slot = (void **)obj->addr;
+		} else if (row->object.job == OJ_REPL_VPTR) {
+			void ** slot = (void **)row->object.addr;
 			DWORD old_protect, unused;
 			if (! VirtualProtect (slot, sizeof *slot, PAGE_READWRITE, &old_protect)) {
 				error = "Could not make script vtable slot writable.";
 				goto done;
 			}
 
-			*slot = (void *)symbols.items[n].address;
+			*slot = (void *)row->replacement;
 			if (! VirtualProtect (slot, sizeof *slot, old_protect, &unused)) {
 				error = "Could not restore script vtable slot protection.";
 				goto done;
 			}
 		}
+	}
 
-		if (! found) {
-			error = "Unknown patch_ target in script.";
-			goto done;
+	// Publish only new definitions from a successfully installed script.
+	for (int n = 0; n < count_rows; n++) {
+		if (rows[n].added) {
+			is->script_prog_objects[is->count_script_prog_objects++] = rows[n].object;
+			rows[n].object.name = rows[n].object.type = NULL;
 		}
 	}
 
@@ -426,6 +625,9 @@ done:
 		compiler->destroy (tcc);
 
 	free (symbols.items);
+	for (int n = 0; n < count_rows; n++)
+		free_script_prog_object (&rows[n].object);
+	free (rows);
 
 	if (error) {
 		snprintf (value, sizeof value, "%s:\n%s", directory, error);

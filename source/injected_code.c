@@ -20257,6 +20257,8 @@ patch_init_floating_point ()
 {
 	init_floating_point ();
 	is->script_allocations = NULL;
+	is->script_prog_objects = NULL;
+	is->count_script_prog_objects = 0;
 
 	// NOTE: At this point the program is done with the CRT initialization stuff and will start calling constructors for global
 	// objects as soon as this function returns. This is a good place to inject code that will run at program start.

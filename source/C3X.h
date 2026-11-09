@@ -1768,6 +1768,8 @@ struct injected_state {
 	// ==========
 
 	struct script_allocation * script_allocations;
+	struct civ_prog_object * script_prog_objects;
+	int count_script_prog_objects;
 	struct memory_snapshot text_snapshot;
 	struct memory_snapshot rdata_snapshot;
 	struct memory_snapshot core_code_snapshot;
