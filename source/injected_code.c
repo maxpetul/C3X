@@ -24543,7 +24543,7 @@ patch_load_scenario (BIC * this, int edx, char * param_1, unsigned * param_2)
 		return tr;
 
 	reset_to_base_config ();
-	load_scripts (is->base_prog_objects, is->count_base_prog_objects);
+	load_scripts ();
 
 	load_config ("default.c3x_config.ini", 1);
 	char * scenario_config_file_name = "scenario.c3x_config.ini";

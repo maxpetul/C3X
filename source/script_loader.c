@@ -312,7 +312,7 @@ match_script_object (struct script_object_match * match, struct civ_prog_object 
 }
 
 char const *
-read_script_objects (char * csv, struct civ_prog_object * base, int count_base, struct script_object ** out, int * count_out)
+read_script_objects (char * csv, struct script_object ** out, int * count_out)
 {
 	int capacity = 1;
 	for (char * c = csv; *c; c++)
@@ -356,8 +356,8 @@ read_script_objects (char * csv, struct civ_prog_object * base, int count_base, 
 			return "Duplicate declaration in script civ_prog_objects.csv.";
 
 		struct script_object_match match = {0};
-		for (int n = 0; n < count_base; n++)
-			match_script_object (&match, &obj, &base[n]);
+		for (int n = 0; n < is->count_base_prog_objects; n++)
+			match_script_object (&match, &obj, &is->base_prog_objects[n]);
 		for (int n = 0; n < is->count_script_prog_objects; n++)
 			match_script_object (&match, &obj, &is->script_prog_objects[n]);
 
@@ -417,7 +417,7 @@ bind_script_object (struct script_compiler * compiler, TCCState * tcc, struct ci
 }
 
 void
-load_one_script (struct script_compiler * compiler, char const * directory, struct civ_prog_object * objects, int count)
+load_one_script (struct script_compiler * compiler, char const * directory)
 {
 	char path[MAX_PATH];
 	char value[2000];
@@ -448,7 +448,7 @@ load_one_script (struct script_compiler * compiler, char const * directory, stru
 	snprintf (path, sizeof path, "%s\\civ_prog_objects.csv", directory);
 	char * csv = file_to_string (path);
 	if (csv) {
-		error = read_script_objects (csv, objects, count, &rows, &count_rows);
+		error = read_script_objects (csv, &rows, &count_rows);
 		free (csv);
 		if (error)
 			goto done;
@@ -482,8 +482,8 @@ load_one_script (struct script_compiler * compiler, char const * directory, stru
 	compiler->define_symbol (tcc, "MOD_SCRIPT_PATH", value);
 
 	// Bind inherited objects first, except where this script declares its own binding.
-	for (int n = 0; n < count + is->count_script_prog_objects; n++) {
-		struct civ_prog_object const * obj = (n < count) ? &objects[n] : &is->script_prog_objects[n - count];
+	for (int n = 0; n < is->count_base_prog_objects + is->count_script_prog_objects; n++) {
+		struct civ_prog_object const * obj = (n < is->count_base_prog_objects) ? &is->base_prog_objects[n] : &is->script_prog_objects[n - is->count_base_prog_objects];
 		if (! script_object_has_binding (obj))
 			continue;
 
@@ -638,7 +638,7 @@ done:
 }
 
 void
-load_scripts (struct civ_prog_object * objects, int count)
+load_scripts (void)
 {
 	char path[MAX_PATH];
 	snprintf (path, sizeof path, "%s\\tcc\\libtcc.dll", is->mod_rel_dir);
@@ -681,7 +681,7 @@ load_scripts (struct civ_prog_object * objects, int count)
 
 	// Start with the one example script; discovery and dependency ordering can follow later.
 	snprintf (path, sizeof path, "%s\\Scripts\\Disorder Warning", is->mod_rel_dir);
-	load_one_script (&compiler, path, objects, count);
+	load_one_script (&compiler, path);
 
 done:
 
